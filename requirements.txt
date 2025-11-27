@@ -1,0 +1,7 @@
+streamlit
+pandas
+polars
+plotly
+numpy
+scipy
+neurokit2

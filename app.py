@@ -4,16 +4,34 @@ import polars as pl
 import plotly.express as px
 import plotly.graph_objects as go
 import numpy as np
+import io
 from io import BytesIO
 from scipy import stats
 import neurokit2 as nk
 
-# Próba importu sweatpy
 try:
     import sweatpy as sw
     SWEATP_AVAILABLE = True
 except Exception:
     SWEATP_AVAILABLE = False
+
+from fpdf import FPDF
+import base64
+
+class PDFReport(FPDF):
+    def header(self):
+        self.set_font('Arial', 'B', 15)
+        self.cell(0, 10, 'Pro Athlete Dashboard - Raport Treningowy', 0, 1, 'C')
+        self.ln(10)
+
+    def footer(self):
+        self.set_y(-15)
+        self.set_font('Arial', 'I', 8)
+        self.cell(0, 10, f'Strona {self.page_no()}', 0, 0, 'C')
+
+def create_download_link(val, filename):
+    b64 = base64.b64encode(val)  # val looks like b'...'
+    return f'<a href="data:application/octet-stream;base64,{b64.decode()}" download="{filename}.pdf">📥 Pobierz Raport PDF</a>'
 
 # --- KONFIGURACJA STRONY I DESIGN SYSTEM (ORYGINALNY Z APP_V1) ---
 st.set_page_config(page_title="Pro Athlete Dashboard", layout="wide", page_icon="⚡")
@@ -130,34 +148,110 @@ def parse_time_input(t_str):
     except: return None
     return None
 
-@st.cache_data
-def calculate_w_prime_balance(_df_pl_active: pl.DataFrame, cp: int, w_prime: int) -> pl.DataFrame:
-    if cp <= 0: cp = 1 
-    if SWEATP_AVAILABLE:
-        try:
-            watts = _df_pl_active['watts'].to_numpy()
-            activity_data = sw.Activity(watts, cp=cp, w_prime=w_prime)
-            w_bal = activity_data.w_prime_balance
-            if len(w_bal) == len(_df_pl_active):
-                return _df_pl_active.with_columns(pl.Series("w_prime_balance", w_bal))
-        except Exception:
-            pass 
+def _serialize_df_to_parquet_bytes(df):
+    bio = io.BytesIO()
+    try:
+        df.to_parquet(bio, index=False)
+        return bio.getvalue()
+    except Exception:
+        bio = io.BytesIO()
+        df.to_csv(bio, index=False)
+        return bio.getvalue()
 
-    watts = _df_pl_active['watts'].to_numpy()
-    w_bal = np.zeros_like(watts, dtype=float)
-    curr_w = float(w_prime)
-    for i, p in enumerate(watts):
-        if p > cp: curr_w -= (p - cp)
-        else: curr_w += (cp - p)
-        if curr_w > w_prime: curr_w = w_prime
-        if curr_w < 0: curr_w = 0
-        w_bal[i] = curr_w
-    return _df_pl_active.with_columns(pl.Series("w_prime_balance", w_bal))
+@st.cache_data
+def _calculate_w_prime_balance_cached(df_bytes: bytes, cp: float, w_prime: float):
+    try:
+        bio = io.BytesIO(df_bytes)
+        try:
+            df_pd = pd.read_parquet(bio)
+        except Exception:
+            bio.seek(0)
+            df_pd = pd.read_csv(bio)
+
+        if 'watts' not in df_pd.columns:
+            df_pd['w_prime_balance'] = np.nan
+            return df_pd
+
+        watts = df_pd['watts'].to_numpy(dtype=float)
+
+        if 'time' in df_pd.columns:
+            time_arr = df_pd['time'].to_numpy(dtype=float)
+            if not np.all(np.diff(time_arr) >= 0):
+                order = np.argsort(time_arr)
+                time_arr = time_arr[order]
+                watts = watts[order]
+                inv_order = np.argsort(order)
+            else:
+                inv_order = None
+        else:
+            time_arr = np.arange(len(watts), dtype=float)
+            inv_order = None
+
+        dt = np.diff(time_arr, prepend=time_arr[0])
+        if len(dt) > 1:
+            dt[0] = dt[1] if dt[1] > 0 else 1.0
+        else:
+            dt[0] = 1.0
+
+        w_bal = np.empty_like(watts, dtype=float)
+        curr_w = float(w_prime)
+
+        for i in range(len(watts)):
+            p = watts[i]
+            delta = (cp - p) * dt[i]   # >0 -> ładowanie, <0 -> zużycie
+            curr_w += delta
+            if curr_w > w_prime:
+                curr_w = float(w_prime)
+            if curr_w < 0:
+                curr_w = 0.0
+            w_bal[i] = curr_w
+
+        if inv_order is not None:
+            w_bal = w_bal[inv_order]
+
+        df_pd['w_prime_balance'] = w_bal
+        return df_pd
+
+    except Exception as e:
+        try:
+            bio = io.BytesIO(df_bytes)
+            try:
+                df_pd = pd.read_parquet(bio)
+            except Exception:
+                bio.seek(0)
+                df_pd = pd.read_csv(bio)
+            df_pd['w_prime_balance'] = np.zeros(len(df_pd))
+            return df_pd
+        except Exception:
+            return pd.DataFrame({'w_prime_balance': []})
+
+def calculate_w_prime_balance(_df_pl_active, cp: float, w_prime: float):
+    try:
+        is_polars = isinstance(_df_pl_active, pl.DataFrame)
+    except Exception:
+        is_polars = False
+    if is_polars:
+        df_pd = _df_pl_active.to_pandas()
+    elif isinstance(_df_pl_active, dict):
+        df_pd = pd.DataFrame(_df_pl_active)
+    else:
+        df_pd = _df_pl_active.copy()
+    if 'time' not in df_pd.columns:
+        df_pd['time'] = np.arange(len(df_pd), dtype=float)
+    df_bytes = _serialize_df_to_parquet_bytes(df_pd)
+    result_df = _calculate_w_prime_balance_cached(df_bytes, float(cp), float(w_prime))
+    # Konwersja z powrotem do Polars DataFrame
+    return pl.from_pandas(result_df)
 
 def load_data(file):
     if file.name.endswith('.csv'):
-        try: df = pl.read_csv(file)
-        except: df = pl.read_csv(file, separator=';')
+        try:
+            df = pl.read_csv(file)
+            df = df.to_pandas()
+            df = normalize_columns_pandas(df)
+            df = pl.from_pandas(df)
+        except:
+            df = pl.read_csv(file, separator=';')
     else:
         df = pl.read_csv(file)
 
@@ -170,7 +264,7 @@ def load_data(file):
     if rename_map: df = df.rename(rename_map)
 
     numeric_cols = ['watts', 'heartrate', 'cadence', 'smo2', 'thb', 'temp', 'torque', 'core_temperature', 
-                    'skin_temperature', 'velocity_smooth', 'tymebreathrate', 'tymeventilation']
+                    'skin_temperature', 'velocity_smooth', 'tymebreathrate', 'tymeventilation', 'rr', 'rr_interval', 'hrv', 'ibi', 'time', 'skin_temp', 'core_temp', 'power']
     for col in numeric_cols:
         if col in df.columns:
             df = df.with_columns(pl.col(col).cast(pl.Float64, strict=False))
@@ -178,21 +272,56 @@ def load_data(file):
         df = df.with_columns(pl.Series("time", range(len(df))))
     return df
 
+def normalize_columns_pandas(df_pd):
+    mapping = {}
+    cols = [c.lower() for c in df_pd.columns]
+    if 've' in cols and 'tymeventilation' not in cols:
+        mapping[[c for c in df_pd.columns if c.lower() == 've'][0]] = 'tymeventilation'
+    if 'ventilation' in cols and 'tymeventilation' not in cols:
+        mapping[[c for c in df_pd.columns if c.lower() == 'ventilation'][0]] = 'tymeventilation'
+    if 'total_hemoglobin' in cols and 'thb' not in cols:
+        mapping[[c for c in df_pd.columns if c.lower() == 'total_hemoglobin'][0]] = 'thb'
+    df_pd = df_pd.rename(columns=mapping)
+    df_pd.columns = [c.lower() for c in df_pd.columns]
+    return df_pd
+
+
 def process_data(df):
-    df_pd = df.to_pandas()
-    cols_to_interp = [c for c in df_pd.columns if df_pd[c].dtype in ['float64', 'int64']]
-    if cols_to_interp: df_pd[cols_to_interp] = df_pd[cols_to_interp].interpolate(method='linear', limit_direction='both')
-    
-    smooth_cols = ['watts', 'heartrate', 'cadence', 'smo2', 'torque', 'core_temperature', 
+    df_pd = df.to_pandas() if hasattr(df, "to_pandas") else df.copy()
+
+    if 'time' not in df_pd.columns:
+        df_pd['time'] = np.arange(len(df_pd)).astype(float)
+    df_pd['time'] = df_pd['time'].astype(float)
+
+    df_pd = df_pd.sort_values('time').reset_index(drop=True)
+    df_pd['time_dt'] = pd.to_timedelta(df_pd['time'], unit='s')
+    df_pd = df_pd.set_index('time_dt')
+
+    num_cols = df_pd.select_dtypes(include=['float64', 'int64']).columns.tolist()
+    if num_cols:
+        df_pd[num_cols] = df_pd[num_cols].interpolate(method='time').ffill().bfill()
+
+    try:
+        df_resampled = df_pd.resample('1S').mean()
+        df_resampled = df_resampled.interpolate(method='time').ffill().bfill()
+    except Exception:
+        df_resampled = df_pd  # fallback
+
+    df_resampled['time'] = df_resampled.index.total_seconds()
+    df_resampled['time_min'] = df_resampled['time'] / 60.0
+
+    window_long = '30s'
+    window_short = '5s'
+    smooth_cols = ['watts', 'heartrate', 'cadence', 'smo2', 'torque', 'core_temperature',
                    'skin_temperature', 'velocity_smooth', 'tymebreathrate', 'tymeventilation', 'thb']
     for col in smooth_cols:
-        if col in df_pd.columns:
-            df_pd[f'{col}_smooth'] = df_pd[col].rolling(window=Config.SMOOTH_WINDOW, center=True, min_periods=1).mean()
-            df_pd[f'{col}_smooth_5s'] = df_pd[col].rolling(window=Config.SMOOTH_WINDOW_SHORT, center=True, min_periods=1).mean()
-    
-    df_clean = pl.from_pandas(df_pd)
-    if 'time' in df_clean.columns:
-        df_clean = df_clean.with_columns((pl.col('time') / 60).alias('time_min'))
+        if col in df_resampled.columns:
+            df_resampled[f'{col}_smooth'] = df_resampled[col].rolling(window=window_long, min_periods=1).mean()
+            df_resampled[f'{col}_smooth_5s'] = df_resampled[col].rolling(window=window_short, min_periods=1).mean()
+
+    df_resampled = df_resampled.reset_index(drop=True)
+    import polars as pl
+    df_clean = pl.from_pandas(df_resampled)
     return df_clean
 
 def calculate_metrics(df_pl, cp_val):
@@ -205,17 +334,83 @@ def calculate_metrics(df_pl, cp_val):
     power_hr = (avg_watts / avg_hr) if avg_hr > 0 else 0
     np_est = avg_watts * 1.05
     ef_factor = (np_est / avg_hr) if avg_hr > 0 else 0
-    work_above_cp_kj = 0
+    work_above_cp_kj = 0.0
     if 'watts' in cols:
-        df_above_cp = df_pl.filter(pl.col('watts') > cp_val)
-        work_above_cp_kj = df_above_cp['watts'].sum() / 1000
+        try:
+            if hasattr(df_pl, "select"):
+                t = df_pl['time'].to_numpy().astype(float)
+                w = df_pl['watts'].to_numpy().astype(float)
+            else:
+                t = df_pl['time'].values.astype(float)
+                w = df_pl['watts'].values.astype(float)
+            dt = np.diff(t, prepend=t[0])
+            if len(dt) > 1:
+                dt[0] = dt[1] if dt[1] > 0 else np.median(dt[1:]) if len(dt)>2 else 1.0
+            else:
+                dt = np.ones_like(w)
+            excess = np.maximum(w - cp_val, 0.0)
+            energy_j = np.sum(excess * dt)  # w·s = J
+            work_above_cp_kj = energy_j / 1000.0
+        except Exception:
+            df_above_cp = df_pl.filter(pl.col('watts') > cp_val) if hasattr(df_pl, "filter") else df_pl[df_pl['watts'] > cp_val]
+            work_above_cp_kj = (df_above_cp['watts'].sum() / 1000) if len(df_above_cp)>0 else 0.0
     return {
         'avg_watts': avg_watts, 'avg_hr': avg_hr, 'avg_cadence': avg_cadence,
-        'max_watts': df_pl['watts'].max() if 'watts' in cols else 0,
-        'max_hr': df_pl['heartrate'].max() if 'heartrate' in cols else 0,
         'avg_vent': avg_vent, 'avg_rr': avg_rr, 'power_hr': power_hr,
-        'ef_factor': ef_factor, 'work_above_cp_kj': work_above_cp_kj
+        'np_est': np_est, 'ef_factor': ef_factor, 'work_above_cp_kj': work_above_cp_kj
     }
+
+def calculate_dynamic_dfa(df_pl, window_sec=120, step_sec=10):
+    """
+    Oblicza DFA Alpha-1 w oknie przesuwnym.
+    Wymaga kolumny z interwałami R-R (w milisekundach lub sekundach).
+    """
+
+    df = df_pl.to_pandas() if hasattr(df_pl, "to_pandas") else df_pl.copy()
+    
+    rr_col = next((c for c in ['rr', 'rr_interval', 'hrv', 'ibi', 'r-r', 'rr_ms'] if c in df.columns), None)
+    
+    if rr_col is None:
+        return None # Brak danych RR
+
+    rr_data = df[['time', rr_col]].dropna()
+    rr_data = rr_data[rr_data[rr_col] > 0]
+    
+    if len(rr_data) < 300: # Za mało danych
+        return None
+
+    if rr_data[rr_col].mean() < 2.0: 
+        rr_data[rr_col] = rr_data[rr_col] * 1000
+
+    rr_values = rr_data[rr_col].values
+    time_values = rr_data['time'].values
+
+    results = []
+    
+    max_time = time_values[-1]
+    curr_time = time_values[0] + window_sec
+
+    while curr_time < max_time:
+        mask = (time_values >= (curr_time - window_sec)) & (time_values <= curr_time)
+        window_rr = rr_values[mask]
+        
+        if len(window_rr) > 100:
+            try:
+                clean_rr = nk.signal_sanitize(window_rr)
+                dfa_metrics = nk.complexity_dfa(clean_rr, scale='default', show=False)
+                alpha1 = dfa_metrics['DFA_Alpha1']
+                
+                if not np.isnan(alpha1):
+                    results.append({'time': curr_time, 'alpha1': alpha1})
+            except Exception:
+                pass 
+        
+        curr_time += step_sec
+
+    if not results:
+        return None
+
+    return pd.DataFrame(results)
 
 def calculate_advanced_kpi(df_pl):
     if 'watts_smooth' not in df_pl.columns or 'heartrate_smooth' not in df_pl.columns:
@@ -677,6 +872,104 @@ if uploaded_file is not None:
 
         # --- TAB HRV ---
         with tab_hrv:
+            st.header("Analiza Zmienności Rytmu Serca (HRV & DFA)")
+            
+            with st.spinner("Obliczanie fraktalnej złożoności serca (DFA Alpha-1)..."):
+                df_dfa = calculate_dynamic_dfa(df_clean_pl)
+
+            if df_dfa is not None and not df_dfa.empty:
+                
+                df_dfa = df_dfa.sort_values('time')
+                orig_times = df_clean_pl['time'].to_numpy()
+                orig_watts = df_clean_pl['watts_smooth'].to_numpy() if 'watts_smooth' in df_clean_pl else np.zeros(len(orig_times))
+                orig_hr = df_clean_pl['heartrate_smooth'].to_numpy() if 'heartrate_smooth' in df_clean_pl else np.zeros(len(orig_times))
+                df_dfa['watts'] = np.interp(df_dfa['time'], orig_times, orig_watts)
+                df_dfa['hr'] = np.interp(df_dfa['time'], orig_times, orig_hr)
+                df_dfa['time_min'] = df_dfa['time'] / 60.0
+
+                st.subheader("Detekcja Progu Aerobowego (VT1)")
+                
+                fig_dfa = go.Figure()
+                fig_dfa.add_trace(go.Scatter(
+                    x=df_dfa['time_min'], 
+                    y=df_dfa['alpha1'],
+                    name='DFA Alpha-1',
+                    mode='lines',
+                    line=dict(color='#00cc96', width=2),
+                    hovertemplate="Alpha-1: %{y:.2f}<extra></extra>"
+                ))
+
+                fig_dfa.add_trace(go.Scatter(
+                    x=df_dfa['time_min'], 
+                    y=df_dfa['watts'],
+                    name='Moc',
+                    yaxis='y2',
+                    fill='tozeroy',
+                    line=dict(width=0.5, color='rgba(255,255,255,0.1)'),
+                    hovertemplate="Moc: %{y:.0f} W<extra></extra>"
+                ))
+
+                fig_dfa.add_hline(y=0.75, line_dash="solid", line_color="#ef553b", line_width=2, 
+                                annotation_text="VT1 (0.75)", annotation_position="top left")
+                
+                fig_dfa.add_hline(y=0.50, line_dash="dot", line_color="#ab63fa", line_width=1, 
+                                annotation_text="~VT2 (0.50)", annotation_position="bottom left")
+
+                fig_dfa.update_layout(
+                    template="plotly_dark",
+                    title="DFA Alpha-1 vs Czas",
+                    hovermode="x unified",
+                    xaxis=dict(title="Czas [min]"),
+                    yaxis=dict(title="DFA Alpha-1", range=[0.2, 1.6]), # Typowy zakres
+                    yaxis2=dict(title="Moc [W]", overlaying='y', side='right', showgrid=False),
+                    height=500,
+                    margin=dict(l=10, r=10, t=40, b=10),
+                    legend=dict(orientation="h", y=1.05, x=0)
+                )
+
+                st.plotly_chart(fig_dfa, use_container_width=True)
+
+                mask_threshold = (df_dfa['time_min'] > 5) & (df_dfa['alpha1'] < 0.75)
+                
+                if mask_threshold.any():
+                    # Bierzemy pierwszy moment
+                    row = df_dfa[mask_threshold].iloc[0]
+                    vt1_est_power = row['watts']
+                    vt1_est_hr = row['hr']
+                    vt1_time = row['time_min']
+                    
+                    c1, c2, c3 = st.columns(3)
+                    c1.metric("Estymowane VT1 (Moc)", f"{vt1_est_power:.0f} W", help="Moc w momencie przecięcia linii 0.75")
+                    c2.metric("Estymowane VT1 (HR)", f"{vt1_est_hr:.0f} bpm", help="Tętno w momencie przecięcia linii 0.75")
+                    c3.metric("Czas przecięcia", f"{vt1_time:.0f} min")
+                    
+                    if vt1_est_power < 100:
+                        st.warning("⚠️ Wykryto bardzo niskie VT1. Sprawdź jakość danych HRV (artefakty mogą zaniżać wynik).")
+                else:
+                    st.info("Nie przekroczono progu 0.75 w trakcie tego treningu (cały czas praca tlenowa lub krótkie dane).")
+
+                # --- TEORIA ---
+                with st.expander("🧠 O co chodzi z DFA Alpha-1?", expanded=True):
+                    st.markdown(r"""
+                    **Detrended Fluctuation Analysis ($\alpha_1$)** mierzy tzw. korelacje fraktalne w odstępach między uderzeniami serca.
+                    
+                    * **$\alpha_1 \approx 1.0$ (Szum Różowy):** Stan zdrowy, wypoczęty. Serce bije w sposób złożony, elastyczny. Organizuje się samo.
+                    * **$\alpha_1 \approx 0.5$ (Szum Biały/Losowy):** Silny stres metaboliczny. Układ nerwowy "bombarduje" węzeł zatokowy, rytm staje się nieskorelowany.
+                    
+                    **Dlaczego 0.75?**
+                    Badania (m.in. Rogers et al.) wykazały, że przejście przez wartość **0.75** idealnie pokrywa się z **Pierwszym Progiem Wentylacyjnym (VT1)**. Jest to punkt, w którym zaczynasz tracić "luz tlenowy", a organizm zaczyna rekrutować więcej włókien szybkokurczliwych.
+                    """)
+
+            else:
+                st.warning("⚠️ **Brak danych R-R (Inter-Beat Intervals).**")
+                st.markdown("""
+                Aby analiza DFA zadziałała, plik musi zawierać surowe dane o każdym uderzeniu serca, a nie tylko uśrednione tętno.
+                * Sprawdź, czy Twój pas HR obsługuje HRV (np. Polar H10, Garmin HRM-Pro).
+                * Upewnij się, że włączyłeś zapis zmienności tętna w zegarku/komputerze (często opcja "Log HRV").
+                """)
+            
+            st.divider()
+            
             c1, c2 = st.columns(2)
             
             # LEWA KOLUMNA: SmO2 + TREND
@@ -768,6 +1061,7 @@ if uploaded_file is not None:
                 """)
 
             st.divider()
+
             st.subheader("Wentylacja (VE) i Oddechy (RR)")
             
             fig_v = go.Figure()
@@ -1393,10 +1687,8 @@ if uploaded_file is not None:
                 st.subheader("🔥 Tempo Spalania (Burn Rate)")
                 fig_burn = go.Figure()
                 
-                # Wygładzamy linię spalania
                 burn_rate_smooth = df_nutri['Burn Rate [g/h]'].rolling(window=60, center=True, min_periods=1).mean()
                 
-                # Linia Spalania
                 fig_burn.add_trace(go.Scatter(
                     x=df_nutri['Czas [min]'], 
                     y=burn_rate_smooth, 
@@ -1414,7 +1706,6 @@ if uploaded_file is not None:
                     title="Zapotrzebowanie na Węglowodany",
                     hovermode="x unified",
                     yaxis=dict(title="Burn Rate [g/h]"),
-                    # ZMIANA TUTAJ: tickformat=".0f" wymusza liczby całkowite
                     xaxis=dict(title="Czas [min]", tickformat=".0f"),
                     margin=dict(l=10, r=10, t=40, b=10),
                     height=400,
@@ -1966,7 +2257,6 @@ if uploaded_file is not None:
         if has_watts and (has_hr or has_ve or has_smo2):
             
             # 1. Wybór okna czasowego (Peak Power)
-            # DODAŁEM 60 MINUT DO LISTY
             window_options = {
                 "1 min (Anaerobic)": 60, 
                 "5 min (VO2max)": 300, 
@@ -1978,9 +2268,14 @@ if uploaded_file is not None:
 
             # Znajdujemy indeks startu dla najlepszej średniej mocy w tym oknie
             # Rolling musi mieć min_periods=window_sec, żeby nie liczyć "połówek" na początku
-            df_plot['rolling_watts'] = df_plot['watts'].rolling(window=window_sec).mean()
+            df_plot['rolling_watts'] = df_plot['watts'].rolling(window=window_sec, min_periods=window_sec).mean()
+
+            if df_plot['rolling_watts'].isna().all():
+                st.warning(f"Trening jest krótszy niż {window_sec/60:.0f} min. Wybierz krótsze okno.")
+                st.stop()
+
             peak_idx = df_plot['rolling_watts'].idxmax()
-            
+
             # Sprawdzamy, czy znaleziono peak (czy trening był wystarczająco długi)
             if not pd.isna(peak_idx):
                 # Wycinamy ten fragment danych
@@ -2061,7 +2356,6 @@ if uploaded_file is not None:
                 * Jeśli **Serce > Mięśnie**: Ograniczenie centralne (układ krążenia nie nadąża z dostawą).
                 * Jeśli **Mięśnie > Serce**: Ograniczenie peryferyjne (mięśnie zużywają wszystko, co dostają, albo jest okluzja mechaniczna).
                 """)
-                
             else:
                 st.warning(f"Twój trening jest krótszy niż {window_sec/60:.0f} min, więc nie możemy wyznaczyć tego okna.")
         else:
@@ -2176,3 +2470,241 @@ if uploaded_file is not None:
                 st.warning("Trening jest zbyt krótki lub brakuje mocnych odcinków, by zbudować wiarygodny model CP (wymagane wysiłki > 3 min i > 10 min).")
         else:
             st.warning("Za mało danych (wymagane min. 20 minut jazdy z pomiarem mocy).")
+
+        # --- EXPORT DO PDF (Wersja ULTIMATE v3 - Dual Zones Logic) ---
+from fpdf import FPDF
+import datetime
+
+def clean_text(text):
+    replacements = {
+        'ą': 'a', 'ć': 'c', 'ę': 'e', 'ł': 'l', 'ń': 'n', 'ó': 'o', 'ś': 's', 'ź': 'z', 'ż': 'z',
+        'Ą': 'A', 'Ć': 'C', 'Ę': 'E', 'Ł': 'L', 'Ń': 'N', 'Ó': 'O', 'Ś': 'S', 'Ź': 'Z', 'Ż': 'Z',
+        '²': '2', '³': '3', '°': 'st.', '≈': '~', 'Δ': 'delta'
+    }
+    for k, v in replacements.items():
+        text = text.replace(k, v)
+    return text
+
+def fmt_time(seconds):
+    m, s = divmod(int(seconds), 60)
+    h, m = divmod(m, 60)
+    if h > 0: return f"{h}h {m:02d}m {s:02d}s"
+    return f"{m:02d}m {s:02d}s"
+
+class PDFReport(FPDF):
+    def header(self):
+        self.set_font('Arial', 'B', 16)
+        self.cell(0, 10, 'Pro Athlete Dashboard - Raport Fizjologiczny', 0, 1, 'C')
+        self.set_font('Arial', 'I', 8)
+        self.cell(0, 5, f'Data: {datetime.datetime.now().strftime("%Y-%m-%d %H:%M")}', 0, 1, 'C')
+        self.line(10, 25, 200, 25)
+        self.ln(10)
+
+    def footer(self):
+        self.set_y(-15)
+        self.set_font('Arial', 'I', 8)
+        self.cell(0, 10, f'Strona {self.page_no()}', 0, 0, 'C')
+
+    def chapter_title(self, label):
+        self.set_font('Arial', 'B', 11)
+        self.set_fill_color(230, 230, 230)
+        self.cell(0, 8, clean_text(label), 0, 1, 'L', 1)
+        self.ln(2)
+
+    def chapter_body(self, text, size=9):
+        self.set_font('Arial', '', size)
+        self.multi_cell(0, 5, clean_text(text))
+        self.ln(3)
+
+# UI Exportu
+st.sidebar.markdown("---")
+st.sidebar.header("🖨️ Export Danych")
+
+if 'df_plot' in locals() and uploaded_file is not None:
+    
+    def generate_pdf():
+        pdf = PDFReport()
+        pdf.add_page()
+        
+        # --- DANE ---
+        duration_sec = len(df_plot)
+        avg_w = df_plot['watts'].mean() if 'watts' in df_plot else 0
+        max_w = df_plot['watts'].max() if 'watts' in df_plot else 0
+        
+        if 'watts' in df_plot:
+            rolling_30s = df_plot['watts'].rolling(window=30, min_periods=1).mean()
+            calc_np = np.power(np.mean(np.power(rolling_30s, 4)), 0.25)
+            if pd.isna(calc_np): calc_np = avg_w
+            calc_if = calc_np / cp_input if cp_input > 0 else 0
+            calc_tss = (duration_sec * calc_np * calc_if) / (cp_input * 3600) * 100
+        else:
+            calc_np, calc_if, calc_tss = 0, 0, 0
+
+        # --- 1. PROFIL ---
+        pdf.chapter_title("1. Parametry Profilu")
+        p_txt = f"""Zawodnik: Waga {rider_weight} kg | Wzrost {rider_height} cm
+Progi Fizjologiczne (Metabolizm): VT1 {vt1_watts} W | VT2 {vt2_watts} W
+Ustawienia Mechaniczne (Moc): CP {cp_input} W | W' {w_prime_input} J"""
+        pdf.chapter_body(p_txt)
+
+        # --- 2. LOAD ---
+        work_kj = (df_plot['watts'].sum() / 1000) if 'watts' in df_plot else 0
+        work_above_cp = metrics.get('work_above_cp_kj', 0)
+        
+        pdf.chapter_title("2. Obciazenie (Load)")
+        load_txt = f"""Czas: {fmt_time(duration_sec)}
+NP: {calc_np:.0f} W | Avg: {avg_w:.0f} W | IF: {calc_if:.2f} | TSS: {calc_tss:.0f}
+Praca Calkowita: {work_kj:.0f} kJ
+Praca Beztlenowa: {work_above_cp:.0f} kJ"""
+        pdf.chapter_body(load_txt)
+
+        # --- 3. FIZJOLOGIA (HSI v3) ---
+        pdf.chapter_title("3. Fizjologia: Hemodynamika i Termoregulacja")
+        
+        # Temp metric (Active 95%)
+        temp_metric = 0.0
+        if 'core_temperature' in df_plot:
+            working_df = df_plot[df_plot['watts'] > 100]
+            if working_df.empty: working_df = df_plot
+            temp_metric = working_df['core_temperature'].quantile(0.95)
+        
+        # HSI Logic v3 (Progresywna)
+        hsi_val = 0.0
+        if temp_metric < 38.0: hsi_val = 0.0
+        elif 38.0 <= temp_metric <= 38.5:
+            ratio = (temp_metric - 38.0) / 0.5
+            hsi_val = 1.0 + (ratio * 3.0) # 1-4
+        elif 38.5 < temp_metric <= 39.5:
+            ratio = (temp_metric - 38.5) / 1.0
+            hsi_val = 5.0 + (ratio * 3.0) # 5-8
+        elif 39.5 < temp_metric <= 41.0:
+            ratio = (temp_metric - 39.5) / 1.5
+            hsi_val = 8.0 + (ratio * 2.0) # 8-10
+        else: hsi_val = 10.0
+            
+        if hsi_val >= 8.0: hsi_msg = "KRYTYCZNE (Ryzyko udaru)"
+        elif hsi_val >= 5.0: hsi_msg = "Wysokie (Spadek wydajnosci)"
+        elif hsi_val >= 1.0: hsi_msg = "Umiarkowane (Strefa Robocza)"
+        else: hsi_msg = "Niskie (Komfort)"
+
+        therm_txt = "Brak Core."
+        if 'core_temperature' in df_plot:
+            avg_temp = df_plot['core_temperature'].mean()
+            max_temp = df_plot['core_temperature'].quantile(0.99)
+            time_optimal = len(df_plot[(df_plot['core_temperature'] >= 37.5) & (df_plot['core_temperature'] <= 38.4)])
+            time_hot = len(df_plot[df_plot['core_temperature'] > 38.5])
+            time_crit = len(df_plot[df_plot['core_temperature'] > 39.0])
+            
+            therm_txt = f"""Avg Temp: {avg_temp:.2f} C | Max Temp: {max_temp:.2f} C
+Czas w strefie OPTIMAL (37.5-38.4 C): {fmt_time(time_optimal)}
+Czas w strefie HOT (>38.5 C): {fmt_time(time_hot)}
+Czas w strefie CRITICAL (>39.0 C): {fmt_time(time_crit)}
+
+Heat Strain Index (Custom Logic): {hsi_val:.1f} / 10
+Interpretacja: {hsi_msg}"""
+
+        smo2_txt = "Brak SmO2."
+        if 'smo2' in df_plot:
+            avg_smo2 = df_plot['smo2'].mean()
+            min_smo2 = df_plot['smo2'].min()
+            p5_smo2 = df_plot['smo2'].quantile(0.05)
+            smo2_txt = f"Avg SmO2: {avg_smo2:.1f}% | Min SmO2: {min_smo2:.1f}% | 5-ty Percentyl: {p5_smo2:.1f}%"
+            if 'thb' in df_plot:
+                avg_thb = df_plot['thb'].mean()
+                smo2_txt += f"\nTHb (Hemo): Srednie {avg_thb:.2f} a.u."
+
+        phys_body = f"""TETNO (HR):
+Avg: {metrics.get('avg_hr',0):.0f} bpm | Max: {df_plot['heartrate'].max() if 'heartrate' in df_plot else 0:.0f} bpm
+
+OKSYDACJA MIESNIOWA (SmO2):
+{smo2_txt}
+
+TERMOREGULACJA (Core Temp):
+{therm_txt}
+
+REZERWY BEZTLENOWE (W'):
+Min W' Balance: {df_plot['w_prime_balance'].min():.0f} J"""
+        pdf.chapter_body(phys_body)
+
+        # --- 4. PALIWO (Tylda Fix) ---
+        pdf.chapter_title("4. Metabolizm (Paliwo)")
+        if 'watts' in df_plot:
+            kcals_series = (df_plot['watts'] / 0.22) / 4184 
+            total_kcal = kcals_series.sum()
+            cho_fraction = pd.Series(0.40, index=df_plot.index)
+            cho_fraction[df_plot['watts'] >= vt1_watts] = 0.75
+            cho_fraction[df_plot['watts'] >= vt2_watts] = 1.00
+            cho_g = (kcals_series * cho_fraction).sum() / 4.0
+            fat_g = (kcals_series * (1.0 - cho_fraction)).sum() / 9.0
+            
+            # Zamiana tyldy na 'ok.'
+            nutri_txt = f"""Wydatek: ok. {total_kcal:.0f} kcal
+Spalone Weglowodany: {cho_g:.0f} g ({cho_g/(duration_sec/3600):.0f} g/h)
+Spalone Tluszcze: {fat_g:.0f} g ({fat_g/(duration_sec/3600):.0f} g/h)"""
+        else:
+            nutri_txt = "Brak mocy."
+        pdf.chapter_body(nutri_txt)
+
+        # --- 5. STREFY FIZJOLOGICZNE (VT) ---
+        pdf.chapter_title("5. Strefy Fizjologiczne (Metaboliczne)")
+        if 'watts' in df_plot:
+            t_z1 = len(df_plot[df_plot['watts'] < vt1_watts])
+            t_z2 = len(df_plot[(df_plot['watts'] >= vt1_watts) & (df_plot['watts'] < vt2_watts)])
+            t_z3 = len(df_plot[df_plot['watts'] >= vt2_watts])
+            total_t = len(df_plot)
+            p1 = t_z1/total_t*100 if total_t>0 else 0
+            p2 = t_z2/total_t*100 if total_t>0 else 0
+            p3 = t_z3/total_t*100 if total_t>0 else 0
+
+            zones_phys = f"""Strefa Tlenowa (<VT1 {vt1_watts}W):
+Czas: {fmt_time(t_z1)} ({p1:.1f}%) -> Regeneracja i Baza
+
+Strefa Mieszana (VT1-VT2):
+Czas: {fmt_time(t_z2)} ({p2:.1f}%) -> Tempo i Sweet Spot
+
+Strefa Beztlenowa (>VT2 {vt2_watts}W):
+Czas: {fmt_time(t_z3)} ({p3:.1f}%) -> VO2Max i Anaerobic"""
+            pdf.chapter_body(zones_phys)
+
+        # --- 6. STREFY MOCY (Coggan / FTP) - PRZYWRÓCONE ---
+        pdf.chapter_title("6. Strefy Mocy (Coggan / %CP)")
+        if 'watts' in df_plot:
+            bins = [0, 0.55*cp_input, 0.75*cp_input, 0.90*cp_input, 1.05*cp_input, 1.20*cp_input, 10000]
+            labels = ['Z1 (Active Recovery)', 'Z2 (Endurance)', 'Z3 (Tempo)', 'Z4 (Threshold)', 'Z5 (VO2Max)', 'Z6 (Anaerobic)']
+            
+            counts = []
+            for i in range(len(labels)):
+                low = bins[i]
+                high = bins[i+1]
+                c = len(df_plot[(df_plot['watts'] >= low) & (df_plot['watts'] < high)])
+                counts.append(c)
+            
+            total_t = sum(counts)
+            z_txt = ""
+            for lab, c in zip(labels, counts):
+                pct = c / total_t * 100 if total_t > 0 else 0
+                z_txt += f"{lab}: {fmt_time(c)} ({pct:.1f}%)\n"
+            
+            pdf.chapter_body(z_txt)
+        
+        # --- 7. MMP ---
+        pdf.chapter_title("7. Profil Mocy (MMP)")
+        mmp_txt = ""
+        for sec, lab in [(5, '5s'), (60, '1m'), (300, '5m'), (1200, '20m'), (3600, '60m')]:
+            if len(df_plot) > sec:
+                val = df_plot['watts'].rolling(sec).mean().max()
+                mmp_txt += f"{lab}: {val:.0f} W ({val/rider_weight:.2f} W/kg) | "
+        pdf.chapter_body(mmp_txt)
+
+        return pdf.output(dest='S').encode('latin-1', 'replace')
+
+    pdf_bytes = generate_pdf()
+    
+    st.sidebar.download_button(
+        label="📥 Pobierz Raport PDF (Dual Zones)",
+        data=pdf_bytes,
+        file_name=f"raport_dual_{uploaded_file.name.split('.')[0]}.pdf",
+        mime="application/pdf"
+    )
+else:
+    st.sidebar.info("Wgraj plik.")

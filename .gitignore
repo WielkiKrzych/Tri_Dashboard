@@ -1,0 +1,19 @@
+# --- Systemowe śmieci Maca ---
+.DS_Store
+
+# --- Python (pliki skompilowane/tymczasowe) ---
+__pycache__/
+*.pyc
+
+# --- Wirtualne środowiska (bardzo ważne, żeby tego nie wysyłać!) ---
+venv/
+.venv/
+env/
+
+# --- Zmienne środowiskowe i klucze ---
+# Tu trzymasz hasła i klucze API - NIGDY tego nie wysyłaj na GitHuba
+.env
+
+# --- VSCode ---
+# Ustawienia lokalne edytora (opcjonalnie, ale warto)
+.vscode/

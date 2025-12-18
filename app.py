@@ -2690,33 +2690,40 @@ if uploaded_file is not None:
         target_df['time_str'] = pd.to_datetime(target_df['time'], unit='s').dt.strftime('%H:%M:%S')
 
         # 2. Interfejs (START -> KONIEC)
-        col_v1, col_v2 = st.columns(2)
-        with col_v1:
-            start_time_v = st.text_input("Start Analizy (h:mm:ss)", value="0:20:00", key="vent_start")
-        with col_v2:
-            end_time_v = st.text_input("Koniec Analizy (h:mm:ss)", value="0:25:00", key="vent_end")
+        # Inicjalizacja session_state dla zaznaczenia
+        if 'vent_start_sec' not in st.session_state:
+                st.session_state.vent_start_sec = 600  # 10 minut domyślnie
+        if 'vent_end_sec' not in st.session_state:
+                st.session_state.vent_end_sec = 1200  # 20 minut domyślnie
 
-        # Parser czasu (lokalny dla pewności)
-        def parse_time_vent(t_str):
-            try:
-                parts = list(map(int, t_str.split(':')))
-                if len(parts) == 3: return parts[0]*3600 + parts[1]*60 + parts[2]
-                if len(parts) == 2: return parts[0]*60 + parts[1]
-                if len(parts) == 1: return parts[0]
-            except: return None
-            return None
+        st.info("💡 **NOWA FUNKCJA:** Zaznacz obszar na wykresie poniżej (kliknij i przeciągnij), aby automatycznie obliczyć metryki!")
 
-        s_sec = parse_time_vent(start_time_v)
-        e_sec = parse_time_vent(end_time_v)
+            # Opcjonalne: ręczne wprowadzenie czasu (dla precyzji)
+        with st.expander("🔧 Ręczne wprowadzenie zakresu czasowego (opcjonalne)", expanded=False):
+                col_inp_1, col_inp_2 = st.columns(2)
+                with col_inp_1:
+                    manual_start = st.text_input("Start Interwału (hh:mm:ss)", value="01:00:00", key="vent_manual_start")
+                with col_inp_2:
+                    manual_end = st.text_input("Koniec Interwału (hh:mm:ss)", value="01:20:00", key="vent_manual_end")
 
-        if s_sec is not None and e_sec is not None and e_sec > s_sec:
-            duration_v = e_sec - s_sec
+                if st.button("Zastosuj ręczny zakres", key="btn_vent_manual"):
+                    manual_start_sec = parse_time_to_seconds(manual_start)
+                    manual_end_sec = parse_time_to_seconds(manual_end)
+                    if manual_start_sec is not None and manual_end_sec is not None:
+                        st.session_state.vent_start_sec = manual_start_sec
+                        st.session_state.vent_end_sec = manual_end_sec
+                        st.success(f"✅ Zaktualizowano zakres: {manual_start} - {manual_end}")
+
+            # Użyj wartości z session_state
+        startsec = st.session_state.vent_start_sec
+        endsec = st.session_state.vent_end_sec
+
             
             # 3. Wycinanie
-            mask_v = (target_df['time'] >= s_sec) & (target_df['time'] <= e_sec)
-            interval_v = target_df.loc[mask_v]
+        mask_v = (target_df['time'] >= startsec) & (target_df['time'] <= endsec)
+        interval_v = target_df.loc[mask_v]
 
-            if not interval_v.empty:
+        if not interval_v.empty:
                 # 4. Obliczenia
                 avg_w = interval_v['watts'].mean()
                 avg_ve = interval_v['tymeventilation'].mean()
@@ -2732,6 +2739,23 @@ if uploaded_file is not None:
                     trend_desc_ve = f"{slope_ve:.4f} L/s"
                 else:
                     slope_ve = 0; intercept_ve = 0; trend_desc_ve = "N/A"
+
+                # Formatowanie czasu dla wyświetlania
+                def fmt_time_v(seconds):
+                    try:
+                        seconds = int(seconds)
+                        h = seconds // 3600
+                        m = (seconds % 3600) // 60
+                        s = seconds % 60
+                        if h > 0:
+                            return f"{h:02d}:{m:02d}:{s:02d}"
+                        else:
+                            return f"{m:02d}:{s:02d}"
+                    except:
+                        return "-"
+                start_time_v = fmt_time_v(startsec)
+                end_time_v = fmt_time_v(endsec)
+                duration_v = int(endsec - startsec) if (endsec is not None and startsec is not None) else 0
 
                 # Metryki
                 st.subheader(f"Metryki Oddechowe: {start_time_v} - {end_time_v} ({duration_v}s)")
@@ -2768,7 +2792,7 @@ if uploaded_file is not None:
                 ))
 
                 # Zaznaczenie
-                fig_vent.add_vrect(x0=s_sec, x1=e_sec, fillcolor="orange", opacity=0.1, layer="below", annotation_text="ANALIZA", annotation_position="top left")
+                fig_vent.add_vrect(x0=startsec, x1=endsec, fillcolor="orange", opacity=0.1, layer="below", annotation_text="ANALIZA", annotation_position="top left")
 
                 # Linia trendu VE
                 if len(interval_v) > 1:
@@ -2791,7 +2815,24 @@ if uploaded_file is not None:
                     margin=dict(l=20, r=20, t=40, b=20),
                     hovermode="x unified"
                 )
-                st.plotly_chart(fig_vent, use_container_width=True)
+                # Wykres z interaktywnym zaznaczaniem
+                selected = st.plotly_chart(fig_vent, use_container_width=True, key="vent_chart", on_select="rerun", selection_mode="box")
+
+                # Obsługa zaznaczenia
+                if selected and 'selection' in selected and 'box' in selected['selection']:
+                    box_data = selected['selection']['box']
+                    if box_data and len(box_data) > 0:
+                        # Pobierz zakres X (czas) z zaznaczenia
+                        x_range = box_data[0].get('x', [])
+                        if len(x_range) == 2:
+                            new_start = min(x_range)
+                            new_end = max(x_range)
+                            
+                            # Aktualizuj session_state
+                            if new_start != st.session_state.vent_start_sec or new_end != st.session_state.vent_end_sec:
+                                st.session_state.vent_start_sec = new_start
+                                st.session_state.vent_end_sec = new_end
+                                st.rerun()
 
                 # 6. TEORIA ODDECHOWA
                 with st.expander("🫁 TEORIA: Jak znaleźć VT1 i VT2 na podstawie Slope?", expanded=False):
@@ -2817,11 +2858,9 @@ if uploaded_file is not None:
                     ---
                     **Pro Tip:** Porównaj Slope VE ze Slope Mocy. Jeśli Moc rośnie o 5%, a VE o 15% -> właśnie przekroczyłeś próg.
                     """)
-            else:
-                st.warning("Brak danych w tym zakresie.")
         else:
-            st.warning("Wprowadź poprawny zakres czasu.")
-
+            st.warning("Brak danych w tym zakresie.")
+    
     # --- TAB LIMITERS (RADAR CHART) ---
     with tab_limiters:
         st.header("Analiza Limiterów Fizjologicznych (Radar)")

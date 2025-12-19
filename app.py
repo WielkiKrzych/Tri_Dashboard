@@ -813,6 +813,102 @@ if uploaded_file is not None:
         else:
             tss_header = 0; if_header = 0
 
+        # ===== STICKY HEADER - PANEL Z KLUCZOWYMI METRYKAMI =====
+        st.markdown("""
+        <style>
+        .sticky-metrics {
+            position: sticky;
+            top: 60px;
+            z-index: 999;
+            background: linear-gradient(135deg, #1a1f25 0%, #0e1117 100%);
+            padding: 15px;
+            border-radius: 10px;
+            border: 1px solid #30363d;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+            margin-bottom: 20px;
+            backdrop-filter: blur(10px);
+        }
+        .sticky-metrics h4 {
+            margin: 0 0 10px 0;
+            color: #00cc96;
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .metric-row {
+            display: flex;
+            justify-content: space-around;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .metric-box {
+            flex: 1;
+            min-width: 120px;
+            background: rgba(255, 255, 255, 0.03);
+            padding: 10px;
+            border-radius: 8px;
+            text-align: center;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .metric-box .label {
+            font-size: 11px;
+            color: #8b949e;
+            text-transform: uppercase;
+        }
+        .metric-box .value {
+            font-size: 20px;
+            font-weight: 700;
+            color: #f0f6fc;
+            margin-top: 5px;
+        }
+        .metric-box .unit {
+            font-size: 12px;
+            color: #8b949e;
+        }
+        </style>
+        """, unsafe_allow_html=True)
+
+        # Oblicz metryki dla sticky panelu
+        avg_power = metrics.get('avg_watts', 0)
+        avg_hr = metrics.get('avg_hr', 0)
+        avg_smo2 = df_plot['smo2'].mean() if 'smo2' in df_plot.columns else 0
+        avg_cadence = metrics.get('avg_cadence', 0)
+        max_power = df_plot['watts'].max() if 'watts' in df_plot.columns else 0
+        duration_min = len(df_plot) / 60 if len(df_plot) > 0 else 0
+
+        st.markdown(f"""
+        <div class="sticky-metrics">
+            <h4>⚡ Live Training Summary</h4>
+            <div class="metric-row">
+                <div class="metric-box">
+                    <div class="label">Avg Power</div>
+                    <div class="value">{avg_power:.0f} <span class="unit">W</span></div>
+                </div>
+                <div class="metric-box">
+                    <div class="label">Avg HR</div>
+                    <div class="value">{avg_hr:.0f} <span class="unit">bpm</span></div>
+                </div>
+                <div class="metric-box">
+                    <div class="label">Avg SmO2</div>
+                    <div class="value">{avg_smo2:.1f} <span class="unit">%</span></div>
+                </div>
+                <div class="metric-box">
+                    <div class="label">Cadence</div>
+                    <div class="value">{avg_cadence:.0f} <span class="unit">rpm</span></div>
+                </div>
+                <div class="metric-box">
+                    <div class="label">Max Power</div>
+                    <div class="value">{max_power:.0f} <span class="unit">W</span></div>
+                </div>
+                <div class="metric-box">
+                    <div class="label">Duration</div>
+                    <div class="value">{duration_min:.0f} <span class="unit">min</span></div>
+                </div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+        # ===== KONIEC STICKY HEADER =====
+
         m1, m2, m3, m4 = st.columns(4)
         m1.metric("NP (Norm. Power)", f"{np_header:.0f} W", help="Normalized Power (Coggan Formula)")
         m2.metric("TSS", f"{tss_header:.0f}", help=f"IF: {if_header:.2f}")
@@ -823,6 +919,100 @@ if uploaded_file is not None:
         tab_raport, tab_kpi, tab_power, tab_hrv, tab_biomech, tab_thermal, tab_trends, tab_nutrition, tab_smo2, tab_hemo, tab_vent, tab_limiters, tab_model, tab_ai = st.tabs(
             ["Raport", "KPI", "Power", "HRV", "Biomech", "Thermal", "Trends", "Nutrition", "SmO2 Analysis", "Hematology Analysis", "Ventilation Analysis", "Limiters Analysis", "Model Analysis", "AI Coach"]
         )
+        
+        # ===== QUICK COMPARE BUTTON =====
+        st.markdown("---")
+        col_compare, col_spacer = st.columns([1, 4])
+        with col_compare:
+            show_compare = st.button("🔍 Quick Compare - Wszystkie Metryki", use_container_width=True, type="primary")
+
+        if show_compare:
+            st.markdown("### 📊 Quick Compare - Porównanie Wszystkich Metryk")
+            
+            # Row 1: Power + HR
+            col_1a, col_1b = st.columns(2)
+            with col_1a:
+                fig_mini_power = go.Figure()
+                fig_mini_power.add_trace(go.Scatter(
+                    x=df_plot_resampled['time_min'],
+                    y=df_plot_resampled['watts_smooth'],
+                    name="Power",
+                    line=dict(color='#00cc96', width=1),
+                    fill='tozeroy'
+                ))
+                fig_mini_power.update_layout(
+                    template='plotly_dark',
+                    title='Power (W)',
+                    height=200,
+                    margin=dict(l=10, r=10, t=30, b=10),
+                    showlegend=False
+                )
+                st.plotly_chart(fig_mini_power, use_container_width=True)
+            
+            with col_1b:
+                if 'heart_rate_smooth' in df_plot_resampled.columns:
+                    fig_mini_hr = go.Figure()
+                    fig_mini_hr.add_trace(go.Scatter(
+                        x=df_plot_resampled['time_min'],
+                        y=df_plot_resampled['heart_rate_smooth'],
+                        name="HR",
+                        line=dict(color='#ef553b', width=1)
+                    ))
+                    fig_mini_hr.update_layout(
+                        template='plotly_dark',
+                        title='Heart Rate (bpm)',
+                        height=200,
+                        margin=dict(l=10, r=10, t=30, b=10),
+                        showlegend=False
+                    )
+                    st.plotly_chart(fig_mini_hr, use_container_width=True)
+            
+            # Row 2: SmO2 + VE
+            col_2a, col_2b = st.columns(2)
+            with col_2a:
+                if 'smo2_smooth' in df_plot_resampled.columns:
+                    fig_mini_smo2 = go.Figure()
+                    fig_mini_smo2.add_trace(go.Scatter(
+                        x=df_plot_resampled['time_min'],
+                        y=df_plot_resampled['smo2_smooth'],
+                        name="SmO2",
+                        line=dict(color='#ab63fa', width=1)
+                    ))
+                    fig_mini_smo2.update_layout(
+                        template='plotly_dark',
+                        title='SmO2 (%)',
+                        height=200,
+                        margin=dict(l=10, r=10, t=30, b=10),
+                        showlegend=False,
+                        yaxis=dict(range=[0, 100])
+                    )
+                    st.plotly_chart(fig_mini_smo2, use_container_width=True)
+            
+            with col_2b:
+                if 'tymeventilation_smooth' in df_plot_resampled.columns:
+                    fig_mini_ve = go.Figure()
+                    fig_mini_ve.add_trace(go.Scatter(
+                        x=df_plot_resampled['time_min'],
+                        y=df_plot_resampled['tymeventilation_smooth'],
+                        name="VE",
+                        line=dict(color='#ffa15a', width=1)
+                    ))
+                    fig_mini_ve.update_layout(
+                        template='plotly_dark',
+                        title='Ventilation (L/min)',
+                        height=200,
+                        margin=dict(l=10, r=10, t=30, b=10),
+                        showlegend=False
+                    )
+                    st.plotly_chart(fig_mini_ve, use_container_width=True)
+            
+            st.info("💡 Tip: Szukaj korelacji między metrykami. Np. spadek SmO2 + wzrost VE = próg beztlenowy!")
+            
+            if st.button("✖️ Zamknij Quick Compare"):
+                st.rerun()
+
+        st.markdown("---")
+        # ===== KONIEC QUICK COMPARE =====
 
        # --- TAB RAPORT ---
         with tab_raport:

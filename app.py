@@ -387,106 +387,359 @@ def generate_docx_report(metrics, df_plot, df_plot_resampled, uploaded_file, cp_
     return doc
 # ===== KONIEC FUNKCJI DOCX =====
 
-# ===== PNG BATCH EXPORT =====
+# ===== PNG BATCH EXPORT (FIXED VARIABLE SHADOWING) =====
 def export_all_charts_as_png(df_plot, df_plot_resampled, cp_input, vt1_watts, vt2watts,
                             metrics, rider_weight, uploaded_file):
-    """Export wszystkich wykresów jako PNG w ZIP"""
+    """
+    Export wykresów PNG z pełną legendą statystyczną (Ghost Traces).
+    Poprawiono błąd 'stats' variable shadowing.
+    """
     
     zip_buffer = BytesIO()
     
+    # Konfiguracja wizualna
+    layout_args = dict(
+        template='plotly_dark',
+        height=600,
+        width=1200,
+        font=dict(family="Inter", size=14),
+        margin=dict(l=50, r=50, t=80, b=50),
+        legend=dict(font=dict(size=12))
+    )
+
+    # Helper do dodawania statystyk do legendy
+    def add_stats_to_legend(fig, stats_list):
+        for stat in stats_list:
+            fig.add_trace(go.Scatter(
+                x=[None], y=[None], mode='markers',
+                marker=dict(color='rgba(0,0,0,0)'),
+                name=stat, hoverinfo='none'
+            ))
+
     with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zipf:
-        chart_counter = 1
         
-        # Wykres 1: Power
+        # --- 1. POWER ---
         if 'watts_smooth' in df_plot_resampled.columns:
             fig = go.Figure()
-            fig.add_trace(go.Scatter(
-                x=df_plot_resampled['time_min'],
-                y=df_plot_resampled['watts_smooth'],
-                name='Power',
-                fill='tozeroy',
-                line=dict(color='#00cc96', width=2)
-            ))
-            fig.update_layout(title='Power Profile', xaxis_title='Time (min)', yaxis_title='Power (W)',
-                            template='plotly_dark', height=600, width=1200)
-            img = fig.to_image(format='png', width=1200, height=600)
-            zipf.writestr(f'{chart_counter:02d}_Power_Profile.png', img)
-            chart_counter += 1
+            fig.add_trace(go.Scatter(x=df_plot_resampled['time_min'], y=df_plot_resampled['watts_smooth'],
+                                   name='Power', fill='tozeroy', line=dict(color='#00cc96', width=1.5)))
+            
+            # Statystyki
+            avg_p = df_plot_resampled['watts_smooth'].mean()
+            max_p = df_plot_resampled['watts_smooth'].max()
+            norm_p = np.power(np.mean(np.power(df_plot_resampled['watts_smooth'], 4)), 0.25)
+            
+            legend_stats = [
+                f"⚡ Avg: {avg_p:.0f} W",
+                f"🔥 Max: {max_p:.0f} W",
+                f"📈 NP (est): {norm_p:.0f} W",
+                f"⚖️ W/kg: {avg_p/rider_weight:.2f}"
+            ]
+            add_stats_to_legend(fig, legend_stats)
+            
+            fig.update_layout(title='1. Power Profile (W)', xaxis_title='Time (min)', yaxis_title='Power (W)', **layout_args)
+            zipf.writestr('01_Power.png', fig.to_image(format='png', width=1200, height=600))
         
-        # Wykres 2: HR
-        if 'heart_rate_smooth' in df_plot_resampled.columns:
+        # --- 2. HR ---
+        if 'heartrate_smooth' in df_plot_resampled.columns:
             fig = go.Figure()
-            fig.add_trace(go.Scatter(
-                x=df_plot_resampled['time_min'],
-                y=df_plot_resampled['heart_rate_smooth'],
-                name='HR',
-                fill='tozeroy',
-                line=dict(color='#ef553b', width=2)
-            ))
-            fig.update_layout(title='Heart Rate', xaxis_title='Time (min)', yaxis_title='BPM',
-                            template='plotly_dark', height=600, width=1200)
-            img = fig.to_image(format='png', width=1200, height=600)
-            zipf.writestr(f'{chart_counter:02d}_Heart_Rate.png', img)
-            chart_counter += 1
-        
-        # Wykres 3: SmO2
+            fig.add_trace(go.Scatter(x=df_plot_resampled['time_min'], y=df_plot_resampled['heartrate_smooth'],
+                                   name='HR', fill='tozeroy', line=dict(color='#ef553b', width=1.5)))
+            
+            # Statystyki
+            avg_hr = df_plot_resampled['heartrate_smooth'].mean()
+            max_hr = df_plot_resampled['heartrate_smooth'].max()
+            min_hr = df_plot_resampled[df_plot_resampled['heartrate_smooth'] > 40]['heartrate_smooth'].min()
+            
+            legend_stats = [
+                f"❤️ Avg: {avg_hr:.0f} bpm",
+                f"🔥 Max: {max_hr:.0f} bpm",
+                f"💤 Min: {min_hr:.0f} bpm"
+            ]
+            add_stats_to_legend(fig, legend_stats)
+
+            fig.update_layout(title='2. Heart Rate (bpm)', xaxis_title='Time (min)', yaxis_title='HR (bpm)', **layout_args)
+            zipf.writestr('02_HeartRate.png', fig.to_image(format='png', width=1200, height=600))
+
+        # --- 3. SmO2 ---
         if 'smo2_smooth' in df_plot_resampled.columns:
             fig = go.Figure()
-            fig.add_trace(go.Scatter(
-                x=df_plot_resampled['time_min'],
-                y=df_plot_resampled['smo2_smooth'],
-                name='SmO2',
-                fill='tozeroy',
-                line=dict(color='#ab63fa', width=2)
-            ))
-            fig.update_layout(title='SmO2', xaxis_title='Time (min)', yaxis_title='%',
-                            yaxis=dict(range=[0, 100]), template='plotly_dark', height=600, width=1200)
-            img = fig.to_image(format='png', width=1200, height=600)
-            zipf.writestr(f'{chart_counter:02d}_SmO2.png', img)
-            chart_counter += 1
-        
-        # Wykres 4: VE
-        if 'tyme_ventilation_smooth' in df_plot_resampled.columns:
+            fig.add_trace(go.Scatter(x=df_plot_resampled['time_min'], y=df_plot_resampled['smo2_smooth'],
+                                   name='SmO2', line=dict(color='#ab63fa', width=2)))
+            
+            # Statystyki
+            avg_smo2 = df_plot_resampled['smo2_smooth'].mean()
+            min_smo2 = df_plot_resampled['smo2_smooth'].min()
+            max_smo2 = df_plot_resampled['smo2_smooth'].max()
+            
+            legend_stats = [
+                f"📊 Avg: {avg_smo2:.1f}%",
+                f"🔻 Min: {min_smo2:.1f}%",
+                f"🔺 Max: {max_smo2:.1f}%"
+            ]
+            add_stats_to_legend(fig, legend_stats)
+
+            fig.update_layout(title='3. Muscle Oxygenation (SmO2)', xaxis_title='Time (min)', yaxis_title='SmO2 (%)', 
+                            yaxis=dict(range=[0, 100]), **layout_args)
+            zipf.writestr('03_SmO2.png', fig.to_image(format='png', width=1200, height=600))
+
+        # --- 4. VE + RR (Dual Axis) ---
+        if 'tymeventilation_smooth' in df_plot_resampled.columns:
             fig = go.Figure()
-            fig.add_trace(go.Scatter(
-                x=df_plot_resampled['time_min'],
-                y=df_plot_resampled['tyme_ventilation_smooth'],
-                name='VE',
-                fill='tozeroy',
-                line=dict(color='#ffa15a', width=2)
-            ))
-            fig.update_layout(title='Ventilation', xaxis_title='Time (min)', yaxis_title='L/min',
-                            template='plotly_dark', height=600, width=1200)
-            img = fig.to_image(format='png', width=1200, height=600)
-            zipf.writestr(f'{chart_counter:02d}_Ventilation.png', img)
-            chart_counter += 1
-        
-        # Wykres 5: W Prime
-        if 'w_prime_balance' in df_plot_resampled.columns:
+            # VE
+            fig.add_trace(go.Scatter(x=df_plot_resampled['time_min'], y=df_plot_resampled['tymeventilation_smooth'],
+                                   name='VE', line=dict(color='#ffa15a', width=2)))
+            
+            legend_stats = []
+            avg_ve = df_plot_resampled['tymeventilation_smooth'].mean()
+            max_ve = df_plot_resampled['tymeventilation_smooth'].max()
+            legend_stats.append(f"🫁 Avg VE: {avg_ve:.1f} L/min")
+            legend_stats.append(f"🔥 Max VE: {max_ve:.1f} L/min")
+
+            # RR (Prawa oś)
+            if 'tymebreathrate_smooth' in df_plot_resampled.columns:
+                fig.add_trace(go.Scatter(x=df_plot_resampled['time_min'], y=df_plot_resampled['tymebreathrate_smooth'],
+                                       name='RR', line=dict(color='#19d3f3', width=2, dash='dot'), yaxis='y2'))
+                avg_rr = df_plot_resampled['tymebreathrate_smooth'].mean()
+                legend_stats.append(f"💨 Avg RR: {avg_rr:.1f} /min")
+            
+            add_stats_to_legend(fig, legend_stats)
+
+            fig.update_layout(title='4. Ventilation (VE) & Respiratory Rate (RR)', 
+                            xaxis_title='Time (min)', yaxis=dict(title='VE (L/min)'),
+                            yaxis2=dict(title='RR (bpm)', overlaying='y', side='right'), **layout_args)
+            zipf.writestr('04_Ventilation_RR.png', fig.to_image(format='png', width=1200, height=600))
+
+        # --- 5. PULSE POWER ---
+        if 'watts_smooth' in df_plot_resampled.columns and 'heartrate_smooth' in df_plot_resampled.columns:
+            mask = (df_plot_resampled['watts_smooth'] > 50) & (df_plot_resampled['heartrate_smooth'] > 90)
+            df_pp = df_plot_resampled[mask].copy()
+            if not df_pp.empty:
+                df_pp['pp'] = df_pp['watts_smooth'] / df_pp['heartrate_smooth']
+                df_pp['pp_smooth'] = df_pp['pp'].rolling(window=30, center=True).mean()
+                
+                fig = go.Figure()
+                fig.add_trace(go.Scatter(x=df_pp['time_min'], y=df_pp['pp_smooth'],
+                                       name='Pulse Power', line=dict(color='#FFD700', width=2)))
+                
+                # Tu był błąd! Teraz używamy 'stats' biblioteki (bo lista nazywa się 'legend_stats')
+                slope, intercept, _, _, _ = stats.linregress(df_pp['time_min'], df_pp['pp'])
+                trend = intercept + slope * df_pp['time_min']
+                fig.add_trace(go.Scatter(x=df_pp['time_min'], y=trend, name='Trend', line=dict(color='white', dash='dash')))
+
+                # Statystyki
+                avg_eff = df_pp['pp'].mean()
+                total_drift = slope * (df_pp['time_min'].iloc[-1] - df_pp['time_min'].iloc[0])
+                drift_pct = (total_drift / intercept) * 100 if intercept != 0 else 0
+                
+                legend_stats = [
+                    f"🔋 Avg EF: {avg_eff:.2f} W/bpm",
+                    f"📉 Drift: {drift_pct:.1f}%"
+                ]
+                add_stats_to_legend(fig, legend_stats)
+
+                fig.update_layout(title='5. Pulse Power (Watts / Heart Beat)', xaxis_title='Time (min)', 
+                                yaxis_title='Efficiency (W/bpm)', **layout_args)
+                zipf.writestr('05_PulsePower.png', fig.to_image(format='png', width=1200, height=600))
+
+        # --- 6. HRV TIME (Alpha-1) ---
+        df_dfa, _ = calculate_dynamic_dfa(df_plot, window_sec=120, step_sec=30)
+        if df_dfa is not None and not df_dfa.empty:
+            df_dfa['time_min'] = df_dfa['time'] / 60.0
             fig = go.Figure()
-            fig.add_trace(go.Scatter(
-                x=df_plot_resampled['time_min'],
-                y=df_plot_resampled['w_prime_balance'],
-                name="W' Balance",
-                fill='tozeroy',
-                line=dict(color='#19d3f3', width=2)
-            ))
-            fig.update_layout(title="W Prime Balance", xaxis_title='Time (min)', yaxis_title='Joules',
-                            template='plotly_dark', height=600, width=1200)
-            img = fig.to_image(format='png', width=1200, height=600)
-            zipf.writestr(f'{chart_counter:02d}_W_Prime.png', img)
-            chart_counter += 1
+            fig.add_trace(go.Scatter(x=df_dfa['time_min'], y=df_dfa['alpha1'],
+                                   name='DFA Alpha-1', line=dict(color='#00cc96', width=2)))
+            
+            fig.add_hline(y=0.75, line_dash="dash", line_color="red", annotation_text="VT1 (0.75)")
+            
+            # Statystyki
+            avg_a1 = df_dfa['alpha1'].mean()
+            min_a1 = df_dfa['alpha1'].min()
+            rmssd_avg = df_dfa['rmssd'].mean() if 'rmssd' in df_dfa else 0
+            
+            legend_stats = [
+                f"🧠 Avg Alpha-1: {avg_a1:.2f}",
+                f"⚠️ Min Alpha-1: {min_a1:.2f}",
+                f"💓 Avg RMSSD: {rmssd_avg:.0f} ms"
+            ]
+            add_stats_to_legend(fig, legend_stats)
+
+            fig.update_layout(title='6. HRV Variability (DFA Alpha-1)', xaxis_title='Time (min)', 
+                            yaxis=dict(title='Alpha-1', range=[0.2, 1.6]), **layout_args)
+            zipf.writestr('06_HRV_Time.png', fig.to_image(format='png', width=1200, height=600))
         
+        # --- 7. POINCARE PLOT ---
+        rr_col = next((c for c in df_plot.columns if any(x in c.lower() for x in ['rr', 'hrv', 'ibi', 'r-r'])), None)
+        if rr_col:
+            rr_vals = df_plot[rr_col].dropna().values
+            if rr_vals.mean() < 2.0: rr_vals *= 1000 
+            rr_vals = rr_vals[(rr_vals > 300) & (rr_vals < 2000)]
+            
+            if len(rr_vals) > 100:
+                rr_n = rr_vals[:-1]
+                rr_n1 = rr_vals[1:]
+                
+                # Obliczenia SD1/SD2
+                diff_rr = np.diff(rr_vals)
+                sd1 = np.std(diff_rr) / np.sqrt(2)
+                sd2 = np.sqrt(2 * np.std(rr_vals)**2 - 0.5 * np.std(diff_rr)**2)
+                ratio = sd2 / sd1 if sd1 > 0 else 0
+
+                fig = go.Figure()
+                fig.add_trace(go.Scatter(x=rr_n, y=rr_n1, mode='markers', 
+                                       marker=dict(size=3, color='#00cc96', opacity=0.5), name='RR Intervals'))
+                fig.add_trace(go.Scatter(x=[min(rr_vals), max(rr_vals)], y=[min(rr_vals), max(rr_vals)],
+                                       mode='lines', line=dict(color='white', dash='dash'), name='Identity Line'))
+                
+                legend_stats = [
+                    f"🟢 SD1 (Fast): {sd1:.1f} ms",
+                    f"🔵 SD2 (Slow): {sd2:.1f} ms",
+                    f"⚖️ Ratio: {ratio:.2f}"
+                ]
+                add_stats_to_legend(fig, legend_stats)
+
+                fig.update_layout(title='7. Poincaré Plot (RR Intervals)', xaxis_title='RR(n) [ms]', 
+                                yaxis_title='RR(n+1) [ms]', width=800, height=800, template='plotly_dark')
+                zipf.writestr('07_Poincare.png', fig.to_image(format='png', width=800, height=800))
+
+        # --- 8. TORQUE vs SmO2 ---
+        if 'torque' in df_plot.columns and 'smo2' in df_plot.columns:
+            df_bins = df_plot.copy()
+            df_bins['Torque_Bin'] = (df_bins['torque'] // 2 * 2).astype(int)
+            bin_stats = df_bins.groupby('Torque_Bin')['smo2'].agg(['mean', 'std', 'count']).reset_index()
+            bin_stats = bin_stats[bin_stats['count'] > 10]
+            
+            if not bin_stats.empty:
+                fig = go.Figure()
+                fig.add_trace(go.Scatter(x=bin_stats['Torque_Bin'], y=bin_stats['mean']+bin_stats['std'],
+                                       mode='lines', line=dict(width=0), showlegend=False))
+                fig.add_trace(go.Scatter(x=bin_stats['Torque_Bin'], y=bin_stats['mean']-bin_stats['std'],
+                                       mode='lines', line=dict(width=0), fill='tonexty', fillcolor='rgba(255,75,75,0.2)', showlegend=False))
+                fig.add_trace(go.Scatter(x=bin_stats['Torque_Bin'], y=bin_stats['mean'],
+                                       mode='lines+markers', name='Mean SmO2', line=dict(color='#FF4B4B', width=3)))
+                
+                # Statystyki
+                max_t_idx = bin_stats['Torque_Bin'].idxmax()
+                max_t = bin_stats.loc[max_t_idx, 'Torque_Bin']
+                smo2_at_max = bin_stats.loc[max_t_idx, 'mean']
+                
+                legend_stats = [
+                    f"💪 Max Torque: {max_t:.0f} Nm",
+                    f"🩸 SmO2 @ Max: {smo2_at_max:.1f}%"
+                ]
+                add_stats_to_legend(fig, legend_stats)
+
+                fig.update_layout(title='8. Mechanical Impact: Torque vs SmO2', xaxis_title='Torque (Nm)', 
+                                yaxis_title='SmO2 (%)', **layout_args)
+                zipf.writestr('08_Torque_SmO2.png', fig.to_image(format='png', width=1200, height=600))
+
+        # --- 9. SmO2 ANALYSIS (FULL + SELECTION + STATS) ---
+        s_sec = st.session_state.get('smo2_start_sec')
+        e_sec = st.session_state.get('smo2_end_sec')
+        
+        if 'smo2_smooth' in df_plot_resampled.columns:
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(x=df_plot_resampled['time_min'], y=df_plot_resampled['smo2_smooth'],
+                name='SmO2 (Full)', line=dict(color='#FF4B4B', width=1.5)))
+            
+            if 'watts' in df_plot_resampled.columns:
+                 fig.add_trace(go.Scatter(x=df_plot_resampled['time_min'], y=df_plot_resampled['watts_smooth'],
+                     name='Power', line=dict(color='#1f77b4', width=1), opacity=0.3, yaxis='y2'))
+
+            if s_sec is not None and e_sec is not None:
+                s_min = s_sec / 60.0
+                e_min = e_sec / 60.0
+                fig.add_vrect(x0=s_min, x1=e_min, fillcolor="green", opacity=0.15, layer="below", line_width=0, annotation_text="ANALYSIS")
+                
+                mask = (df_plot['time'] >= s_sec) & (df_plot['time'] <= e_sec)
+                df_sel = df_plot.loc[mask]
+                
+                if not df_sel.empty:
+                    duration = e_sec - s_sec
+                    avg_w_sel = df_sel['watts_smooth'].mean() if 'watts_smooth' in df_sel else 0
+                    avg_s_sel = df_sel['smo2_smooth'].mean()
+                    min_s_sel = df_sel['smo2_smooth'].min()
+                    max_s_sel = df_sel['smo2_smooth'].max()
+                    
+                    # Użycie biblioteki stats (działa bo nazwa listy to legend_stats)
+                    slope, intercept, _, _, _ = stats.linregress(df_sel['time'], df_sel['smo2_smooth'])
+                    
+                    x_trend_min = df_sel['time'] / 60.0
+                    y_trend = intercept + slope * df_sel['time']
+                    fig.add_trace(go.Scatter(x=x_trend_min, y=y_trend, name='Trend', line=dict(color='yellow', dash='solid', width=3)))
+
+                    m_dur, s_dur = divmod(int(duration), 60)
+                    legend_stats = [
+                        f"⏱️ Time: {m_dur:02d}:{s_dur:02d}",
+                        f"⚡ Avg W: {avg_w_sel:.0f} W",
+                        f"📉 Slope: {slope:.4f} %/s",
+                        f"📊 Avg SmO2: {avg_s_sel:.1f}%",
+                        f"🔻 Min: {min_s_sel:.1f}%",
+                        f"🔺 Max: {max_s_sel:.1f}%"
+                    ]
+                    add_stats_to_legend(fig, legend_stats)
+
+            fig.update_layout(title='9. SmO2 Kinetics Analysis', xaxis_title='Time (min)', yaxis=dict(title='SmO2 (%)'),
+                yaxis2=dict(title='Power (W)', overlaying='y', side='right', showgrid=False), **layout_args)
+            zipf.writestr('09_SmO2_Analysis.png', fig.to_image(format='png', width=1200, height=600))
+
+        # --- 10. VENT ANALYSIS (FULL + SELECTION + STATS) ---
+        s_v_sec = st.session_state.get('vent_start_sec')
+        e_v_sec = st.session_state.get('vent_end_sec')
+        
+        if 'tymeventilation_smooth' in df_plot_resampled.columns:
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(x=df_plot_resampled['time_min'], y=df_plot_resampled['tymeventilation_smooth'],
+                name='VE (Full)', line=dict(color='#ffa15a', width=1.5)))
+            
+            if 'watts' in df_plot_resampled.columns:
+                 fig.add_trace(go.Scatter(x=df_plot_resampled['time_min'], y=df_plot_resampled['watts_smooth'],
+                     name='Power', line=dict(color='#1f77b4', width=1), opacity=0.3, yaxis='y2'))
+            
+            if s_v_sec is not None and e_v_sec is not None:
+                s_v_min = s_v_sec / 60.0
+                e_v_min = e_v_sec / 60.0
+                fig.add_vrect(x0=s_v_min, x1=e_v_min, fillcolor="orange", opacity=0.15, layer="below", line_width=0, annotation_text="ANALYSIS")
+                
+                mask_v = (df_plot['time'] >= s_v_sec) & (df_plot['time'] <= e_v_sec)
+                df_v = df_plot.loc[mask_v]
+                
+                if not df_v.empty:
+                    duration_v = e_v_sec - s_v_sec
+                    avg_w_v = df_v['watts_smooth'].mean() if 'watts_smooth' in df_v else 0
+                    avg_ve = df_v['tymeventilation_smooth'].mean()
+                    min_ve = df_v['tymeventilation_smooth'].min()
+                    max_ve = df_v['tymeventilation_smooth'].max()
+                    
+                    slope_v, intercept_v, _, _, _ = stats.linregress(df_v['time'], df_v['tymeventilation_smooth'])
+                    
+                    x_trend_v_min = df_v['time'] / 60.0
+                    y_trend_v = intercept_v + slope_v * df_v['time']
+                    fig.add_trace(go.Scatter(x=x_trend_v_min, y=y_trend_v, name='Trend', line=dict(color='white', dash='solid', width=3)))
+
+                    m_dur_v, s_dur_v = divmod(int(duration_v), 60)
+                    legend_stats = [
+                        f"⏱️ Time: {m_dur_v:02d}:{s_dur_v:02d}",
+                        f"⚡ Avg W: {avg_w_v:.0f} W",
+                        f"📈 Slope: {slope_v:.4f} L/s",
+                        f"🫁 Avg VE: {avg_ve:.1f} L/min",
+                        f"🔻 Min: {min_ve:.1f}",
+                        f"🔺 Max: {max_ve:.1f}"
+                    ]
+                    add_stats_to_legend(fig, legend_stats)
+
+            fig.update_layout(title='10. Ventilation Threshold Analysis', xaxis_title='Time (min)', yaxis=dict(title='VE (L/min)'),
+                yaxis2=dict(title='Power (W)', overlaying='y', side='right', showgrid=False), **layout_args)
+            zipf.writestr('10_Vent_Analysis.png', fig.to_image(format='png', width=1200, height=600))
+
         # README
-        readme = """EXPORTOWANE WYKRESY
-Pro Athlete Dashboard
+        readme = f"""RAPORT WYKRESÓW Z PEŁNĄ ANALIZĄ
+Data: {datetime.now().strftime('%Y-%m-%d %H:%M')}
+Plik: {uploaded_file.name}
 
-Jak używać:
-1. Rozpakuj ZIP
-2. Otwórz w Previewie (Mac) lub systemie
-3. Wklej do Pages/Google Docs/Excel
-
-Generowano: """ + datetime.now().strftime('%Y-%m-%d %H:%M')
+Wszystkie wykresy zawierają statystyki w legendzie (Avg, Min, Max, Trends).
+Wykresy 9 i 10 zawierają analizę odcinków wybranych w aplikacji.
+"""
         zipf.writestr('00_README.txt', readme)
     
     zip_buffer.seek(0)
@@ -1201,13 +1454,28 @@ if uploaded_file is not None:
             ["Raport", "KPI", "Power", "HRV", "Biomech", "Thermal", "Trends", "Nutrition", "SmO2 Analysis", "Hematology Analysis", "Ventilation Analysis", "Limiters Analysis", "Model Analysis", "AI Coach"]
         )
         
-        # ===== QUICK COMPARE BUTTON =====
+        # ===== ZOPTOMALIZOWANY QUICK COMPARE =====
         st.markdown("---")
+        
+        # 1. Inicjalizacja stanu (tylko raz przy uruchomieniu)
+        if 'show_qc' not in st.session_state:
+            st.session_state.show_qc = False
+
+        # 2. Funkcja przełączająca (callback) - działa błyskawicznie
+        def toggle_qc():
+            st.session_state.show_qc = not st.session_state.show_qc
+
+        # 3. Główny przycisk sterujący
         col_compare, col_spacer = st.columns([1, 4])
         with col_compare:
-            show_compare = st.button("🔍 Quick Compare - Wszystkie Metryki", use_container_width=True, type="primary")
+            # Zmieniamy tekst przycisku w zależności od stanu
+            btn_label = "✖️ Zamknij Quick Compare" if st.session_state.show_qc else "🔍 Quick Compare - Wszystkie Metryki"
+            btn_type = "secondary" if st.session_state.show_qc else "primary"
+            
+            st.button(btn_label, on_click=toggle_qc, type=btn_type, use_container_width=True)
 
-        if show_compare:
+        # 4. Wyświetlanie warunkowe (bez st.rerun!)
+        if st.session_state.show_qc:
             st.markdown("### 📊 Quick Compare - Porównanie Wszystkich Metryk")
             
             # Row 1: Power + HR
@@ -1219,34 +1487,43 @@ if uploaded_file is not None:
                     y=df_plot_resampled['watts_smooth'],
                     name="Power",
                     line=dict(color='#00cc96', width=1),
-                    fill='tozeroy'
+                    fill='tozeroy',
+                    hovertemplate="<b>%{y:.0f} W</b><extra></extra>"
                 ))
                 fig_mini_power.update_layout(
                     template='plotly_dark',
                     title='Power (W)',
                     height=200,
                     margin=dict(l=10, r=10, t=30, b=10),
-                    showlegend=False
+                    showlegend=False,
+                    hovermode="x unified"
                 )
                 st.plotly_chart(fig_mini_power, use_container_width=True)
             
             with col_1b:
-                if 'heart_rate_smooth' in df_plot_resampled.columns:
+                hr_col = 'heartrate_smooth' if 'heartrate_smooth' in df_plot_resampled.columns else 'heart_rate_smooth'
+                
+                if hr_col in df_plot_resampled.columns:
                     fig_mini_hr = go.Figure()
                     fig_mini_hr.add_trace(go.Scatter(
                         x=df_plot_resampled['time_min'],
-                        y=df_plot_resampled['heart_rate_smooth'],
+                        y=df_plot_resampled[hr_col],
                         name="HR",
-                        line=dict(color='#ef553b', width=1)
+                        line=dict(color='#ef553b', width=1),
+                        fill='tozeroy',
+                        hovertemplate="<b>%{y:.0f} bpm</b><extra></extra>"
                     ))
                     fig_mini_hr.update_layout(
                         template='plotly_dark',
                         title='Heart Rate (bpm)',
                         height=200,
                         margin=dict(l=10, r=10, t=30, b=10),
-                        showlegend=False
+                        showlegend=False,
+                        hovermode="x unified"
                     )
                     st.plotly_chart(fig_mini_hr, use_container_width=True)
+                else:
+                    st.warning("⚠️ Brak danych HR")
             
             # Row 2: SmO2 + VE
             col_2a, col_2b = st.columns(2)
@@ -1257,7 +1534,8 @@ if uploaded_file is not None:
                         x=df_plot_resampled['time_min'],
                         y=df_plot_resampled['smo2_smooth'],
                         name="SmO2",
-                        line=dict(color='#ab63fa', width=1)
+                        line=dict(color='#ab63fa', width=1),
+                        hovertemplate="<b>%{y:.1f}%</b><extra></extra>"
                     ))
                     fig_mini_smo2.update_layout(
                         template='plotly_dark',
@@ -1265,7 +1543,8 @@ if uploaded_file is not None:
                         height=200,
                         margin=dict(l=10, r=10, t=30, b=10),
                         showlegend=False,
-                        yaxis=dict(range=[0, 100])
+                        yaxis=dict(range=[0, 100]),
+                        hovermode="x unified"
                     )
                     st.plotly_chart(fig_mini_smo2, use_container_width=True)
             
@@ -1276,24 +1555,27 @@ if uploaded_file is not None:
                         x=df_plot_resampled['time_min'],
                         y=df_plot_resampled['tymeventilation_smooth'],
                         name="VE",
-                        line=dict(color='#ffa15a', width=1)
+                        line=dict(color='#ffa15a', width=1),
+                        hovertemplate="<b>%{y:.1f} L/min</b><extra></extra>"
                     ))
                     fig_mini_ve.update_layout(
                         template='plotly_dark',
                         title='Ventilation (L/min)',
                         height=200,
                         margin=dict(l=10, r=10, t=30, b=10),
-                        showlegend=False
+                        showlegend=False,
+                        hovermode="x unified"
                     )
                     st.plotly_chart(fig_mini_ve, use_container_width=True)
             
             st.info("💡 Tip: Szukaj korelacji między metrykami. Np. spadek SmO2 + wzrost VE = próg beztlenowy!")
             
-            if st.button("✖️ Zamknij Quick Compare"):
-                st.rerun()
+            # Dolny przycisk zamykający (opcjonalny, bo górny też zamyka, ale dla wygody zostawiamy)
+            if st.button("✖️ Zamknij Quick Compare", on_click=toggle_qc, key='close_qc_bottom'):
+                pass # Callback zrobi robotę
 
         st.markdown("---")
-        # ===== KONIEC QUICK COMPARE =====
+        # ===== KONIEC ZOPTOMALIZOWANEGO QUICK COMPARE =====
 
        # --- TAB RAPORT ---
         with tab_raport:

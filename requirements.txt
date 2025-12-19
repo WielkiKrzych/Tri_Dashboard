@@ -13,8 +13,5 @@ stats
 os
 json
 time
-<<<<<<< HEAD
+python-docx
 mlx
-=======
-mlx
->>>>>>> cab386e544b31d991718e279210a0e14f92970ef

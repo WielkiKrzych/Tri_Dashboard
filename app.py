@@ -7,6 +7,7 @@ import io
 from io import BytesIO
 from scipy import stats
 import neurokit2 as nk
+from pathlib import Path
 
 try:
     import sweatpy as sw
@@ -209,8 +210,288 @@ if MLX_AVAILABLE:
 
         return y_pred_full, results["base"], results["thresh"], loaded, history
 
+from docx import Document
+from docx.shared import Inches, Pt, RGBColor
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+import zipfile
+from io import BytesIO
+
 from fpdf import FPDF
 import base64
+
+# ===== TRAINING NOTES SYSTEM =====
+class TrainingNotes:
+    """Zarządzanie notatkami do treningów"""
+    
+    NOTES_DIR = Path('training_notes')
+    
+    def __init__(self):
+        self.NOTES_DIR.mkdir(exist_ok=True)
+    
+    def get_notes_file(self, training_file):
+        """Pobierz plik notatek dla danego treningu"""
+        base_name = Path(training_file).stem
+        return self.NOTES_DIR / f"{base_name}_notes.json"
+    
+    def load_notes(self, training_file):
+        """Załaduj notatki z JSON"""
+        notes_file = self.get_notes_file(training_file)
+        if notes_file.exists():
+            with open(notes_file, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        return {"training_file": training_file, "notes": []}
+    
+    def save_notes(self, training_file, notes_data):
+        """Zapisz notatki do JSON"""
+        notes_file = self.get_notes_file(training_file)
+        with open(notes_file, 'w', encoding='utf-8') as f:
+            json.dump(notes_data, f, indent=2, ensure_ascii=False)
+    
+    def add_note(self, training_file, time_minute, metric, text):
+        """Dodaj notatkę"""
+        notes_data = self.load_notes(training_file)
+        
+        note = {
+            "time_minute": float(time_minute),
+            "metric": metric,
+            "text": text,
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
+        
+        notes_data["notes"].append(note)
+        self.save_notes(training_file, notes_data)
+        return note
+    
+    def get_notes_for_metric(self, training_file, metric):
+        """Pobierz notatki dla konkretnej metryki"""
+        notes_data = self.load_notes(training_file)
+        return [n for n in notes_data["notes"] if n["metric"] == metric]
+    
+    def delete_note(self, training_file, note_index):
+        """Usuń notatkę"""
+        notes_data = self.load_notes(training_file)
+        if 0 <= note_index < len(notes_data["notes"]):
+            notes_data["notes"].pop(note_index)
+            self.save_notes(training_file, notes_data)
+            return True
+        return False
+
+# Inicjalizuj
+training_notes = TrainingNotes()
+# ===== KONIEC NOTES =====
+
+# ===== FUNKCJA GENEROWANIA RAPORTU DOCX =====
+def generate_docx_report(metrics, df_plot, df_plot_resampled, uploaded_file, cp_input, 
+                        vt1_watts, vt2_watts, rider_weight, vt1_vent, vt2_vent):
+    """Generuje raport .docx zamiast PDF"""
+    
+    doc = Document()
+    
+    # STYLE
+    style = doc.styles['Normal']
+    style.font.name = 'Calibri'
+    style.font.size = Pt(11)
+    
+    # NAGŁÓWEK
+    title = doc.add_heading('Pro Athlete Dashboard - Raport Treningowy', 0)
+    title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    
+    # Data generowania
+    date_para = doc.add_paragraph(f"Data: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+    date_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    date_para.runs[0].font.size = Pt(10)
+    date_para.runs[0].font.color.rgb = RGBColor(128, 128, 128)
+    
+    # PLIK ŹRÓDŁOWY
+    source_para = doc.add_paragraph(f"Plik: {uploaded_file.name if uploaded_file else 'Brak'}")
+    source_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    
+    doc.add_paragraph()  # Spacer
+    
+    # SEKCJA 1: PODSUMOWANIE KPI
+    doc.add_heading('1. Podsumowanie KPI', level=1)
+    
+    table = doc.add_table(rows=5, cols=2)
+    table.style = 'Light Grid Accent 1'
+    
+    # Nagłówki
+    table.rows[0].cells[0].text = 'Metryka'
+    table.rows[0].cells[1].text = 'Wartość'
+    
+    # Dane
+    table.rows[1].cells[0].text = 'Średnia Moc'
+    table.rows[1].cells[1].text = f"{metrics.get('avg_watts', 0):.0f} W"
+    
+    table.rows[2].cells[0].text = 'Średnie Tętno'
+    table.rows[2].cells[1].text = f"{metrics.get('avg_hr', 0):.0f} bpm"
+    
+    table.rows[3].cells[0].text = 'Średnie SmO2'
+    table.rows[3].cells[1].text = f"{df_plot['smo2'].mean() if 'smo2' in df_plot.columns else 0:.1f}%"
+
+    table.rows[4].cells[0].text = 'Czas treningu'
+    table.rows[4].cells[1].text = f"{len(df_plot)/60:.0f} min"
+    
+    doc.add_paragraph()  # Spacer
+    
+    # SEKCJA 2: PROGI TRENINGOWE
+    doc.add_heading('2. Progi Treningowe', level=1)
+    
+    doc.add_paragraph(f"VT1 (Próg Tlenowy): {vt1_watts} W @ {vt1_vent} L/min")
+    doc.add_paragraph(f"VT2 (Próg Beztlenowy): {vt2_watts} W @ {vt2_vent} L/min")
+    doc.add_paragraph(f"CP (Moc Krytyczna): {cp_input} W")
+    doc.add_paragraph(f"Waga zawodnika: {rider_weight} kg")
+    
+    doc.add_paragraph()  # Spacer
+    
+    # SEKCJA 3: STREFY MOCY
+    doc.add_heading('3. Czas w Strefach Mocy', level=1)
+    
+    if 'watts' in df_plot.columns:
+        bins = [0, 0.55*cp_input, 0.75*cp_input, 0.90*cp_input, 1.05*cp_input, 1.20*cp_input, 10000]
+        labels = ['Z1 Recovery', 'Z2 Endurance', 'Z3 Tempo', 'Z4 Threshold', 'Z5 VO2Max', 'Z6 Anaerobic']
+        dfz = df_plot.copy()
+        dfz['Zone'] = pd.cut(dfz['watts'], bins=bins, labels=labels, right=False)
+        
+        table2 = doc.add_table(rows=7, cols=3)
+        table2.style = 'Light Grid Accent 1'
+        
+        table2.rows[0].cells[0].text = 'Strefa'
+        table2.rows[0].cells[1].text = 'Zakres'
+        table2.rows[0].cells[2].text = 'Czas'
+        
+        for i, (label, low, high) in enumerate(zip(labels, bins[:-1], bins[1:])):
+            count = len(dfz[dfz['Zone'] == label])
+            time_min = count / 60
+            
+            table2.rows[i+1].cells[0].text = label
+            table2.rows[i+1].cells[1].text = f"{low:.0f}-{high:.0f} W"
+            table2.rows[i+1].cells[2].text = f"{time_min:.1f} min"
+    
+    doc.add_paragraph()  # Spacer
+    
+    # SEKCJA 4: NOTATKI DO EDYCJI
+    doc.add_heading('4. Przestrzeń do Notatek', level=1)
+    
+    for i in range(10):
+        doc.add_paragraph(f"• _________________________________________________________________")
+    
+    doc.add_paragraph()  # Spacer
+    
+    # STOPKA
+    doc.add_paragraph("---")
+    footer = doc.add_paragraph("Raport wygenerowany przez Pro Athlete Dashboard | Streamlit App")
+    footer.runs[0].font.size = Pt(8)
+    footer.runs[0].font.color.rgb = RGBColor(128, 128, 128)
+    footer.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    
+    return doc
+# ===== KONIEC FUNKCJI DOCX =====
+
+# ===== PNG BATCH EXPORT =====
+def export_all_charts_as_png(df_plot, df_plot_resampled, cp_input, vt1_watts, vt2watts,
+                            metrics, rider_weight, uploaded_file):
+    """Export wszystkich wykresów jako PNG w ZIP"""
+    
+    zip_buffer = BytesIO()
+    
+    with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zipf:
+        chart_counter = 1
+        
+        # Wykres 1: Power
+        if 'watts_smooth' in df_plot_resampled.columns:
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(
+                x=df_plot_resampled['time_min'],
+                y=df_plot_resampled['watts_smooth'],
+                name='Power',
+                fill='tozeroy',
+                line=dict(color='#00cc96', width=2)
+            ))
+            fig.update_layout(title='Power Profile', xaxis_title='Time (min)', yaxis_title='Power (W)',
+                            template='plotly_dark', height=600, width=1200)
+            img = fig.to_image(format='png', width=1200, height=600)
+            zipf.writestr(f'{chart_counter:02d}_Power_Profile.png', img)
+            chart_counter += 1
+        
+        # Wykres 2: HR
+        if 'heart_rate_smooth' in df_plot_resampled.columns:
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(
+                x=df_plot_resampled['time_min'],
+                y=df_plot_resampled['heart_rate_smooth'],
+                name='HR',
+                fill='tozeroy',
+                line=dict(color='#ef553b', width=2)
+            ))
+            fig.update_layout(title='Heart Rate', xaxis_title='Time (min)', yaxis_title='BPM',
+                            template='plotly_dark', height=600, width=1200)
+            img = fig.to_image(format='png', width=1200, height=600)
+            zipf.writestr(f'{chart_counter:02d}_Heart_Rate.png', img)
+            chart_counter += 1
+        
+        # Wykres 3: SmO2
+        if 'smo2_smooth' in df_plot_resampled.columns:
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(
+                x=df_plot_resampled['time_min'],
+                y=df_plot_resampled['smo2_smooth'],
+                name='SmO2',
+                fill='tozeroy',
+                line=dict(color='#ab63fa', width=2)
+            ))
+            fig.update_layout(title='SmO2', xaxis_title='Time (min)', yaxis_title='%',
+                            yaxis=dict(range=[0, 100]), template='plotly_dark', height=600, width=1200)
+            img = fig.to_image(format='png', width=1200, height=600)
+            zipf.writestr(f'{chart_counter:02d}_SmO2.png', img)
+            chart_counter += 1
+        
+        # Wykres 4: VE
+        if 'tyme_ventilation_smooth' in df_plot_resampled.columns:
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(
+                x=df_plot_resampled['time_min'],
+                y=df_plot_resampled['tyme_ventilation_smooth'],
+                name='VE',
+                fill='tozeroy',
+                line=dict(color='#ffa15a', width=2)
+            ))
+            fig.update_layout(title='Ventilation', xaxis_title='Time (min)', yaxis_title='L/min',
+                            template='plotly_dark', height=600, width=1200)
+            img = fig.to_image(format='png', width=1200, height=600)
+            zipf.writestr(f'{chart_counter:02d}_Ventilation.png', img)
+            chart_counter += 1
+        
+        # Wykres 5: W Prime
+        if 'w_prime_balance' in df_plot_resampled.columns:
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(
+                x=df_plot_resampled['time_min'],
+                y=df_plot_resampled['w_prime_balance'],
+                name="W' Balance",
+                fill='tozeroy',
+                line=dict(color='#19d3f3', width=2)
+            ))
+            fig.update_layout(title="W Prime Balance", xaxis_title='Time (min)', yaxis_title='Joules',
+                            template='plotly_dark', height=600, width=1200)
+            img = fig.to_image(format='png', width=1200, height=600)
+            zipf.writestr(f'{chart_counter:02d}_W_Prime.png', img)
+            chart_counter += 1
+        
+        # README
+        readme = """EXPORTOWANE WYKRESY
+Pro Athlete Dashboard
+
+Jak używać:
+1. Rozpakuj ZIP
+2. Otwórz w Previewie (Mac) lub systemie
+3. Wklej do Pages/Google Docs/Excel
+
+Generowano: """ + datetime.now().strftime('%Y-%m-%d %H:%M')
+        zipf.writestr('00_README.txt', readme)
+    
+    zip_buffer.seek(0)
+    return zip_buffer.getvalue()
+# ===== KONIEC PNG EXPORT =====
 
 class PDFReport(FPDF):
     def header(self):
@@ -2453,6 +2734,48 @@ if uploaded_file is not None:
             st.session_state.smo2_start_sec = 600  # 10 minut domyślnie
         if 'smo2_end_sec' not in st.session_state:
             st.session_state.smo2_end_sec = 1200  # 20 minut domyślnie
+            
+        # ===== NOTATKI SmO2 =====
+        with st.expander("📝 Dodaj Notatkę do tej Analizy", expanded=False):
+            note_col1, note_col2 = st.columns([1, 2])
+            with note_col1:
+                note_time = st.number_input(
+                    "Czas (min)", 
+                    min_value=0.0, 
+                    max_value=float(len(target_df)/60) if len(target_df) > 0 else 60,
+                    value=float(len(target_df)/120) if len(target_df) > 0 else 15,
+                    step=0.5,
+                    key="smo2_note_time"
+                )
+            with note_col2:
+                note_text = st.text_input(
+                    "Notatka",
+                    key="smo2_note_text",
+                    placeholder="Np. 'Atak 500W', 'Próg beztlenowy', 'Błąd sensoryka'"
+                )
+            
+            if st.button("➕ Dodaj Notatkę", key="smo2_add_note"):
+                if note_text:
+                    training_notes.add_note(uploaded_file.name, note_time, "smo2", note_text)
+                    st.success(f"✅ Notatka: {note_text} @ {note_time:.1f} min")
+                else:
+                    st.warning("Wpisz tekst notatki!")
+
+        # Wyświetl istniejące notatki SmO2
+        existing_notes_smo2 = training_notes.get_notes_for_metric(uploaded_file.name, "smo2")
+        if existing_notes_smo2:
+            st.subheader("📋 Notatki SmO2")
+            for idx, note in enumerate(existing_notes_smo2):
+                col_note, col_del = st.columns([4, 1])
+                with col_note:
+                    st.info(f"⏱️ **{note['time_minute']:.1f} min** | {note['text']}")
+                with col_del:
+                    if st.button("🗑️", key=f"del_smo2_note_{idx}"):
+                        training_notes.delete_note(uploaded_file.name, idx)
+                        st.rerun()
+
+        st.markdown("---")
+        # ===== KONIEC NOTATEK SmO2 =====
 
         st.info("💡 **NOWA FUNKCJA:** Zaznacz obszar na wykresie poniżej (kliknij i przeciągnij), aby automatycznie obliczyć metryki!")
 
@@ -2885,6 +3208,48 @@ if uploaded_file is not None:
                 st.session_state.vent_start_sec = 600  # 10 minut domyślnie
         if 'vent_end_sec' not in st.session_state:
                 st.session_state.vent_end_sec = 1200  # 20 minut domyślnie
+                
+        # ===== NOTATKI VENTILATION =====
+        with st.expander("📝 Dodaj Notatkę do tej Analizy", expanded=False):
+            note_col1, note_col2 = st.columns([1, 2])
+            with note_col1:
+                note_time_vent = st.number_input(
+                    "Czas (min)", 
+                    min_value=0.0, 
+                    max_value=float(len(target_df)/60) if len(target_df) > 0 else 60,
+                    value=float(len(target_df)/120) if len(target_df) > 0 else 15,
+                    step=0.5,
+                    key="vent_note_time"
+                )
+            with note_col2:
+                note_text_vent = st.text_input(
+                    "Notatka",
+                    key="vent_note_text",
+                    placeholder="Np. 'Próg beztlenowy', 'VE jump', 'Spłycenie oddechu'"
+                )
+            
+            if st.button("➕ Dodaj Notatkę", key="vent_add_note"):
+                if note_text_vent:
+                    training_notes.add_note(uploaded_file.name, note_time_vent, "ventilation", note_text_vent)
+                    st.success(f"✅ Notatka: {note_text_vent} @ {note_time_vent:.1f} min")
+                else:
+                    st.warning("Wpisz tekst notatki!")
+
+        # Wyświetl istniejące notatki Ventilation
+        existing_notes_vent = training_notes.get_notes_for_metric(uploaded_file.name, "ventilation")
+        if existing_notes_vent:
+            st.subheader("📋 Notatki Wentylacji")
+            for idx, note in enumerate(existing_notes_vent):
+                col_note, col_del = st.columns([4, 1])
+                with col_note:
+                    st.info(f"⏱️ **{note['time_minute']:.1f} min** | {note['text']}")
+                with col_del:
+                    if st.button("🗑️", key=f"del_vent_note_{idx}"):
+                        training_notes.delete_note(uploaded_file.name, idx)
+                        st.rerun()
+
+        st.markdown("---")
+        # ===== KONIEC NOTATEK VENTILATION =====
 
         st.info("💡 **NOWA FUNKCJA:** Zaznacz obszar na wykresie poniżej (kliknij i przeciągnij), aby automatycznie obliczyć metryki!")
 
@@ -3403,7 +3768,7 @@ if uploaded_file is not None:
 
        # --- EXPORT DO PDF (Wersja CLEAN & STABLE) ---
 from fpdf import FPDF
-import datetime
+from datetime import datetime
 
 # 1. Funkcja czyszcząca tekst (niezbędna dla FPDF bez zewnętrznych czcionek)
 def clean_text(text):
@@ -3453,7 +3818,7 @@ class ProPDF(FPDF):
         self.set_y(-15)
         self.set_font('Arial', 'I', 8)
         self.set_text_color(150)
-        self.cell(0, 10, f'Data generowania: {datetime.datetime.now().strftime("%Y-%m-%d %H:%M")} | Strona {self.page_no()}', 0, 0, 'C')
+        self.cell(0, 10, f'Data generowania: {datetime.now().strftime("%Y-%m-%d %H:%M")} | Strona {self.page_no()}', 0, 0, 'C')
 
     def section_header(self, title):
         self.ln(5)
@@ -3512,6 +3877,64 @@ class ProPDF(FPDF):
             self.cell(w, 8, clean_text(str(header)), 1, 0, 'C', 1)
         self.ln()
         self.set_text_color(0, 0, 0)
+
+# ===== DOCX EXPORT BUTTON =====
+st.sidebar.markdown("---")
+st.sidebar.header("📄 Export Raportu")
+
+if 'df_plot' in locals() and uploaded_file is not None:
+    # Kolumny dla przycisków
+    col_docx, col_pdf, col_png = st.sidebar.columns(3)
+    
+    with col_docx:
+        # Generuj DOCX
+        try:
+            docx_doc = generate_docx_report(
+                metrics, df_plot, df_plot_resampled, uploaded_file, cp_input,
+                vt1_watts, vt2_watts, rider_weight, vt1_vent, vt2_vent
+            )
+            
+            # Zapisz do BytesIO
+            docx_buffer = BytesIO()
+            docx_doc.save(docx_buffer)
+            docx_buffer.seek(0)
+            
+            st.sidebar.download_button(
+                label="📥 Pobierz Raport DOCX",
+                data=docx_buffer.getvalue(),
+                file_name=f"Raport_{uploaded_file.name.split('.')[0]}.docx",
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                use_container_width=True
+            )
+        except Exception as e:
+            st.sidebar.error(f"Błąd DOCX: {e}")
+    
+    with col_pdf:
+        # Stary PDF button zostaje
+        st.sidebar.info("PDF deprecated - używaj DOCX")
+        
+    with col_png:
+    # Generuj PNG ZIP
+        try:
+            png_zip = export_all_charts_as_png(
+                df_plot, df_plot_resampled, cp_input, vt1_watts, vt2_watts,
+                metrics, rider_weight, uploaded_file
+            )
+            
+            st.sidebar.download_button(
+                label="📸 Pobierz Wykresy PNG (ZIP)",
+                data=png_zip,
+                file_name=f"Wykresy_{uploaded_file.name.split('.')[0]}.zip",
+                mime="application/zip",
+                use_container_width=True
+            )
+        except Exception as e:
+            st.sidebar.error(f"Błąd PNG: {e}")
+
+        
+else:
+    st.sidebar.info("Wgraj plik aby pobrać raport.")
+# ===== KONIEC DOCX =====
 
 st.sidebar.markdown("---")
 st.sidebar.header("🖨️ Export Raportu")

@@ -1407,7 +1407,7 @@ if uploaded_file is not None:
         avg_hr = metrics.get('avg_hr', 0)
         avg_smo2 = df_plot['smo2'].mean() if 'smo2' in df_plot.columns else 0
         avg_cadence = metrics.get('avg_cadence', 0)
-        max_power = df_plot['watts'].max() if 'watts' in df_plot.columns else 0
+        avg_ve = metrics.get('avg_vent', 0)
         duration_min = len(df_plot) / 60 if len(df_plot) > 0 else 0
 
         st.markdown(f"""
@@ -1431,8 +1431,8 @@ if uploaded_file is not None:
                     <div class="value">{avg_cadence:.0f} <span class="unit">rpm</span></div>
                 </div>
                 <div class="metric-box">
-                    <div class="label">Max Power</div>
-                    <div class="value">{max_power:.0f} <span class="unit">W</span></div>
+                    <div class="label">Avg VE</div>
+                    <div class="value">{avg_ve:.0f} <span class="unit">L/min</span></div>
                 </div>
                 <div class="metric-box">
                     <div class="label">Duration</div>
@@ -1443,140 +1443,16 @@ if uploaded_file is not None:
         """, unsafe_allow_html=True)
         # ===== KONIEC STICKY HEADER =====
 
-        m1, m2, m3, m4 = st.columns(4)
+        m1, m2, m3 = st.columns(3)
         m1.metric("NP (Norm. Power)", f"{np_header:.0f} W", help="Normalized Power (Coggan Formula)")
         m2.metric("TSS", f"{tss_header:.0f}", help=f"IF: {if_header:.2f}")
         m3.metric("Praca [kJ]", f"{df_plot['watts'].sum()/1000:.0f}")
-        m4.metric("W' Min [J]", f"{df_plot['w_prime_balance'].min():.0f}", delta_color="inverse")
-
+        
         # --- ZAKŁADKI ---
         tab_raport, tab_kpi, tab_power, tab_hrv, tab_biomech, tab_thermal, tab_trends, tab_nutrition, tab_smo2, tab_hemo, tab_vent, tab_limiters, tab_model, tab_ai = st.tabs(
             ["Raport", "KPI", "Power", "HRV", "Biomech", "Thermal", "Trends", "Nutrition", "SmO2 Analysis", "Hematology Analysis", "Ventilation Analysis", "Limiters Analysis", "Model Analysis", "AI Coach"]
         )
-        
-        # ===== ZOPTOMALIZOWANY QUICK COMPARE =====
-        st.markdown("---")
-        
-        # 1. Inicjalizacja stanu (tylko raz przy uruchomieniu)
-        if 'show_qc' not in st.session_state:
-            st.session_state.show_qc = False
-
-        # 2. Funkcja przełączająca (callback) - działa błyskawicznie
-        def toggle_qc():
-            st.session_state.show_qc = not st.session_state.show_qc
-
-        # 3. Główny przycisk sterujący
-        col_compare, col_spacer = st.columns([1, 4])
-        with col_compare:
-            # Zmieniamy tekst przycisku w zależności od stanu
-            btn_label = "✖️ Zamknij Quick Compare" if st.session_state.show_qc else "🔍 Quick Compare - Wszystkie Metryki"
-            btn_type = "secondary" if st.session_state.show_qc else "primary"
-            
-            st.button(btn_label, on_click=toggle_qc, type=btn_type, use_container_width=True)
-
-        # 4. Wyświetlanie warunkowe (bez st.rerun!)
-        if st.session_state.show_qc:
-            st.markdown("### 📊 Quick Compare - Porównanie Wszystkich Metryk")
-            
-            # Row 1: Power + HR
-            col_1a, col_1b = st.columns(2)
-            with col_1a:
-                fig_mini_power = go.Figure()
-                fig_mini_power.add_trace(go.Scatter(
-                    x=df_plot_resampled['time_min'],
-                    y=df_plot_resampled['watts_smooth'],
-                    name="Power",
-                    line=dict(color='#00cc96', width=1),
-                    fill='tozeroy',
-                    hovertemplate="<b>%{y:.0f} W</b><extra></extra>"
-                ))
-                fig_mini_power.update_layout(
-                    template='plotly_dark',
-                    title='Power (W)',
-                    height=200,
-                    margin=dict(l=10, r=10, t=30, b=10),
-                    showlegend=False,
-                    hovermode="x unified"
-                )
-                st.plotly_chart(fig_mini_power, use_container_width=True)
-            
-            with col_1b:
-                hr_col = 'heartrate_smooth' if 'heartrate_smooth' in df_plot_resampled.columns else 'heart_rate_smooth'
                 
-                if hr_col in df_plot_resampled.columns:
-                    fig_mini_hr = go.Figure()
-                    fig_mini_hr.add_trace(go.Scatter(
-                        x=df_plot_resampled['time_min'],
-                        y=df_plot_resampled[hr_col],
-                        name="HR",
-                        line=dict(color='#ef553b', width=1),
-                        fill='tozeroy',
-                        hovertemplate="<b>%{y:.0f} bpm</b><extra></extra>"
-                    ))
-                    fig_mini_hr.update_layout(
-                        template='plotly_dark',
-                        title='Heart Rate (bpm)',
-                        height=200,
-                        margin=dict(l=10, r=10, t=30, b=10),
-                        showlegend=False,
-                        hovermode="x unified"
-                    )
-                    st.plotly_chart(fig_mini_hr, use_container_width=True)
-                else:
-                    st.warning("⚠️ Brak danych HR")
-            
-            # Row 2: SmO2 + VE
-            col_2a, col_2b = st.columns(2)
-            with col_2a:
-                if 'smo2_smooth' in df_plot_resampled.columns:
-                    fig_mini_smo2 = go.Figure()
-                    fig_mini_smo2.add_trace(go.Scatter(
-                        x=df_plot_resampled['time_min'],
-                        y=df_plot_resampled['smo2_smooth'],
-                        name="SmO2",
-                        line=dict(color='#ab63fa', width=1),
-                        hovertemplate="<b>%{y:.1f}%</b><extra></extra>"
-                    ))
-                    fig_mini_smo2.update_layout(
-                        template='plotly_dark',
-                        title='SmO2 (%)',
-                        height=200,
-                        margin=dict(l=10, r=10, t=30, b=10),
-                        showlegend=False,
-                        yaxis=dict(range=[0, 100]),
-                        hovermode="x unified"
-                    )
-                    st.plotly_chart(fig_mini_smo2, use_container_width=True)
-            
-            with col_2b:
-                if 'tymeventilation_smooth' in df_plot_resampled.columns:
-                    fig_mini_ve = go.Figure()
-                    fig_mini_ve.add_trace(go.Scatter(
-                        x=df_plot_resampled['time_min'],
-                        y=df_plot_resampled['tymeventilation_smooth'],
-                        name="VE",
-                        line=dict(color='#ffa15a', width=1),
-                        hovertemplate="<b>%{y:.1f} L/min</b><extra></extra>"
-                    ))
-                    fig_mini_ve.update_layout(
-                        template='plotly_dark',
-                        title='Ventilation (L/min)',
-                        height=200,
-                        margin=dict(l=10, r=10, t=30, b=10),
-                        showlegend=False,
-                        hovermode="x unified"
-                    )
-                    st.plotly_chart(fig_mini_ve, use_container_width=True)
-            
-            st.info("💡 Tip: Szukaj korelacji między metrykami. Np. spadek SmO2 + wzrost VE = próg beztlenowy!")
-            
-            # Dolny przycisk zamykający (opcjonalny, bo górny też zamyka, ale dla wygody zostawiamy)
-            if st.button("✖️ Zamknij Quick Compare", on_click=toggle_qc, key='close_qc_bottom'):
-                pass # Callback zrobi robotę
-
-        st.markdown("---")
-        # ===== KONIEC ZOPTOMALIZOWANEGO QUICK COMPARE =====
-
        # --- TAB RAPORT ---
         with tab_raport:
             st.header("Executive Summary")
@@ -1657,46 +1533,7 @@ if uploaded_file is not None:
             c4.metric("Kadencja", f"{metrics['avg_cadence']:.0f} RPM")
             vo2max_est = calculate_vo2max(df_plot['watts'].rolling(window=300).mean().max() if 'watts' in df_plot.columns else 0, rider_weight)
             c5.metric("Szac. VO2max", f"{vo2max_est:.1f}", help="Estymowane na podstawie mocy 5-minutowej (ACSM).")
-
-            st.markdown("---")
-            st.subheader("🧠 Kompendium Analityczne (Średnie)")
-            with st.expander("⚡️ Szacowane VO2max (Wydolność Tlenowa)", expanded=False):
-                st.markdown("""
-                * **Teoria:** VO2max to maksymalna ilość tlenu, jaką Twój organizm potrafi pochłonąć, przetransportować i zużyć w ciągu minuty. Jest to kluczowy wskaźnik wydolności tlenowej.
-                * **Estymacja:** Obliczone na podstawie Twojej maksymalnej mocy utrzymanej przez 5 minut (MMP 5') oraz wagi, z użyciem formuły ACSM. To jest *szacunek*, a nie pomiar laboratoryjny.
-                * **Praktyka:** Wyższy VO2max generalnie koreluje z lepszymi wynikami w sportach wytrzymałościowych. Trening interwałowy o wysokiej intensywności (HIIT) jest skuteczną metodą podnoszenia tego wskaźnika.
-                """)
-            with st.expander("🚴 Średnia Moc (Mechanika)", expanded=True):
-                st.markdown("""
-                * **Teoria:** Mierzy zewnętrzne obciążenie (External Load). Mówi "ile pracy wykonałeś", ale nie "jak bardzo Cię to kosztowało".
-                * **Praktyka (Triathlon):** * Ważniejsza jest **Moc Znormalizowana (NP)**. Jeśli NP jest dużo wyższe od średniej (>10%), jazda była szarpana (nieekonomiczna).
-                    * W "czasówkach" dążymy do **Variability Index (VI) = 1.00-1.05**.
-                """)
-            with st.expander("❤️ Średnie Tętno (Fizjologia)", expanded=True):
-                st.markdown("""
-                * **Teoria:** Mierzy wewnętrzny koszt (Internal Load). Zależy od rzutu serca (Stroke Volume x HR).
-                * **Praktyka:**
-                    * Jest opóźnione względem mocy.
-                    * Podatne na temperaturę, kofeinę i stres (tzw. cardiac drift).
-                    * Niskie tętno przy wysokiej mocy = **Wysoka wydajność**.
-                """)
-            with st.expander("🩸 Średnie SmO2 (Metabolizm Lokalny)", expanded=True):
-                st.markdown("""
-                * **Teoria:** Bilans dostaw i zużycia tlenu bezpośrednio w mięśniu.
-                * **Praktyka:**
-                    * **> 60-70%:** Praca tlenowa, stabilna. Pełna resynteza ATP.
-                    * **< 40-30%:** Praca beztlenowa. Mięsień korzysta z rezerw mioglobiny i glikolizy beztlenowej.
-                    * Stabilne SmO2 przy rosnącym tętnie to często oznaka przegrzania, a nie braku paliwa.
-                """)
-            with st.expander("🦶 Kadencja (Układ Nerwowy)", expanded=True):
-                st.markdown("""
-                * **Teoria:** Relacja między siłą (mięśnie) a szybkością skurczu (układ nerwowy).
-                * **Praktyka (Triathlon):**
-                    * Zalecana wyższa kadencja (**85-95 RPM**).
-                    * Oszczędza glikogen (mniej siły na obrót) i "rozluźnia" nogi przed biegiem.
-                    * Zbyt niska kadencja ("ubijanie kapusty") niszczy włókna mięśniowe (mikrourazy).
-                """)
-
+                     
             st.divider()
             c5, c6, c7, c8 = st.columns(4)
             c5.metric("Power/HR", f"{metrics['power_hr']:.2f}")

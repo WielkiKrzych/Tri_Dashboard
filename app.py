@@ -3206,6 +3206,16 @@ if uploaded_file is not None:
         st.info("💡 **NOWA FUNKCJA:** Zaznacz obszar na wykresie poniżej (kliknij i przeciągnij), aby automatycznie obliczyć metryki!")
 
         # Opcjonalne: ręczne wprowadzenie czasu (dla precyzji)
+        def parse_time_to_seconds(t_str):
+            try:
+                parts = list(map(int, t_str.split(':')))
+                if len(parts) == 3: return parts[0]*3600 + parts[1]*60 + parts[2]
+                if len(parts) == 2: return parts[0]*60 + parts[1]
+                if len(parts) == 1: return parts[0]
+            except:
+                return None
+            return None
+
         with st.expander("🔧 Ręczne wprowadzenie zakresu czasowego (opcjonalne)", expanded=False):
             col_inp1, col_inp2 = st.columns(2)
             with col_inp1:
@@ -3224,16 +3234,6 @@ if uploaded_file is not None:
         # Użyj wartości z session_state
         startsec = st.session_state.smo2_start_sec
         endsec = st.session_state.smo2_end_sec
-
-        def parse_time_to_seconds(t_str):
-            try:
-                parts = list(map(int, t_str.split(':')))
-                if len(parts) == 3: return parts[0]*3600 + parts[1]*60 + parts[2]
-                if len(parts) == 2: return parts[0]*60 + parts[1]
-                if len(parts) == 1: return parts[0]
-            except:
-                return None
-            return None
 
         start_time_str = st.session_state.get('smo2_manual_start', "01:00:00")
         nd_time_str = st.session_state.get('smo2_manual_end', "01:20:00")

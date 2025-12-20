@@ -120,7 +120,10 @@ if MLX_AVAILABLE:
         w = df['watts_smooth'].values / 500.0
         c = df['cadence_smooth'].values / 120.0 if 'cadence_smooth' in df else np.zeros_like(w)
         t = df['time_min'].values / df['time_min'].max()
+        
         X_np = np.column_stack((w, c, t)).astype(np.float32)
+        X_np = np.nan_to_num(X_np, copy=False) 
+        
         X = mx.array(X_np)
         
         model = PhysioNet()
@@ -142,8 +145,14 @@ if MLX_AVAILABLE:
         t = df_filtered['time_min'].values / df['time_min'].max()
         y = df_filtered['heartrate_smooth'].values / 200.0
 
-        X = mx.array(np.column_stack((w, c, t)).astype(np.float32))
-        Y = mx.array(y.astype(np.float32).reshape(-1, 1))
+        X_np = np.column_stack((w, c, t)).astype(np.float32)
+        X_np = np.nan_to_num(X_np, copy=False)
+        
+        y_np = y.astype(np.float32).reshape(-1, 1)
+        y_np = np.nan_to_num(y_np, copy=False)
+
+        X = mx.array(X_np)
+        Y = mx.array(y_np)
         return X, Y
 
     def train_cycling_brain(df, epochs=200):
@@ -170,8 +179,15 @@ if MLX_AVAILABLE:
         c_all = df['cadence_smooth'].values / 120.0 if 'cadence_smooth' in df else np.zeros_like(w_all)
         t_all = df['time_min'].values / df['time_min'].max()
         y_all = df['heartrate_smooth'].values / 200.0
-        X_all = mx.array(np.column_stack((w_all, c_all, t_all)).astype(np.float32))
-        Y_all = mx.array(y_all.astype(np.float32).reshape(-1, 1))
+        
+        X_all_np = np.column_stack((w_all, c_all, t_all)).astype(np.float32)
+        X_all_np = np.nan_to_num(X_all_np, copy=False)
+        
+        Y_all_np = y_all.astype(np.float32).reshape(-1, 1)
+        Y_all_np = np.nan_to_num(Y_all_np, copy=False)
+
+        X_all = mx.array(X_all_np)
+        Y_all = mx.array(Y_all_np)
         
         for i in range(100): 
             loss, grads = loss_and_grad_fn(model, X_all, Y_all)

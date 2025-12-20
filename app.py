@@ -3,6 +3,7 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import numpy as np
+from numba import jit
 import io
 from io import BytesIO
 from scipy import stats
@@ -982,9 +983,48 @@ def _serialize_df_to_parquet_bytes(df):
         df.to_csv(bio, index=False)
         return bio.getvalue()
 
+# --- NOWY SILNIK NUMBA (WKLEJ TO) ---
+@jit(nopython=True)
+def calculate_w_prime_fast(watts, time, cp, w_prime_cap):
+    n = len(watts)
+    w_bal = np.empty(n, dtype=np.float64)
+    curr_w = w_prime_cap
+    
+    # Obliczamy różnice czasu (dt) wewnątrz Numby dla szybkości
+    # Dla pierwszego punktu zakładamy 1 sekundę, dla reszty różnicę
+    dt = np.empty(n, dtype=np.float64)
+    dt[0] = 1.0 
+    for i in range(1, n):
+        val = time[i] - time[i-1]
+        # Zabezpieczenie przed zerowym czasem lub ujemnym (błędy w pliku)
+        if val <= 0:
+            dt[i] = 1.0
+        else:
+            dt[i] = val
+
+    for i in range(n):
+        # Logika: CP - Moc = delta. 
+        # Jeśli delta > 0 (jedziesz lekko) -> regeneracja.
+        # Jeśli delta < 0 (jedziesz mocno) -> spalanie.
+        delta = (cp - watts[i]) * dt[i]
+        curr_w += delta
+        
+        # Nie możemy mieć więcej niż 100% baterii
+        if curr_w > w_prime_cap:
+            curr_w = w_prime_cap
+        # Nie możemy mieć mniej niż 0% baterii
+        elif curr_w < 0:
+            curr_w = 0.0
+            
+        w_bal[i] = curr_w
+        
+    return w_bal
+# --- KONIEC NOWEGO SILNIKA ---
+
 @st.cache_data
 def _calculate_w_prime_balance_cached(df_bytes: bytes, cp: float, w_prime: float):
     try:
+        # 1. Wczytanie danych z bajtów (tak jak było)
         bio = io.BytesIO(df_bytes)
         try:
             df_pd = pd.read_parquet(bio)
@@ -996,57 +1036,36 @@ def _calculate_w_prime_balance_cached(df_bytes: bytes, cp: float, w_prime: float
             df_pd['w_prime_balance'] = np.nan
             return df_pd
 
-        watts = df_pd['watts'].to_numpy(dtype=float)
-
+        # 2. Przygotowanie tablic dla Numby (musi dostać czyste tablice numpy)
+        watts_arr = df_pd['watts'].to_numpy(dtype=np.float64)
+        
         if 'time' in df_pd.columns:
-            time_arr = df_pd['time'].to_numpy(dtype=float)
-            if not np.all(np.diff(time_arr) >= 0):
-                order = np.argsort(time_arr)
-                time_arr = time_arr[order]
-                watts = watts[order]
-                inv_order = np.argsort(order)
-            else:
-                inv_order = None
+            time_arr = df_pd['time'].to_numpy(dtype=np.float64)
         else:
-            time_arr = np.arange(len(watts), dtype=float)
-            inv_order = None
+            # Jak nie ma czasu, zakładamy co 1 sekundę
+            time_arr = np.arange(len(watts_arr), dtype=np.float64)
 
-        dt = np.diff(time_arr, prepend=time_arr[0])
-        if len(dt) > 1:
-            dt[0] = dt[1] if dt[1] > 0 else 1.0
-        else:
-            dt[0] = 1.0
+        # 3. Uruchomienie TURBO SILNIKA!
+        # Tu dzieje się magia - to trwa milisekundy zamiast sekund
+        w_bal = calculate_w_prime_fast(watts_arr, time_arr, float(cp), float(w_prime))
 
-        w_bal = np.empty_like(watts, dtype=float)
-        curr_w = float(w_prime)
-
-        for i in range(len(watts)):
-            p = watts[i]
-            delta = (cp - p) * dt[i]   # >0 -> ładowanie, <0 -> zużycie
-            curr_w += delta
-            if curr_w > w_prime:
-                curr_w = float(w_prime)
-            if curr_w < 0:
-                curr_w = 0.0
-            w_bal[i] = curr_w
-
-        if inv_order is not None:
-            w_bal = w_bal[inv_order]
-
+        # 4. Zapisanie wyniku
         df_pd['w_prime_balance'] = w_bal
         return df_pd
 
     except Exception as e:
+        # Awaryjnie zwróć pusty wynik, żeby apka się nie wywaliła
+        print(f"Błąd obliczeń W': {e}")
         try:
             bio = io.BytesIO(df_bytes)
             try:
                 df_pd = pd.read_parquet(bio)
-            except Exception:
+            except:
                 bio.seek(0)
                 df_pd = pd.read_csv(bio)
-            df_pd['w_prime_balance'] = np.zeros(len(df_pd))
+            df_pd['w_prime_balance'] = 0.0
             return df_pd
-        except Exception:
+        except:
             return pd.DataFrame({'w_prime_balance': []})
 
 def calculate_w_prime_balance(_df_pl_active, cp: float, w_prime: float):
@@ -1923,10 +1942,34 @@ if uploaded_file is not None:
         # --- TAB HRV ---
         with tab_hrv:
             st.header("Analiza Zmienności Rytmu Serca (HRV)")
-            
-            with st.spinner("Obliczanie metryk HRV..."):
-                df_dfa, dfa_error = calculate_dynamic_dfa(df_clean_pl)
 
+            # 1. Inicjalizacja "Pamięci" (Session State)
+            if 'df_dfa' not in st.session_state:
+                st.session_state.df_dfa = None
+            if 'dfa_error' not in st.session_state:
+                st.session_state.dfa_error = None
+
+            # 2. Obsługa Przycisku
+            if st.session_state.df_dfa is None and st.session_state.dfa_error is None:
+                st.info("💡 Analiza DFA Alpha-1 wymaga zaawansowanych obliczeń fraktalnych.")
+                st.markdown("Kliknij przycisk poniżej, aby uruchomić algorytm. Może to zająć od kilku do kilkunastu sekund.")
+                
+                if st.button("🚀 Oblicz HRV i DFA Alpha-1"):
+                    with st.spinner("Analiza geometrii rytmu serca... Proszę czekać..."):
+                        try:
+                            result_df, error_msg = calculate_dynamic_dfa(df_clean_pl)
+                            
+                            st.session_state.df_dfa = result_df
+                            st.session_state.dfa_error = error_msg
+                            
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Wystąpił błąd krytyczny algorytmu: {e}")
+
+            # 3. Pobranie danych z pamięci do zmiennych lokalnych
+            df_dfa = st.session_state.df_dfa
+            dfa_error = st.session_state.dfa_error
+           
             if df_dfa is not None and not df_dfa.empty:
                 
                 df_dfa = df_dfa.sort_values('time')

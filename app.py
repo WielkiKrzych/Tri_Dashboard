@@ -1406,6 +1406,8 @@ st.sidebar.header("Ustawienia Zawodnika")
 with st.sidebar.expander("⚙️ Parametry Fizyczne", expanded=True):
     rider_weight = st.number_input("Waga Zawodnika [kg]", value=95.0, step=0.5, min_value=30.0, max_value=200.0, key="weight")
     rider_height = st.number_input("Wzrost [cm]", value=180, step=1, min_value=100, max_value=250, key="height")
+    rider_age = st.number_input("Wiek [lata]", value=30, step=1, min_value=10, max_value=100, key="age")
+    is_male = st.checkbox("Mężczyzna?", value=True, key="gender_m")
     
     st.markdown("---")
     vt1_watts = st.number_input("VT1 (Próg Tlenowy) [W]", value=280, min_value=0, key="vt1_w")
@@ -1954,6 +1956,155 @@ if uploaded_file is not None:
                     st.warning("Zbyt mało danych (jazda poniżej 50W lub HR poniżej 90bpm), aby obliczyć wiarygodne Pulse Power.")
             else:
                 st.error("Brak danych mocy lub tętna.")
+                
+            # --- GROSS EFFICIENCY ---
+            st.divider()
+            st.subheader("⚙️ Gross Efficiency (GE%) - Estymacja")
+            st.caption("Stosunek mocy generowanej (Waty) do spalanej energii (Metabolizm). Typowo: 18-23%.")
+
+            # 1. Sprawdzamy, czy mamy potrzebne dane
+            if 'watts_smooth' in df_plot_resampled.columns and 'heartrate_smooth' in df_plot_resampled.columns:
+                
+                # 2. Obliczamy Moc Metaboliczną (Wzór Keytela na podstawie HR)
+                # Wzór zwraca kJ/min. Zamieniamy to na Waty (J/s).
+                # P_met [W] = (kJ/min * 1000) / 60
+                
+                # Współczynniki Keytela
+                gender_factor = -55.0969 if is_male else -20.4022
+                
+                # Obliczenie wydatku energetycznego (EE) w kJ/min dla każdej sekundy
+                # Używamy wygładzonego HR, żeby uniknąć skoków
+                ee_kj_min = gender_factor + \
+                            (0.6309 * df_plot_resampled['heartrate_smooth']) + \
+                            (0.1988 * rider_weight) + \
+                            (0.2017 * rider_age)
+                
+                # Konwersja na Waty Metaboliczne (P_met)
+                # Uwaga: EE nie może być ujemne ani zerowe (serce bije)
+                p_metabolic = (ee_kj_min * 1000) / 60
+                p_metabolic = p_metabolic.replace(0, np.nan) # Unikamy dzielenia przez zero
+                
+                # 3. Obliczamy Gross Efficiency (GE)
+                # GE = (Moc Mechaniczna / Moc Metaboliczna) * 100
+                # Filtrujemy momenty, gdzie nie pedałujesz (Moc < 10W), bo wtedy GE=0
+                
+                ge_series = (df_plot_resampled['watts_smooth'] / p_metabolic) * 100
+                
+                # Filtrujemy dane nierealistyczne i "zimny start"
+                # 1. Watts > 40 (żeby nie dzielić przez zero na postojach)
+                # 2. GE między 5% a 30% (wszystko powyżej 30% to błąd pomiaru lub HR Lag)
+                # 3. HR > 100 bpm (Wzór Keytela bardzo słabo działa dla niskiego tętna!)
+                
+                mask_ge = (df_plot_resampled['watts_smooth'] > 100) & \
+                        (ge_series > 5) & (ge_series < 30) & \
+                        (df_plot_resampled['heartrate_smooth'] > 110) 
+                
+                # Zerujemy błędne wartości (zamieniamy na NaN, żeby nie rysowały się na wykresie)
+                df_ge = pd.DataFrame({
+                    'time_min': df_plot_resampled['time_min'],
+                    'ge': ge_series,
+                    'watts': df_plot_resampled['watts_smooth']
+                })
+                df_ge.loc[~mask_ge, 'ge'] = np.nan
+                
+                # 4. Czyszczenie danych (Realistyczne ramy fizjologiczne)
+                # GE rzadko przekracza 30% (chyba że zjeżdżasz z góry i HR spada szybciej niż waty)
+                # GE poniżej 0% to błąd.
+                mask_ge = (df_plot_resampled['watts_smooth'] > 40) & \
+                        (ge_series > 5) & (ge_series < 35)
+                
+                df_ge = pd.DataFrame({
+                    'time_min': df_plot_resampled['time_min'],
+                    'ge': ge_series,
+                    'watts': df_plot_resampled['watts_smooth']
+                })
+                # Zerujemy nierealistyczne wartości do wykresu
+                df_ge.loc[~mask_ge, 'ge'] = np.nan
+
+                if not df_ge['ge'].isna().all():
+                    avg_ge = df_ge['ge'].mean()
+                    
+                    # KOLUMNY Z WYNIKAMI
+                    cg1, cg2, cg3 = st.columns(3)
+                    cg1.metric("Średnie GE", f"{avg_ge:.1f}%", help="Pro: 23%+, Amator: 18-21%")
+                    
+                    # Trend GE (czy spada w czasie?)
+                    valid_ge = df_ge.dropna(subset=['ge'])
+                    if len(valid_ge) > 100:
+                        slope_ge, _, _, _, _ = stats.linregress(valid_ge['time_min'], valid_ge['ge'])
+                        total_drift_ge = slope_ge * (valid_ge['time_min'].iloc[-1] - valid_ge['time_min'].iloc[0])
+                        cg2.metric("Zmiana GE (Trend)", f"{total_drift_ge:.1f}%", delta_color="inverse" if total_drift_ge < 0 else "normal")
+                    else:
+                        cg2.metric("Zmiana GE", "-")
+
+                    cg3.info("Wartości powyżej 25% mogą wynikać z opóźnienia tętna względem mocy (np. krótkie interwały). Analizuj trendy na długich odcinkach.")
+
+                    # WYKRES GE
+                    fig_ge = go.Figure()
+                    
+                    # Linia GE
+                    fig_ge.add_trace(go.Scatter(
+                        x=df_ge['time_min'], 
+                        y=df_ge['ge'],
+                        mode='lines',
+                        name='Gross Efficiency (%)',
+                        line=dict(color='#00cc96', width=1.5),
+                        connectgaps=False, # Nie łączymy przerw (postojów)
+                        hovertemplate="GE: %{y:.1f}%<extra></extra>"
+                    ))
+                    
+                    # Tło (Moc)
+                    fig_ge.add_trace(go.Scatter(
+                        x=df_ge['time_min'], 
+                        y=df_ge['watts'],
+                        mode='lines',
+                        name='Moc (Tło)',
+                        yaxis='y2',
+                        line=dict(color='rgba(255,255,255,0.1)', width=1),
+                        fill='tozeroy',
+                        fillcolor='rgba(255,255,255,0.05)',
+                        hoverinfo='skip'
+                    ))
+                    
+                    # Linia Trendu GE
+                    if len(valid_ge) > 100:
+                        trend_line = np.poly1d(np.polyfit(valid_ge['time_min'], valid_ge['ge'], 1))(valid_ge['time_min'])
+                        fig_ge.add_trace(go.Scatter(
+                            x=valid_ge['time_min'],
+                            y=trend_line,
+                            mode='lines',
+                            name='Trend GE',
+                            line=dict(color='white', width=2, dash='dash')
+                        ))
+
+                    fig_ge.update_layout(
+                        template="plotly_dark",
+                        title="Efektywność Brutto (GE%) w Czasie",
+                        hovermode="x unified",
+                        yaxis=dict(title="GE [%]", range=[10, 30]),
+                        yaxis2=dict(title="Moc [W]", overlaying='y', side='right', showgrid=False),
+                        height=400,
+                        margin=dict(l=10, r=10, t=40, b=10),
+                        legend=dict(orientation="h", y=1.1, x=0)
+                    )
+                    
+                    st.plotly_chart(fig_ge, use_container_width=True)
+                    
+                    with st.expander("🧠 Jak interpretować GE?", expanded=False):
+                        st.markdown("""
+                        **Fizjologia GE:**
+                        * **< 18%:** Niska wydajność. Dużo energii tracisz na ciepło i nieskoordynowane ruchy (kołysanie biodrami). Częste u początkujących.
+                        * **19-21%:** Standard amatorski. Dobrze wytrenowany kolarz klubowy.
+                        * **22-24%:** Poziom ELITE / PRO. Twoje mięśnie to maszyny.
+                        * **> 25%:** Podejrzane (chyba że jesteś zwycięzcą Tour de France). Często wynika z błędów pomiaru (np. miernik mocy zawyża, tętno zaniżone, jazda w dół).
+
+                        **Dlaczego GE spada w czasie?**
+                        Gdy się męczysz, rekrutujesz włókna mięśniowe typu II (szybkokurczliwe), które są mniej wydajne tlenowo. Dodatkowo rośnie temperatura ciała (Core Temp), co kosztuje energię. Spadek GE pod koniec długiego treningu to doskonały wskaźnik zmęczenia metabolicznego.
+                        """)
+                else:
+                    st.warning("Brak wystarczających danych do obliczenia GE (zbyt krótkie odcinki stabilnej jazdy).")
+            else:
+                st.error("Do obliczenia GE potrzebujesz danych Mocy (Watts) oraz Tętna (HR).")
 
         # --- TAB HRV ---
         with tab_hrv:

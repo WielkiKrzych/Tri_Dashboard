@@ -5,12 +5,7 @@ plotly
 numpy
 scipy
 neurokit2
-io
 matplotlib
-BytesIO
-stats
-os
-json
-time
+statsmodels
 python-docx
 mlx

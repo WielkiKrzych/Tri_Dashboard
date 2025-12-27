@@ -1419,7 +1419,7 @@ with st.sidebar.expander("⚙️ Parametry Fizyczne", expanded=True):
     vt2_vent = st.number_input("VT2 (Próg Beztlenowy) [L/min]", value=136.0, min_value=0.0, key="vt2_v")
 
 st.sidebar.divider()
-cp_input = st.sidebar.number_input("Moc Krytyczna (CP/FTP) [W]", value=410, min_value=1, key="cp_in")
+cp_input = st.sidebar.number_input("Moc Krytyczna (CP) [W]", value=410, min_value=1, key="cp_in")
 w_prime_input = st.sidebar.number_input("W' (W Prime) [J]", value=31000, min_value=0, key="wp_in")
 st.sidebar.divider()
 crank_length = st.sidebar.number_input("Długość korby [mm]", value=160.0, key="crank")

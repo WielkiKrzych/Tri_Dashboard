@@ -38,25 +38,79 @@ from modules.intervals import detect_intervals
 from modules.notes import TrainingNotes
 from modules.reports import generate_docx_report, export_all_charts_as_png
 
-# UI Modules
-from modules.ui.report import render_report_tab
-from modules.ui.kpi import render_kpi_tab
-from modules.ui.power import render_power_tab
-from modules.ui.intervals_ui import render_intervals_tab
-from modules.ui.hrv import render_hrv_tab
-from modules.ui.biomech import render_biomech_tab
-from modules.ui.thermal import render_thermal_tab
-from modules.ui.trends import render_trends_tab
-from modules.ui.nutrition import render_nutrition_tab
-from modules.ui.smo2 import render_smo2_tab
-from modules.ui.hemo import render_hemo_tab
-from modules.ui.vent import render_vent_tab
-from modules.ui.limiters import render_limiters_tab
-from modules.ui.ai_coach import render_ai_coach_tab
-from modules.ui.model import render_model_tab
+# UI Modules - Lazy Loading for faster startup
+# Each function only imports its module when actually called
+def render_report_tab(*args, **kwargs):
+    from modules.ui.report import render_report_tab as _render
+    return _render(*args, **kwargs)
+
+def render_kpi_tab(*args, **kwargs):
+    from modules.ui.kpi import render_kpi_tab as _render
+    return _render(*args, **kwargs)
+
+def render_power_tab(*args, **kwargs):
+    from modules.ui.power import render_power_tab as _render
+    return _render(*args, **kwargs)
+
+def render_intervals_tab(*args, **kwargs):
+    from modules.ui.intervals_ui import render_intervals_tab as _render
+    return _render(*args, **kwargs)
+
+def render_hrv_tab(*args, **kwargs):
+    from modules.ui.hrv import render_hrv_tab as _render
+    return _render(*args, **kwargs)
+
+def render_biomech_tab(*args, **kwargs):
+    from modules.ui.biomech import render_biomech_tab as _render
+    return _render(*args, **kwargs)
+
+def render_thermal_tab(*args, **kwargs):
+    from modules.ui.thermal import render_thermal_tab as _render
+    return _render(*args, **kwargs)
+
+def render_trends_tab(*args, **kwargs):
+    from modules.ui.trends import render_trends_tab as _render
+    return _render(*args, **kwargs)
+
+def render_nutrition_tab(*args, **kwargs):
+    from modules.ui.nutrition import render_nutrition_tab as _render
+    return _render(*args, **kwargs)
+
+def render_smo2_tab(*args, **kwargs):
+    from modules.ui.smo2 import render_smo2_tab as _render
+    return _render(*args, **kwargs)
+
+def render_hemo_tab(*args, **kwargs):
+    from modules.ui.hemo import render_hemo_tab as _render
+    return _render(*args, **kwargs)
+
+def render_vent_tab(*args, **kwargs):
+    from modules.ui.vent import render_vent_tab as _render
+    return _render(*args, **kwargs)
+
+def render_limiters_tab(*args, **kwargs):
+    from modules.ui.limiters import render_limiters_tab as _render
+    return _render(*args, **kwargs)
+
+def render_ai_coach_tab(*args, **kwargs):
+    from modules.ui.ai_coach import render_ai_coach_tab as _render
+    return _render(*args, **kwargs)
+
+def render_model_tab(*args, **kwargs):
+    from modules.ui.model import render_model_tab as _render
+    return _render(*args, **kwargs)
 
 from modules.comparison import render_compare_dashboard
 from modules.settings import SettingsManager
+
+
+def cleanup_session_state():
+    """Clean up old DataFrames from session state to free memory."""
+    keys_to_check = ['_prev_df_plot', '_prev_df_resampled', '_prev_file_name']
+    for key in keys_to_check:
+        if key in st.session_state:
+            del st.session_state[key]
+
 
 
 st.set_page_config(page_title="Pro Athlete Dashboard", layout="wide", page_icon="⚡")
@@ -151,6 +205,9 @@ if rider_weight <= 0 or cp_input <= 0:
     st.stop()
 
 if uploaded_file is not None:
+    # Clean up old data when new file is uploaded
+    cleanup_session_state()
+    
     with st.spinner('Przetwarzanie danych...'):
         try:
             df_raw = load_data(uploaded_file)
@@ -236,60 +293,7 @@ if uploaded_file is not None:
         else:
             tss_header = 0; if_header = 0
 
-        # ===== STICKY HEADER - PANEL Z KLUCZOWYMI METRYKAMI =====
-        st.markdown("""
-        <style>
-        .sticky-metrics {
-            position: sticky;
-            top: 60px;
-            z-index: 999;
-            background: linear-gradient(135deg, #1a1f25 0%, #0e1117 100%);
-            padding: 15px;
-            border-radius: 10px;
-            border: 1px solid #30363d;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
-            margin-bottom: 20px;
-            backdrop-filter: blur(10px);
-        }
-        .sticky-metrics h4 {
-            margin: 0 0 10px 0;
-            color: #00cc96;
-            font-size: 14px;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-        }
-        .metric-row {
-            display: flex;
-            justify-content: space-around;
-            flex-wrap: wrap;
-            gap: 10px;
-        }
-        .metric-box {
-            flex: 1;
-            min-width: 120px;
-            background: rgba(255, 255, 255, 0.03);
-            padding: 10px;
-            border-radius: 8px;
-            text-align: center;
-            border: 1px solid rgba(255, 255, 255, 0.1);
-        }
-        .metric-box .label {
-            font-size: 11px;
-            color: #8b949e;
-            text-transform: uppercase;
-        }
-        .metric-box .value {
-            font-size: 20px;
-            font-weight: 700;
-            color: #f0f6fc;
-            margin-top: 5px;
-        }
-        .metric-box .unit {
-            font-size: 12px;
-            color: #8b949e;
-        }
-        </style>
-        """, unsafe_allow_html=True)
+        # ===== STICKY HEADER - styles are in style.css =====
 
         # Oblicz metryki dla sticky panelu
         avg_power = metrics.get('avg_watts', 0)

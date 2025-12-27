@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+from datetime import datetime
 import plotly.express as px
 import plotly.graph_objects as go
 import numpy as np
@@ -233,7 +234,7 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 import zipfile
 from io import BytesIO
 
-from fpdf import FPDF
+
 import base64
 
 # ===== TRAINING NOTES SYSTEM =====
@@ -860,20 +861,7 @@ Wykresy 9 i 10 zawierają analizę odcinków wybranych w aplikacji.
     return zip_buffer.getvalue()
 # ===== KONIEC PNG EXPORT =====
 
-class PDFReport(FPDF):
-    def header(self):
-        self.set_font('Arial', 'B', 15)
-        self.cell(0, 10, 'Pro Athlete Dashboard - Raport Treningowy', 0, 1, 'C')
-        self.ln(10)
 
-    def footer(self):
-        self.set_y(-15)
-        self.set_font('Arial', 'I', 8)
-        self.cell(0, 10, f'Strona {self.page_no()}', 0, 0, 'C')
-
-def create_download_link(val, filename):
-    b64 = base64.b64encode(val)  # val looks like b'...'
-    return f'<a href="data:application/octet-stream;base64,{b64.decode()}" download="{filename}.pdf">📥 Pobierz Raport PDF</a>'
 
 st.set_page_config(page_title="Pro Athlete Dashboard", layout="wide", page_icon="⚡")
 
@@ -4192,117 +4180,7 @@ if uploaded_file is not None:
         else:
             st.warning("Za mało danych (wymagane min. 20 minut jazdy z pomiarem mocy).")
 
-       # --- EXPORT DO PDF (Wersja CLEAN & STABLE) ---
-from fpdf import FPDF
-from datetime import datetime
 
-# 1. Funkcja czyszcząca tekst (niezbędna dla FPDF bez zewnętrznych czcionek)
-def clean_text(text):
-    if text is None: return ""
-    text = str(text)
-    replacements = {
-        'ą': 'a', 'ć': 'c', 'ę': 'e', 'ł': 'l', 'ń': 'n', 'ó': 'o', 'ś': 's', 'ź': 'z', 'ż': 'z',
-        'Ą': 'A', 'Ć': 'C', 'Ę': 'E', 'Ł': 'L', 'Ń': 'N', 'Ó': 'O', 'Ś': 'S', 'Ź': 'Z', 'Ż': 'Z',
-        '²': '2', '³': '3', '°': 'st.', '≈': '~', 'Δ': 'delta', 'Średnia': 'Srednia'
-    }
-    for k, v in replacements.items():
-        text = text.replace(k, v)
-    # Usuwamy znaki, których standardowy font nie ogarnie
-    return text.encode('latin-1', 'replace').decode('latin-1')
-
-def fmt_time(seconds):
-    try:
-        seconds = int(seconds)
-        h = seconds // 3600
-        m = (seconds % 3600) // 60
-        s = seconds % 60
-        if h > 0: return f"{h}h {m}m"
-        return f"{m}m {s}s"
-    except: return "-"
-
-class ProPDF(FPDF):
-    def header(self):
-        # Pasek koloru na górze
-        self.set_fill_color(0, 204, 150) # Streamlit Green
-        self.rect(0, 0, 210, 5, 'F')
-        
-        self.ln(5)
-        self.set_font('Arial', 'B', 18)
-        self.set_text_color(40, 40, 40)
-        self.cell(0, 10, 'RAPORT TRENINGOWY', 0, 1, 'L')
-        
-        self.set_font('Arial', '', 10)
-        self.set_text_color(100, 100, 100)
-        self.cell(0, 5, 'Pro Athlete Dashboard Analysis', 0, 1, 'L')
-        
-        self.ln(5)
-        self.set_draw_color(200, 200, 200)
-        self.line(10, 30, 200, 30)
-        self.ln(10)
-
-    def footer(self):
-        self.set_y(-15)
-        self.set_font('Arial', 'I', 8)
-        self.set_text_color(150)
-        self.cell(0, 10, f'Data generowania: {datetime.now().strftime("%Y-%m-%d %H:%M")} | Strona {self.page_no()}', 0, 0, 'C')
-
-    def section_header(self, title):
-        self.ln(5)
-        self.set_font('Arial', 'B', 12)
-        self.set_fill_color(240, 240, 240)
-        self.set_text_color(0, 0, 0)
-        # Pełna szerokość paska
-        self.cell(0, 8, f"  {clean_text(title)}", 0, 1, 'L', 1)
-        self.ln(3)
-
-    def kpi_box(self, label, value, unit, x, y, w=45):
-        # Tło
-        self.set_xy(x, y)
-        self.set_fill_color(255, 255, 255)
-        self.set_draw_color(220, 220, 220)
-        self.rect(x, y, w, 18, 'DF')
-        
-        # Label (Góra, mniejsza czcionka)
-        self.set_xy(x, y+2)
-        self.set_font('Arial', '', 7)
-        self.set_text_color(100)
-        self.cell(w, 4, clean_text(label), 0, 2, 'C')
-        
-        # Value (Środek, duża czcionka)
-        self.set_font('Arial', 'B', 11)
-        self.set_text_color(0)
-        self.cell(w, 6, clean_text(value), 0, 2, 'C')
-        
-        # Unit (Dół, mała czcionka)
-        self.set_font('Arial', '', 7)
-        self.set_text_color(150)
-        self.cell(w, 4, clean_text(unit), 0, 0, 'C')
-
-    def create_table_row(self, data, widths, fill=False):
-        """Tworzy wiersz tabeli z podanymi danymi i szerokościami kolumn."""
-        self.set_font('Arial', '', 9)
-        self.set_text_color(40, 40, 40)
-        if fill:
-            self.set_fill_color(245, 245, 245)
-        else:
-            self.set_fill_color(255, 255, 255)
-        
-        for i, datum in enumerate(data):
-            w = widths[i] if i < len(widths) else widths[-1]
-            self.cell(w, 7, clean_text(str(datum)), 1, 0, 'C', fill)
-        self.ln()
-
-    def create_table_header(self, headers, widths):
-        """Tworzy nagłówek tabeli."""
-        self.set_font('Arial', 'B', 9)
-        self.set_fill_color(60, 60, 60)
-        self.set_text_color(255, 255, 255)
-        
-        for i, header in enumerate(headers):
-            w = widths[i] if i < len(widths) else widths[-1]
-            self.cell(w, 8, clean_text(str(header)), 1, 0, 'C', 1)
-        self.ln()
-        self.set_text_color(0, 0, 0)
 
 # ===== DOCX EXPORT BUTTON =====
 st.sidebar.markdown("---")
@@ -4310,7 +4188,7 @@ st.sidebar.header("📄 Export Raportu")
 
 if 'df_plot' in locals() and uploaded_file is not None:
     # Kolumny dla przycisków
-    col_docx, col_pdf, col_png = st.sidebar.columns(3)
+    col_docx, col_png = st.sidebar.columns(2)
     
     with col_docx:
         # Generuj DOCX
@@ -4336,10 +4214,7 @@ if 'df_plot' in locals() and uploaded_file is not None:
         except Exception as e:
             st.sidebar.error(f"Błąd DOCX: {e}")
     
-    with col_pdf:
-        # Stary PDF button zostaje
-        st.sidebar.info("PDF deprecated - używaj DOCX")
-        
+
     with col_png:
     # Generuj PNG ZIP
         try:
@@ -4362,316 +4237,3 @@ if 'df_plot' in locals() and uploaded_file is not None:
 else:
     st.sidebar.info("Wgraj plik aby pobrać raport.")
 # ===== KONIEC DOCX =====
-
-st.sidebar.markdown("---")
-st.sidebar.header("🖨️ Export Raportu")
-
-if 'df_plot' in locals() and uploaded_file is not None:
-    
-    def generate_final_pdf():
-        pdf = ProPDF()
-        pdf.add_page()
-        
-        # --- OBLICZENIA POMOCNICZE (Pre-Calc) ---
-        
-        # 1. VO2Max (MMP 5min)
-        vo2_max_est = 0
-        if 'watts' in df_plot.columns:
-            mmp_5m = df_plot['watts'].rolling(300).mean().max()
-            if not pd.isna(mmp_5m):
-                vo2_max_est = (10.8 * mmp_5m / rider_weight) + 7
-        
-        # 2. WĘGLOWODANY (Dokładna metoda strefowa)
-        carbs_total = 0
-        if 'watts' in df_plot.columns:
-            energy_kcal_series = (df_plot['watts'] / 0.22) / 4184.0
-            conditions = [
-                (df_plot['watts'] < vt1_watts),
-                (df_plot['watts'] >= vt1_watts) & (df_plot['watts'] < vt2_watts),
-                (df_plot['watts'] >= vt2_watts)
-            ]
-            choices = [0.3, 0.8, 1.1]
-            carb_fraction = np.select(conditions, choices, default=1.0)
-            carbs_series = (energy_kcal_series * carb_fraction) / 4.0
-            carbs_total = carbs_series.sum()
-
-        # 3. Pulse Power Interpretacja
-        pp_trend_txt = "Brak danych"
-        pp_interpret = "N/A"
-        if 'watts_smooth' in df_plot.columns and 'heartrate_smooth' in df_plot.columns:
-            mask = (df_plot['watts_smooth'] > 50) & (df_plot['heartrate_smooth'] > 90)
-            df_sub = df_plot[mask].copy()
-            if not df_sub.empty:
-                df_sub['pp'] = df_sub['watts_smooth'] / df_sub['heartrate_smooth']
-                slope, intercept, _, _, _ = stats.linregress(np.arange(len(df_sub)), df_sub['pp'].values)
-                trend_pct = ((intercept + slope*len(df_sub)) - intercept) / intercept * 100 if intercept != 0 else 0
-                pp_trend_txt = f"{trend_pct:.1f}%"
-                
-                if trend_pct < -10: pp_interpret = "Krytyczny Dryf"
-                elif trend_pct < -5: pp_interpret = "Umiarkowany Dryf"
-                elif trend_pct > 5: pp_interpret = "Wzrost Wydajnosci"
-                else: pp_interpret = "Stabilna Wydolnosc"
-
-        # --- SEKCJA 1: PODSUMOWANIE (GRID 4x2) ---
-        pdf.section_header("1. Podsumowanie Wykonania (KPI)")
-        
-        avg_w = metrics.get('avg_watts', 0)
-        avg_hr = metrics.get('avg_hr', 0)
-        work_kj = metrics.get('work_above_cp_kj', 0)
-        
-        start_x = 10
-        start_y = pdf.get_y()
-        w_box = 45
-        gap = 2
-        
-        # Rząd 1
-        pdf.kpi_box("Srednia Moc", f"{avg_w:.0f}", "W", start_x, start_y, w_box)
-        pdf.kpi_box("Srednie HR", f"{avg_hr:.0f}", "bpm", start_x + w_box + gap, start_y, w_box)
-        pdf.kpi_box("Szac. VO2Max", f"{vo2_max_est:.1f}", "ml/kg/min", start_x + (w_box + gap)*2, start_y, w_box)
-        pdf.kpi_box("Spalone Wegle", f"{carbs_total:.0f}", "g", start_x + (w_box + gap)*3, start_y, w_box)
-        
-        # Rząd 2
-        start_y += 20
-        pdf.kpi_box("Decoupling (Dryf)", f"{decoupling_percent:.1f}", "%", start_x, start_y, w_box)
-        pdf.kpi_box("Efficiency (EF)", f"{metrics.get('ef_factor', 0):.2f}", "W/bpm", start_x + w_box + gap, start_y, w_box)
-        vent_val = metrics.get('avg_vent', 0)
-        pdf.kpi_box("Wentylacja (VE)", f"{vent_val:.1f}", "L/min", start_x + (w_box + gap)*2, start_y, w_box)
-        
-        if 'smo2' in df_plot.columns:
-            pdf.kpi_box("Srednie SmO2", f"{df_plot['smo2'].mean():.1f}", "%", start_x + (w_box + gap)*3, start_y, w_box)
-        else:
-            pdf.kpi_box("Srednie SmO2", "-", "%", start_x + (w_box + gap)*3, start_y, w_box)
-            
-        pdf.set_y(start_y + 25)
-
-        # --- SEKCJA 2: ANALIZA FIZJOLOGICZNA (Tabela) ---
-        pdf.section_header("2. Fizjologia i Pulse Power")
-        
-        pdf.set_fill_color(220)
-        pdf.set_font('Arial', 'B', 9)
-        pdf.cell(60, 8, "Parametr", 1, 0, 'L', 1)
-        pdf.cell(40, 8, "Wartosc", 1, 0, 'C', 1)
-        pdf.cell(90, 8, "Interpretacja / Status", 1, 1, 'L', 1)
-        
-        pdf.set_font('Arial', '', 9)
-        
-        pdf.cell(60, 8, clean_text("Pulse Power Trend"), 1)
-        pdf.cell(40, 8, clean_text(pp_trend_txt), 1, 0, 'C')
-        if "Stabilna" in pp_interpret: pdf.set_text_color(0, 150, 0)
-        elif "Dryf" in pp_interpret: pdf.set_text_color(200, 0, 0)
-        pdf.cell(90, 8, clean_text(pp_interpret), 1, 1, 'L')
-        pdf.set_text_color(0)
-        
-        pdf.cell(60, 8, clean_text("Praca Beztlenowa (>CP)"), 1)
-        pdf.cell(40, 8, f"{work_kj:.0f} kJ", 1, 0, 'C')
-        w_status = "Bezpiecznie" if work_kj < w_prime_input else "Przekroczono W' (Ryzykowne)"
-        pdf.cell(90, 8, clean_text(w_status), 1, 1, 'L')
-        
-        if 'core_temperature' in df_plot.columns:
-            max_t = df_plot['core_temperature'].max()
-            t_status = "Komfort" if max_t < 38.5 else ("Stres Cieplny" if max_t < 39.0 else "PRZEGRZANIE")
-            pdf.cell(60, 8, clean_text("Temp. Maksymalna"), 1)
-            pdf.cell(40, 8, f"{max_t:.2f} C", 1, 0, 'C')
-            pdf.cell(90, 8, clean_text(t_status), 1, 1, 'L')
-
-        pdf.ln(5)
-
-        # --- SEKCJA 3: HRV & VT1 ESTIMATION ---
-        pdf.section_header("3. HRV: Progi i Geometria")
-        
-        vt1_w_est = "-"
-        vt1_hr_est = "-"
-        alpha_avg_txt = "-"
-        
-        rr_col = next((c for c in df_clean_pl.columns if any(x in c.lower() for x in ['rr', 'hrv', 'ibi', 'r-r'])), None)
-        
-        if rr_col:
-            try:
-                temp_dfa, _ = calculate_dynamic_dfa(df_clean_pl, window_sec=120)
-                if temp_dfa is not None and not temp_dfa.empty:
-                    alpha_avg_txt = f"{temp_dfa['alpha1'].mean():.2f}"
-                    
-                    orig_times = df_plot['time'].values
-                    orig_watts = df_plot['watts_smooth'].values
-                    orig_hr = df_plot['heartrate_smooth'].values
-                    dfa_times = temp_dfa['time'].values
-                    dfa_watts = np.interp(dfa_times, orig_times, orig_watts)
-                    dfa_hr = np.interp(dfa_times, orig_times, orig_hr)
-                    
-                    valid_mask = (temp_dfa['time'] > 300) & (temp_dfa['alpha1'] < 0.75)
-                    stress_df = temp_dfa[valid_mask]
-                    
-                    if not stress_df.empty:
-                        idx = stress_df.index[0]
-                        vt1_w_est = f"{dfa_watts[idx]:.0f} W"
-                        vt1_hr_est = f"{dfa_hr[idx]:.0f} bpm"
-                    else:
-                        vt1_w_est = "Alpha > 0.75"
-                        vt1_hr_est = "-"
-            except: pass
-
-        pdf.set_fill_color(240)
-        pdf.cell(50, 8, "Parametr HRV", 1, 0, 'L', 1)
-        pdf.cell(40, 8, "Wynik", 1, 0, 'C', 1)
-        pdf.cell(100, 8, "Opis", 1, 1, 'L', 1)
-        
-        pdf.cell(50, 8, "Est. VT1 (Moc)", 1)
-        pdf.set_font('Arial', 'B', 9)
-        pdf.cell(40, 8, clean_text(vt1_w_est), 1, 0, 'C')
-        pdf.set_font('Arial', '', 8)
-        pdf.cell(100, 8, "Moc przy ktorej Alpha-1 spada ponizej 0.75", 1, 1)
-        
-        pdf.set_font('Arial', '', 9)
-        pdf.cell(50, 8, "Est. VT1 (HR)", 1)
-        pdf.set_font('Arial', 'B', 9)
-        pdf.cell(40, 8, clean_text(vt1_hr_est), 1, 0, 'C')
-        pdf.set_font('Arial', '', 8)
-        pdf.cell(100, 8, "Tetno na pierwszym progu wentylacyjnym", 1, 1)
-        
-        pdf.set_font('Arial', '', 9)
-        pdf.cell(50, 8, "Srednie DFA Alpha-1", 1)
-        pdf.cell(40, 8, alpha_avg_txt, 1, 0, 'C')
-        pdf.set_font('Arial', '', 8)
-        pdf.cell(100, 8, "Korelacja fraktalna (1.0 = Baza, 0.5 = Prog beztlenowy)", 1, 1)
-
-        pdf.ln(5)
-
-        # --- SEKCJA 4: CZAS W STREFACH ---
-        pdf.section_header("4. Czas w Strefach")
-        if 'watts' in df_plot.columns:
-            pdf.set_fill_color(0, 204, 150)
-            pdf.set_text_color(255)
-            z_headers = ['Strefa', 'Zakres', 'Czas', '%']
-            w_z = [60, 45, 45, 40]
-            for i, h in enumerate(z_headers):
-                pdf.cell(w_z[i], 7, h, 1, 0, 'C', 1)
-            pdf.ln()
-            
-            pdf.set_text_color(0)
-            zones = [
-                ("Z1 Recovery", 0, 0.55*cp_input),
-                ("Z2 Endurance", 0.56*cp_input, 0.75*cp_input),
-                ("Z3 Tempo", 0.76*cp_input, 0.90*cp_input),
-                ("Z4 Threshold", 0.91*cp_input, 1.05*cp_input),
-                ("Z5 VO2Max", 1.06*cp_input, 1.20*cp_input),
-                ("Z6 Anaerobic", 1.21*cp_input, 2000)
-            ]
-            total_t = len(df_plot)
-            
-            for i, (name, low, high) in enumerate(zones):
-                count = len(df_plot[(df_plot['watts'] >= low) & (df_plot['watts'] < high)])
-                pct = count/total_t*100 if total_t>0 else 0
-                range_s = f"{low:.0f}-{high:.0f} W" if high < 1999 else f"> {low:.0f} W"
-                fill = (i % 2 == 1)
-                pdf.create_table_row([name, range_s, fmt_time(count), f"{pct:.1f}%"], w_z, fill=fill)
-
-        # Pomocniczy parser (lokalny dla pewności)
-        def _local_parse(t_str):
-            try:
-                parts = list(map(int, t_str.split(':')))
-                if len(parts) == 3: return parts[0]*3600 + parts[1]*60 + parts[2]
-                if len(parts) == 2: return parts[0]*60 + parts[1]
-                if len(parts) == 1: return parts[0]
-            except: return None
-            return None
-
-        # --- SEKCJA 5: ANALIZA ODCINKA (SmO2) ---
-        pdf.ln(5)
-        pdf.section_header("5. Analiza Wybranego Odcinka (SmO2)")
-        
-        s_int_str = start_time_str if 'start_time_str' in globals() else "Brak"
-        e_int_str = end_time_str if 'end_time_str' in globals() else "Brak"
-        
-        s_sec_val = _local_parse(s_int_str)
-        e_sec_val = _local_parse(e_int_str)
-        
-        found_smo2 = False
-        if s_sec_val is not None and e_sec_val is not None:
-            col_s = 'smo2_smooth' if 'smo2_smooth' in df_plot.columns else ('smo2' if 'smo2' in df_plot.columns else None)
-            col_w = 'watts_smooth' if 'watts_smooth' in df_plot.columns else 'watts'
-            
-            if col_s and col_w:
-                mask_int = (df_plot['time'] >= s_sec_val) & (df_plot['time'] <= e_sec_val)
-                df_int = df_plot[mask_int].copy()
-                if not df_int.empty:
-                    found_smo2 = True
-                    dur_int = e_sec_val - s_sec_val
-                    
-                    avg_w_int = df_int[col_w].mean()
-                    avg_s_int = df_int[col_s].mean()
-                    min_s_int = df_int[col_s].min()
-                    
-                    slope_s, _, _, _, _ = stats.linregress(df_int['time'], df_int[col_s])
-                    
-                    pdf.set_font('Arial', '', 10)
-                    pdf.cell(0, 5, f"Zakres: {s_int_str} - {e_int_str} (Czas: {dur_int}s)", 0, 1)
-                    start_x = 10; start_y = pdf.get_y() + 5; w_box = 45; gap = 2
-                    
-                    pdf.kpi_box("Srednia Moc", f"{avg_w_int:.0f}", "W", start_x, start_y, w_box)
-                    pdf.kpi_box("Srednie SmO2", f"{avg_s_int:.1f}", "%", start_x + w_box + gap, start_y, w_box)
-                    pdf.kpi_box("Min SmO2", f"{min_s_int:.1f}", "%", start_x + (w_box + gap)*2, start_y, w_box)
-                    pdf.kpi_box("Slope SmO2", f"{slope_s:.4f}", "%/s", start_x + (w_box + gap)*3, start_y, w_box)
-                    pdf.ln(25)
-        
-        if not found_smo2:
-            pdf.set_font('Arial', 'I', 9)
-            pdf.cell(0, 10, clean_text("Brak danych lub nie wybrano odcinka w zakladce SmO2."), 0, 1)
-
-        # --- SEKCJA 6: ANALIZA ODCINKA (WENTYLACJA) ---
-        # NOWOŚĆ: To jest ten blok, o który prosiłeś
-        pdf.section_header("6. Analiza Wybranego Odcinka (Wentylacja)")
-        
-        # Pobieramy zmienne z zakładki Vent (muszą być globalne)
-        s_vent_str = start_time_v if 'start_time_v' in globals() else "Brak"
-        e_vent_str = end_time_v if 'end_time_v' in globals() else "Brak"
-        
-        s_v_sec = _local_parse(s_vent_str)
-        e_v_sec = _local_parse(e_vent_str)
-        
-        found_vent = False
-        if s_v_sec is not None and e_v_sec is not None:
-            col_ve = 'tymeventilation' if 'tymeventilation' in df_plot.columns else None
-            col_w = 'watts' if 'watts' in df_plot.columns else None
-            
-            if col_ve and col_w:
-                mask_v = (df_plot['time'] >= s_v_sec) & (df_plot['time'] <= e_v_sec)
-                df_v = df_plot[mask_v].copy()
-                
-                if not df_v.empty:
-                    found_vent = True
-                    dur_v = e_v_sec - s_v_sec
-                    
-                    avg_w_v = df_v[col_w].mean()
-                    avg_ve_v = df_v[col_ve].mean()
-                    ve_w_ratio = avg_ve_v / avg_w_v if avg_w_v > 0 else 0
-                    
-                    slope_ve, _, _, _, _ = stats.linregress(df_v['time'], df_v[col_ve])
-                    
-                    pdf.set_font('Arial', '', 10)
-                    pdf.cell(0, 5, f"Zakres: {s_vent_str} - {e_vent_str} (Czas: {dur_v}s)", 0, 1)
-                    
-                    start_x = 10; start_y = pdf.get_y() + 5; w_box = 45; gap = 2
-                    
-                    pdf.kpi_box("Srednia Moc", f"{avg_w_v:.0f}", "W", start_x, start_y, w_box)
-                    pdf.kpi_box("Srednie VE", f"{avg_ve_v:.1f}", "L/min", start_x + w_box + gap, start_y, w_box)
-                    pdf.kpi_box("Wydajnosc (VE/W)", f"{ve_w_ratio:.3f}", "L/W", start_x + (w_box + gap)*2, start_y, w_box)
-                    pdf.kpi_box("Slope VE", f"{slope_ve:.4f}", "L/s", start_x + (w_box + gap)*3, start_y, w_box)
-                    
-                    pdf.ln(25)
-
-        if not found_vent:
-            pdf.set_font('Arial', 'I', 9)
-            pdf.cell(0, 10, clean_text("Brak danych lub nie wybrano odcinka w zakladce Ventilation."), 0, 1)
-
-        return pdf.output(dest='S').encode('latin-1', 'replace')
-
-    pdf_bytes = generate_final_pdf()
-    
-    st.sidebar.download_button(
-        label="📄 Pobierz Raport PRO (PDF)",
-        data=pdf_bytes,
-        file_name=f"Raport_PRO_{uploaded_file.name.split('.')[0]}.pdf",
-        mime="application/pdf"
-    )
-else:
-    st.sidebar.info("Wgraj plik aby pobrac PDF.")

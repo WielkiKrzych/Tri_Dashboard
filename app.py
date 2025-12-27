@@ -26,8 +26,10 @@ from modules.plots import apply_chart_style, add_stats_to_legend
 from modules.ml_logic import (
     MLX_AVAILABLE, train_cycling_brain, predict_only, MODEL_FILE, HISTORY_FILE
 )
+from modules.intervals import detect_intervals
 from modules.notes import TrainingNotes
 from modules.reports import generate_docx_report, export_all_charts_as_png
+from modules.settings import SettingsManager
 
 
 st.set_page_config(page_title="Pro Athlete Dashboard", layout="wide", page_icon="⚡")
@@ -41,32 +43,81 @@ load_css('style.css')
 # Inicjalizacja notatek
 training_notes = TrainingNotes()
 
+
+# --- SETTINGS / SESSION STATE INIT ---
+settings_manager = SettingsManager()
+saved_settings = settings_manager.load_settings()
+
+# Mapowanie kluczy UI na klucze w JSON
+keys_map = {
+    "weight": "rider_weight",
+    "height": "rider_height", 
+    "age": "rider_age",
+    "gender_m": "is_male",
+    "vt1_w": "vt1_watts",
+    "vt2_w": "vt2_watts",
+    "vt1_v": "vt1_vent",
+    "vt2_v": "vt2_vent",
+    "cp_in": "cp",
+    "wp_in": "w_prime",
+    "crank": "crank_length"
+}
+
+# Inicjalizacja Session State z pliku (tylko raz na sesje, lub jeśli brakuje)
+for ui_key, json_key in keys_map.items():
+    if ui_key not in st.session_state:
+        st.session_state[ui_key] = saved_settings.get(json_key)
+
+def save_settings_callback():
+    """Zapisuje aktualne wartości z UI do pliku JSON."""
+    current_values = {}
+    for ui_key, json_key in keys_map.items():
+        if ui_key in st.session_state:
+            current_values[json_key] = st.session_state[ui_key]
+    settings_manager.save_settings(current_values)
+    # Opcjonalnie: st.toast("Ustawienia zapisane!", icon="💾")
+
 # --- APP START ---
 
 st.title("⚡ Pro Athlete Dashboard")
 
 st.sidebar.header("Ustawienia Zawodnika")
 with st.sidebar.expander("⚙️ Parametry Fizyczne", expanded=True):
-    rider_weight = st.number_input("Waga Zawodnika [kg]", value=95.0, step=0.5, min_value=30.0, max_value=200.0, key="weight")
-    rider_height = st.number_input("Wzrost [cm]", value=180, step=1, min_value=100, max_value=250, key="height")
-    rider_age = st.number_input("Wiek [lata]", value=30, step=1, min_value=10, max_value=100, key="age")
-    is_male = st.checkbox("Mężczyzna?", value=True, key="gender_m")
+    rider_weight = st.number_input("Waga Zawodnika [kg]", step=0.5, min_value=30.0, max_value=200.0, key="weight", on_change=save_settings_callback)
+    rider_height = st.number_input("Wzrost [cm]", step=1, min_value=100, max_value=250, key="height", on_change=save_settings_callback)
+    rider_age = st.number_input("Wiek [lata]", step=1, min_value=10, max_value=100, key="age", on_change=save_settings_callback)
+    is_male = st.checkbox("Mężczyzna?", key="gender_m", on_change=save_settings_callback)
     
     st.markdown("---")
-    vt1_watts = st.number_input("VT1 (Próg Tlenowy) [W]", value=280, min_value=0, key="vt1_w")
-    vt2_watts = st.number_input("VT2 (Próg Beztlenowy/FTP) [W]", value=400, min_value=0, key="vt2_w")
+    vt1_watts = st.number_input("VT1 (Próg Tlenowy) [W]", min_value=0, key="vt1_w", on_change=save_settings_callback)
+    vt2_watts = st.number_input("VT2 (Próg Beztlenowy/FTP) [W]", min_value=0, key="vt2_w", on_change=save_settings_callback)
     
     st.divider()
     st.markdown("### 🫁 Wentylacja [L/min]")
-    vt1_vent = st.number_input("VT1 (Próg Tlenowy) [L/min]", value=79.0, min_value=0.0, key="vt1_v")
-    vt2_vent = st.number_input("VT2 (Próg Beztlenowy) [L/min]", value=136.0, min_value=0.0, key="vt2_v")
+    vt1_vent = st.number_input("VT1 (Próg Tlenowy) [L/min]", min_value=0.0, key="vt1_v", on_change=save_settings_callback)
+    vt2_vent = st.number_input("VT2 (Próg Beztlenowy) [L/min]", min_value=0.0, key="vt2_v", on_change=save_settings_callback)
 
 st.sidebar.divider()
-cp_input = st.sidebar.number_input("Moc Krytyczna (CP) [W]", value=410, min_value=1, key="cp_in")
-w_prime_input = st.sidebar.number_input("W' (W Prime) [J]", value=31000, min_value=0, key="wp_in")
+cp_input = st.sidebar.number_input("Moc Krytyczna (CP) [W]", min_value=1, key="cp_in", on_change=save_settings_callback)
+w_prime_input = st.sidebar.number_input("W' (W Prime) [J]", min_value=0, key="wp_in", on_change=save_settings_callback)
 st.sidebar.divider()
-crank_length = st.sidebar.number_input("Długość korby [mm]", value=160.0, key="crank")
-uploaded_file = st.sidebar.file_uploader("Wgraj plik (CSV / TXT)", type=['csv', 'txt'])
+crank_length = st.sidebar.number_input("Długość korby [mm]", key="crank", on_change=save_settings_callback)
+compare_mode = st.sidebar.toggle("⚔️ Tryb Porównania (Beta)", value=False)
+uploaded_file = None
+
+if compare_mode:
+    file1 = st.sidebar.file_uploader("Wgraj Plik A (CSV)", type=['csv'])
+    file2 = st.sidebar.file_uploader("Wgraj Plik B (CSV)", type=['csv'])
+
+    if file1 and file2:
+        from modules.comparison import render_compare_dashboard
+        render_compare_dashboard(file1, file2, cp_input)
+        st.stop()
+    else:
+        st.info("Wgraj dwa pliki, aby rozpocząć porównanie.")
+        st.stop()
+else:
+    uploaded_file = st.sidebar.file_uploader("Wgraj plik (CSV / TXT)", type=['csv', 'txt'])
 
 if rider_weight <= 0 or cp_input <= 0:
     st.error("Błąd: Waga i CP muszą być większe od zera.")
@@ -226,8 +277,8 @@ if uploaded_file is not None:
         m3.metric("Praca [kJ]", f"{df_plot['watts'].sum()/1000:.0f}")
         
         # --- ZAKŁADKI ---
-        tab_raport, tab_kpi, tab_power, tab_hrv, tab_biomech, tab_thermal, tab_trends, tab_nutrition, tab_smo2, tab_hemo, tab_vent, tab_limiters, tab_model, tab_ai = st.tabs(
-            ["Raport", "KPI", "Power", "HRV", "Biomech", "Thermal", "Trends", "Nutrition", "SmO2 Analysis", "Hematology Analysis", "Ventilation Analysis", "Limiters Analysis", "Model Analysis", "AI Coach"]
+        tab_raport, tab_kpi, tab_power, tab_intervals, tab_hrv, tab_biomech, tab_thermal, tab_trends, tab_nutrition, tab_smo2, tab_hemo, tab_vent, tab_limiters, tab_model, tab_ai = st.tabs(
+            ["Raport", "KPI", "Power", "Intervals", "HRV", "Biomech", "Thermal", "Trends", "Nutrition", "SmO2 Analysis", "Hematology Analysis", "Ventilation Analysis", "Limiters Analysis", "Model Analysis", "AI Coach"]
         )
                 
        # --- TAB RAPORT ---
@@ -702,6 +753,49 @@ if uploaded_file is not None:
                 st.warning("⚠️ **KRYTYCZNIE:** Bardzo ryzykowny atak. Zostaniesz na oparach.")
             else:
                 st.success("✅ **BEZPIECZNIE:** Masz zapas na taki ruch.")
+
+        # --- TAB INTERVALS ---
+        with tab_intervals:
+            st.header("⏱️ Automatyczna Detekcja Interwałów")
+            
+            with st.expander("⚙️ Konfiguracja Detekcji", expanded=True):
+                c_i1, c_i2, c_i3 = st.columns(3)
+                int_power_pct = c_i1.slider("Próg Mocy (% CP)", 50, 150, 90, 5) / 100.0
+                int_min_dur = c_i2.number_input("Min. Czas (s)", 10, 600, 30, 10)
+                int_rec_lim = c_i3.number_input("Ignoruj Przerwy < (s)", 0, 120, 15, 5)
+                
+            if st.button("🔍 Wykryj Interwały"):
+                if 'watts' in df_plot.columns:
+                    # Używamy surowych/lekko wygładzonych danych dla precyzji, nie resamplowanych co 5s
+                    intervals_df = detect_intervals(df_plot, cp_input, min_duration=int_min_dur, min_power_pct=int_power_pct, recovery_time_limit=int_rec_lim)
+                    
+                    if not intervals_df.empty:
+                        st.success(f"Wykryto {len(intervals_df)} interwałów!")
+                        
+                        # Formatowanie tabeli
+                        st.dataframe(
+                            intervals_df,
+                            column_config={
+                                "ID": "N",
+                                "Start (min)": st.column_config.NumberColumn("Start", format="%.2f min"),
+                                "Duration": "Czas",
+                                "Avg Power": st.column_config.ProgressColumn("Moc Śr.", min_value=0, max_value=int(intervals_df['Avg Power'].max()*1.2), format="%d W"),
+                                "Avg HR": st.column_config.NumberColumn("HR Śr.", format="%d bpm"),
+                                "Avg SmO2": st.column_config.NumberColumn("SmO2", format="%.1f %%")
+                            },
+                            use_container_width=True,
+                            hide_index=True
+                        )
+                        
+                        # Statystyki zbiorcze
+                        avg_p_int = intervals_df['Avg Power'].mean()
+                        avg_dur_int = intervals_df['Duration (s)'].mean()
+                        st.info(f"Średnia moc z interwałów: **{avg_p_int:.0f} W**, Średni czas: **{int(avg_dur_int)}s**")
+                        
+                    else:
+                        st.warning("Nie znaleziono interwałów spełniających kryteria.")
+                else:
+                    st.error("Brak danych mocy.")
 
             # --- PULSE POWER (EFICIENCY) ---
             st.divider()

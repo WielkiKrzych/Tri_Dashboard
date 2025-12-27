@@ -211,6 +211,7 @@ def generate_docx_report(metrics, df_plot, df_plot_resampled, uploaded_file, cp_
     footer.runs[0].font.color.rgb = RGBColor(128, 128, 128)
     footer.alignment = WD_ALIGN_PARAGRAPH.CENTER
     
+    doc.add_paragraph()
     return doc
 
 def export_all_charts_as_png(df_plot, df_plot_resampled, cp_input, vt1_watts, vt2watts,

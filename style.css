@@ -1,0 +1,84 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&family=Rajdhani:wght@500;600;700&display=swap');
+
+/* GLOBALNE TŁO */
+.stApp {
+    background: radial-gradient(circle at 10% 20%, #1a1f25 0%, #0e1117 90%);
+    color: #e0e0e0;
+    font-family: 'Inter', sans-serif;
+}
+
+/* TYPOGRAFIA */
+h1, h2, h3, h4, h5 {
+    font-family: 'Rajdhani', sans-serif !important;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: #ffffff !important;
+    text-shadow: 0 2px 4px rgba(0,0,0,0.5);
+}
+h1 { font-weight: 700; color: #00cc96 !important; }
+
+/* SIDEBAR */
+[data-testid="stSidebar"] {
+    background-color: #050505;
+    border-right: 1px solid #30363d;
+}
+
+/* METRYKI */
+[data-testid="stMetric"] {
+    background: rgba(255, 255, 255, 0.03);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    padding: 15px !important;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+    transition: all 0.3s ease;
+}
+[data-testid="stMetric"]:hover {
+    transform: translateY(-3px);
+    border-color: #00cc96;
+    box-shadow: 0 8px 15px rgba(0, 204, 150, 0.2);
+}
+
+/* Kolor etykiety metryki */
+[data-testid="stMetricLabel"] {
+    font-size: 0.9rem !important;
+    color: #8b949e !important;
+    font-family: 'Rajdhani', sans-serif;
+}
+/* Kolor wartości metryki */
+[data-testid="stMetricValue"] {
+    font-family: 'Rajdhani', sans-serif;
+    font-weight: 600;
+    color: #f0f6fc !important;
+}
+
+/* ZAKŁADKI */
+.stTabs [data-baseweb="tab-list"] {
+    gap: 8px;
+    background-color: transparent;
+    padding-bottom: 10px;
+}
+.stTabs [data-baseweb="tab"] {
+    height: 40px;
+    border-radius: 8px;
+    background-color: rgba(255,255,255,0.05);
+    color: #c9d1d9;
+    border: none;
+    font-family: 'Rajdhani', sans-serif;
+    font-weight: 600;
+    padding: 0 20px;
+}
+.stTabs [aria-selected="true"] {
+    background-color: #00cc96 !important;
+    color: #000000 !important;
+}
+
+/* INFO BOXY */
+.stAlert {
+    background-color: rgba(22, 27, 34, 0.9);
+    border: 1px solid #30363d;
+    border-left: 5px solid #58a6ff;
+    border-radius: 8px;
+    color: #c9d1d9;
+}

@@ -1713,6 +1713,202 @@ if uploaded_file is not None:
                 * **SmO2:** Gwałtowny spadek lub chaotyczne skoki.
                 """)
 
+            st.divider()
+            
+            c1, c2 = st.columns(2)
+            
+            # LEWA KOLUMNA: SmO2 + TREND
+            with c1:
+                st.subheader("SmO2")
+                # Szukamy odpowiedniej kolumny
+                col_smo2 = 'smo2_smooth_ultra' if 'smo2_smooth_ultra' in df_plot.columns else ('smo2_smooth' if 'smo2_smooth' in df_plot.columns else None)
+                
+                if col_smo2:
+                    fig_s = go.Figure()
+                    
+                    # 1. SmO2 (Linia)
+                    fig_s.add_trace(go.Scatter(
+                        x=df_plot_resampled['time_min'], 
+                        y=df_plot_resampled[col_smo2], 
+                        name='SmO2', 
+                        line=dict(color='#ab63fa', width=2), 
+                        hovertemplate="SmO2: %{y:.1f}%<extra></extra>"
+                    ))
+                    
+                    # 2. Trend (Linia przerywana)
+                    trend_y = calculate_trend(df_plot_resampled['time_min'].values, df_plot_resampled[col_smo2].values)
+                    if trend_y is not None:
+                        fig_s.add_trace(go.Scatter(
+                            x=df_plot_resampled['time_min'], 
+                            y=trend_y, 
+                            name='Trend', 
+                            line=dict(color='white', dash='dash', width=1.5), 
+                            hovertemplate="Trend: %{y:.1f}%<extra></extra>"
+                        ))
+                    
+                    # Layout "Pro"
+                    fig_s.update_layout(
+                        template="plotly_dark",
+                        title="Lokalna Oksydacja (SmO2)",
+                        hovermode="x unified", # <--- To robi robotę
+                        yaxis=dict(title="SmO2 [%]", range=[0, 100]), # Sztywna skala dla czytelności
+                        legend=dict(orientation="h", y=1.1, x=0),
+                        margin=dict(l=10, r=10, t=40, b=10),
+                        height=400
+                    )
+                    
+                    st.plotly_chart(fig_s, use_container_width=True)
+                    
+                    st.info("""
+                    **💡 Hemodynamika Mięśniowa (SmO2) - Lokalny Monitoring:**
+                    
+                    SmO2 to "wskaźnik paliwa" bezpośrednio w pracującym mięśniu (zazwyczaj czworogłowym uda).
+                    * **Równowaga (Linia Płaska):** Podaż tlenu = Zapotrzebowanie. To stan zrównoważony (Steady State).
+                    * **Desaturacja (Spadek):** Popyt > Podaż. Wchodzisz w dług tlenowy. Jeśli dzieje się to przy stałej mocy -> zmęczenie metaboliczne.
+                    * **Reoksygenacja (Wzrost):** Odpoczynek. Szybkość powrotu do normy to doskonały wskaźnik wytrenowania (regeneracji).
+                    """)
+                else:
+                     st.info("Brak danych SmO2")
+
+            # PRAWA KOLUMNA: TĘTNO (HR)
+            with c2:
+                st.subheader("Tętno")
+                
+                # Przepisane na go.Figure dla spójności stylu z resztą aplikacji
+                fig_h = go.Figure()
+                fig_h.add_trace(go.Scatter(
+                    x=df_plot_resampled['time_min'], 
+                    y=df_plot_resampled['heartrate_smooth'], 
+                    name='HR', 
+                    fill='tozeroy', # Ładne wypełnienie pod wykresem
+                    line=dict(color='#ef553b', width=2), 
+                    hovertemplate="HR: %{y:.0f} BPM<extra></extra>"
+                ))
+                
+                fig_h.update_layout(
+                    template="plotly_dark",
+                    title="Odpowiedź Sercowa (HR)",
+                    hovermode="x unified", # <--- To robi robotę
+                    yaxis=dict(title="HR [bpm]"),
+                    margin=dict(l=10, r=10, t=40, b=10),
+                    height=400
+                )
+                
+                st.plotly_chart(fig_h, use_container_width=True)
+                
+                st.info("""
+                **💡 Reakcja Sercowo-Naczyniowa (HR) - Globalny System:**
+                
+                Serce to pompa centralna. Jego reakcja jest **opóźniona** względem wysiłku.
+                * **Lag (Opóźnienie):** W krótkich interwałach (np. 30s) tętno nie zdąży wzrosnąć, mimo że moc jest max. Nie steruj sprintami na tętno!
+                * **Decoupling (Rozjazd):** Jeśli moc jest stała, a tętno rośnie (dryfuje) -> organizm walczy z przegrzaniem lub odwodnieniem.
+                * **Recovery HR:** Jak szybko tętno spada po wysiłku? Szybki spadek = sprawne przywspółczulne układu nerwowego (dobra forma).
+                """)
+
+            st.divider()
+
+            st.subheader("Wentylacja (VE) i Oddechy (RR)")
+            
+            fig_v = go.Figure()
+            
+            # 1. WENTYLACJA (Oś Lewa)
+            if 'tymeventilation_smooth' in df_plot_resampled.columns:
+                fig_v.add_trace(go.Scatter(
+                    x=df_plot_resampled['time_min'], 
+                    y=df_plot_resampled['tymeventilation_smooth'], 
+                    name="VE", 
+                    line=dict(color='#ffa15a', width=2), 
+                    hovertemplate="VE: %{y:.1f} L/min<extra></extra>"
+                ))
+                
+                # Trend VE
+                trend_ve = calculate_trend(df_plot_resampled['time_min'].values, df_plot_resampled['tymeventilation_smooth'].values)
+                if trend_ve is not None:
+                     fig_v.add_trace(go.Scatter(
+                         x=df_plot_resampled['time_min'], 
+                         y=trend_ve, 
+                         name="Trend VE", 
+                         line=dict(color='#ffa15a', dash='dash', width=1.5), 
+                         hovertemplate="Trend: %{y:.1f} L/min<extra></extra>"
+                     ))
+            
+            # 2. ODDECHY / RR (Oś Prawa)
+            if 'tymebreathrate_smooth' in df_plot_resampled.columns:
+                fig_v.add_trace(go.Scatter(
+                    x=df_plot_resampled['time_min'], 
+                    y=df_plot_resampled['tymebreathrate_smooth'], 
+                    name="RR", 
+                    yaxis="y2", # Druga oś
+                    line=dict(color='#19d3f3', dash='dot', width=2), 
+                    hovertemplate="RR: %{y:.1f} /min<extra></extra>"
+                ))
+            
+            # Linie Progi Wentylacyjne (Zostawiamy jako stałe linie odniesienia)
+            fig_v.add_hline(y=vt1_vent, line_dash="dot", line_color="green", annotation_text="VT1", annotation_position="bottom right")
+            fig_v.add_hline(y=vt2_vent, line_dash="dot", line_color="red", annotation_text="VT2", annotation_position="bottom right")
+
+            # LAYOUT (Unified Hover)
+            fig_v.update_layout(
+                template="plotly_dark",
+                title="Mechanika Oddechu (Wydajność vs Częstość)",
+                hovermode="x unified", # <--- To łączy dane w jeden dymek
+                
+                # Oś Lewa
+                yaxis=dict(title="Wentylacja [L/min]"),
+                
+                # Oś Prawa
+                yaxis2=dict(
+                    title="Kadencja Oddechu [RR]", 
+                    overlaying="y", 
+                    side="right", 
+                    showgrid=False
+                ),
+                
+                legend=dict(orientation="h", y=1.1, x=0),
+                margin=dict(l=10, r=10, t=40, b=10),
+                height=450
+            )
+            
+            st.plotly_chart(fig_v, use_container_width=True)
+            
+            st.info("""
+            **💡 Interpretacja: Mechanika Oddychania**
+
+            * **Wzorzec Prawidłowy (Efektywność):** Wentylacja (VE) rośnie liniowo wraz z mocą, a częstość (RR) jest stabilna. Oznacza to głęboki, spokojny oddech.
+            * **Wzorzec Niekorzystny (Płytki Oddech):** Bardzo wysokie RR (>40-50) przy stosunkowo niskim VE. Oznacza to "dyszenie" - powietrze wchodzi tylko do "martwej strefy" płuc, nie biorąc udziału w wymianie gazowej.
+            * **Dryf Wentylacyjny:** Jeśli przy stałej mocy VE ciągle rośnie (rosnący trend pomarańczowej linii), oznacza to narastającą kwasicę (organizm próbuje wydmuchać CO2) lub zmęczenie mięśni oddechowych.
+            * **Próg VT2 (RCP):** Punkt załamania, gdzie VE wystrzeliwuje pionowo w górę. To Twoja "czerwona linia" metaboliczna.
+            """)
+            
+            col_vent_full = 'tymeventilation_smooth' if 'tymeventilation_smooth' in df_plot.columns else ('tymeventilation' if 'tymeventilation' in df_plot.columns else None)
+            
+            if col_vent_full:
+                st.markdown("#### Czas w Strefach Wentylacyjnych")
+                total_samples = len(df_plot)
+                z1_count = len(df_plot[df_plot[col_vent_full] < vt1_vent])
+                z2_count = len(df_plot[(df_plot[col_vent_full] >= vt1_vent) & (df_plot[col_vent_full] < vt2_vent)])
+                z3_count = len(df_plot[df_plot[col_vent_full] >= vt2_vent])
+                
+                def format_time(seconds):
+                    m, s = divmod(seconds, 60)
+                    h, m = divmod(m, 60)
+                    if h > 0: return f"{int(h)}h {int(m)}m {int(s)}s"
+                    return f"{int(m)}m {int(s)}s"
+
+                z1_time = format_time(z1_count)
+                z2_time = format_time(z2_count)
+                z3_time = format_time(z3_count)
+                
+                z1_pct = z1_count / total_samples * 100 if total_samples > 0 else 0
+                z2_pct = z2_count / total_samples * 100 if total_samples > 0 else 0
+                z3_pct = z3_count / total_samples * 100 if total_samples > 0 else 0
+                
+                c_z1, c_z2, c_z3 = st.columns(3)
+                c_z1.metric(f"Tlenowa (< {vt1_vent} L)", z1_time, f"{z1_pct:.1f}%")
+                c_z2.metric(f"Mieszana ({vt1_vent}-{vt2_vent} L)", z2_time, f"{z2_pct:.1f}%")
+                c_z3.metric(f"Beztlenowa (> {vt2_vent} L)", z3_time, f"{z3_pct:.1f}%")
+
+
         # --- TAB POWER ---
         with tab_power:
             st.subheader("Wykres Mocy i W'")
@@ -2347,206 +2543,9 @@ if uploaded_file is not None:
             
             st.divider()
             
-            c1, c2 = st.columns(2)
-            
-            # LEWA KOLUMNA: SmO2 + TREND
-            with c1:
-                st.subheader("SmO2")
-                # Szukamy odpowiedniej kolumny
-                col_smo2 = 'smo2_smooth_ultra' if 'smo2_smooth_ultra' in df_plot.columns else ('smo2_smooth' if 'smo2_smooth' in df_plot.columns else None)
-                
-                if col_smo2:
-                    fig_s = go.Figure()
-                    
-                    # 1. SmO2 (Linia)
-                    fig_s.add_trace(go.Scatter(
-                        x=df_plot_resampled['time_min'], 
-                        y=df_plot_resampled[col_smo2], 
-                        name='SmO2', 
-                        line=dict(color='#ab63fa', width=2), 
-                        hovertemplate="SmO2: %{y:.1f}%<extra></extra>"
-                    ))
-                    
-                    # 2. Trend (Linia przerywana)
-                    trend_y = calculate_trend(df_plot_resampled['time_min'].values, df_plot_resampled[col_smo2].values)
-                    if trend_y is not None:
-                        fig_s.add_trace(go.Scatter(
-                            x=df_plot_resampled['time_min'], 
-                            y=trend_y, 
-                            name='Trend', 
-                            line=dict(color='white', dash='dash', width=1.5), 
-                            hovertemplate="Trend: %{y:.1f}%<extra></extra>"
-                        ))
-                    
-                    # Layout "Pro"
-                    fig_s.update_layout(
-                        template="plotly_dark",
-                        title="Lokalna Oksydacja (SmO2)",
-                        hovermode="x unified", # <--- To robi robotę
-                        yaxis=dict(title="SmO2 [%]", range=[0, 100]), # Sztywna skala dla czytelności
-                        legend=dict(orientation="h", y=1.1, x=0),
-                        margin=dict(l=10, r=10, t=40, b=10),
-                        height=400
-                    )
-                    
-                    st.plotly_chart(fig_s, use_container_width=True)
-                    
-                    st.info("""
-                    **💡 Hemodynamika Mięśniowa (SmO2) - Lokalny Monitoring:**
-                    
-                    SmO2 to "wskaźnik paliwa" bezpośrednio w pracującym mięśniu (zazwyczaj czworogłowym uda).
-                    * **Równowaga (Linia Płaska):** Podaż tlenu = Zapotrzebowanie. To stan zrównoważony (Steady State).
-                    * **Desaturacja (Spadek):** Popyt > Podaż. Wchodzisz w dług tlenowy. Jeśli dzieje się to przy stałej mocy -> zmęczenie metaboliczne.
-                    * **Reoksygenacja (Wzrost):** Odpoczynek. Szybkość powrotu do normy to doskonały wskaźnik wytrenowania (regeneracji).
-                    """)
-                else:
-                     st.info("Brak danych SmO2")
 
-            # PRAWA KOLUMNA: TĘTNO (HR)
-            with c2:
-                st.subheader("Tętno")
-                
-                # Przepisane na go.Figure dla spójności stylu z resztą aplikacji
-                fig_h = go.Figure()
-                fig_h.add_trace(go.Scatter(
-                    x=df_plot_resampled['time_min'], 
-                    y=df_plot_resampled['heartrate_smooth'], 
-                    name='HR', 
-                    fill='tozeroy', # Ładne wypełnienie pod wykresem
-                    line=dict(color='#ef553b', width=2), 
-                    hovertemplate="HR: %{y:.0f} BPM<extra></extra>"
-                ))
-                
-                fig_h.update_layout(
-                    template="plotly_dark",
-                    title="Odpowiedź Sercowa (HR)",
-                    hovermode="x unified", # <--- To robi robotę
-                    yaxis=dict(title="HR [bpm]"),
-                    margin=dict(l=10, r=10, t=40, b=10),
-                    height=400
-                )
-                
-                st.plotly_chart(fig_h, use_container_width=True)
-                
-                st.info("""
-                **💡 Reakcja Sercowo-Naczyniowa (HR) - Globalny System:**
-                
-                Serce to pompa centralna. Jego reakcja jest **opóźniona** względem wysiłku.
-                * **Lag (Opóźnienie):** W krótkich interwałach (np. 30s) tętno nie zdąży wzrosnąć, mimo że moc jest max. Nie steruj sprintami na tętno!
-                * **Decoupling (Rozjazd):** Jeśli moc jest stała, a tętno rośnie (dryfuje) -> organizm walczy z przegrzaniem lub odwodnieniem.
-                * **Recovery HR:** Jak szybko tętno spada po wysiłku? Szybki spadek = sprawne przywspółczulne układu nerwowego (dobra forma).
-                """)
 
-            st.divider()
 
-            st.subheader("Wentylacja (VE) i Oddechy (RR)")
-            
-            fig_v = go.Figure()
-            
-            # 1. WENTYLACJA (Oś Lewa)
-            if 'tymeventilation_smooth' in df_plot_resampled.columns:
-                fig_v.add_trace(go.Scatter(
-                    x=df_plot_resampled['time_min'], 
-                    y=df_plot_resampled['tymeventilation_smooth'], 
-                    name="VE", 
-                    line=dict(color='#ffa15a', width=2), 
-                    hovertemplate="VE: %{y:.1f} L/min<extra></extra>"
-                ))
-                
-                # Trend VE
-                trend_ve = calculate_trend(df_plot_resampled['time_min'].values, df_plot_resampled['tymeventilation_smooth'].values)
-                if trend_ve is not None:
-                     fig_v.add_trace(go.Scatter(
-                         x=df_plot_resampled['time_min'], 
-                         y=trend_ve, 
-                         name="Trend VE", 
-                         line=dict(color='#ffa15a', dash='dash', width=1.5), 
-                         hovertemplate="Trend: %{y:.1f} L/min<extra></extra>"
-                     ))
-            
-            # 2. ODDECHY / RR (Oś Prawa)
-            if 'tymebreathrate_smooth' in df_plot_resampled.columns:
-                fig_v.add_trace(go.Scatter(
-                    x=df_plot_resampled['time_min'], 
-                    y=df_plot_resampled['tymebreathrate_smooth'], 
-                    name="RR", 
-                    yaxis="y2", # Druga oś
-                    line=dict(color='#19d3f3', dash='dot', width=2), 
-                    hovertemplate="RR: %{y:.1f} /min<extra></extra>"
-                ))
-            
-            # Linie Progi Wentylacyjne (Zostawiamy jako stałe linie odniesienia)
-            fig_v.add_hline(y=vt1_vent, line_dash="dot", line_color="green", annotation_text="VT1", annotation_position="bottom right")
-            fig_v.add_hline(y=vt2_vent, line_dash="dot", line_color="red", annotation_text="VT2", annotation_position="bottom right")
-
-            # LAYOUT (Unified Hover)
-            fig_v.update_layout(
-                template="plotly_dark",
-                title="Mechanika Oddechu (Wydajność vs Częstość)",
-                hovermode="x unified", # <--- To łączy dane w jeden dymek
-                
-                # Oś Lewa
-                yaxis=dict(title="Wentylacja [L/min]"),
-                
-                # Oś Prawa
-                yaxis2=dict(
-                    title="Kadencja Oddechu [RR]", 
-                    overlaying="y", 
-                    side="right", 
-                    showgrid=False
-                ),
-                
-                legend=dict(orientation="h", y=1.1, x=0),
-                margin=dict(l=10, r=10, t=40, b=10),
-                height=450
-            )
-            
-            st.plotly_chart(fig_v, use_container_width=True)
-            
-            st.info("""
-            **💡 Interpretacja: Mechanika Oddychania**
-
-            * **Wzorzec Prawidłowy (Efektywność):** Wentylacja (VE) rośnie liniowo wraz z mocą, a częstość (RR) jest stabilna. Oznacza to głęboki, spokojny oddech.
-            * **Wzorzec Niekorzystny (Płytki Oddech):** Bardzo wysokie RR (>40-50) przy stosunkowo niskim VE. Oznacza to "dyszenie" - powietrze wchodzi tylko do "martwej strefy" płuc, nie biorąc udziału w wymianie gazowej.
-            * **Dryf Wentylacyjny:** Jeśli przy stałej mocy VE ciągle rośnie (rosnący trend pomarańczowej linii), oznacza to narastającą kwasicę (organizm próbuje wydmuchać CO2) lub zmęczenie mięśni oddechowych.
-            * **Próg VT2 (RCP):** Punkt załamania, gdzie VE wystrzeliwuje pionowo w górę. To Twoja "czerwona linia" metaboliczna.
-            """)
-            
-            col_vent_full = 'tymeventilation_smooth' if 'tymeventilation_smooth' in df_plot.columns else ('tymeventilation' if 'tymeventilation' in df_plot.columns else None)
-            
-            if col_vent_full:
-                st.markdown("#### Czas w Strefach Wentylacyjnych")
-                total_samples = len(df_plot)
-                z1_count = len(df_plot[df_plot[col_vent_full] < vt1_vent])
-                z2_count = len(df_plot[(df_plot[col_vent_full] >= vt1_vent) & (df_plot[col_vent_full] < vt2_vent)])
-                z3_count = len(df_plot[df_plot[col_vent_full] >= vt2_vent])
-                
-                def format_time(seconds):
-                    m, s = divmod(seconds, 60)
-                    h, m = divmod(m, 60)
-                    if h > 0: return f"{int(h)}h {int(m)}m {int(s)}s"
-                    return f"{int(m)}m {int(s)}s"
-
-                z1_time = format_time(z1_count)
-                z2_time = format_time(z2_count)
-                z3_time = format_time(z3_count)
-                
-                z1_pct = z1_count / total_samples * 100 if total_samples > 0 else 0
-                z2_pct = z2_count / total_samples * 100 if total_samples > 0 else 0
-                z3_pct = z3_count / total_samples * 100 if total_samples > 0 else 0
-                
-                c_z1, c_z2, c_z3 = st.columns(3)
-                c_z1.metric(f"Tlenowa (< {vt1_vent} L)", z1_time, f"{z1_pct:.1f}%")
-                c_z2.metric(f"Mieszana ({vt1_vent}-{vt2_vent} L)", z2_time, f"{z2_pct:.1f}%")
-                c_z3.metric(f"Beztlenowa (> {vt2_vent} L)", z3_time, f"{z3_pct:.1f}%")
-
-            if 'tymeventilation' in df_plot.columns:
-                st.markdown("#### Średnie Wartości (10 min)")
-                df_s = df_plot.copy()
-                df_s['Int'] = (df_s['time_min'] // 10).astype(int)
-                grp = df_s.groupby('Int')[['tymeventilation', 'tymebreathrate']].mean().reset_index()
-                grp['Czas'] = grp['Int'].apply(lambda x: f"{x*10}-{(x+1)*10} min")
-                st.dataframe(grp[['Czas', 'tymeventilation', 'tymebreathrate']].style.format("{:.1f}", subset=['tymeventilation', 'tymebreathrate']), use_container_width=True, hide_index=True)
 
         # --- TAB BIOMECH ---
         with tab_biomech:

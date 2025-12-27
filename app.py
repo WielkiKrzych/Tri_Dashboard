@@ -337,56 +337,88 @@ if uploaded_file is not None:
         m2.metric("TSS", f"{tss_header:.0f}", help=f"IF: {if_header:.2f}")
         m3.metric("Praca [kJ]", f"{df_plot['watts'].sum()/1000:.0f}")
         
-        # --- ZAKŁADKI ---
-        # --- ZAKŁADKI (Refactored) ---
-        tab_raport, tab_kpi, tab_power, tab_intervals, tab_hrv, tab_biomech, tab_thermal, tab_trends, tab_nutrition, tab_smo2, tab_hemo, tab_vent, tab_limiters, tab_model, tab_ai = st.tabs(
-            ["Raport", "KPI", "Power", "Intervals", "HRV", "Biomech", "Thermal", "Trends", "Nutrition", "SmO2 Analysis", "Hematology Analysis", "Ventilation Analysis", "Limiters Analysis", "Model Analysis", "AI Coach"]
-        )
+        # --- ZAKŁADKI (Pogrupowane dla lepszej przejrzystości) ---
+        
+        # Helper dla breadcrumbs
+        def show_breadcrumb(group: str, section: str = None):
+            """Wyświetla breadcrumb nawigację."""
+            if section:
+                st.markdown(f'''
+                <div class="breadcrumb-nav">
+                    🏠 Dashboard <span class="separator">›</span> 
+                    {group} <span class="separator">›</span> 
+                    <span class="current">{section}</span>
+                </div>
+                ''', unsafe_allow_html=True)
+            else:
+                st.markdown(f'''
+                <div class="breadcrumb-nav">
+                    🏠 Dashboard <span class="separator">›</span> 
+                    <span class="current">{group}</span>
+                </div>
+                ''', unsafe_allow_html=True)
+        
+        tab_overview, tab_performance, tab_physiology, tab_intelligence = st.tabs([
+            "📊 Overview", "⚡ Performance", "🫀 Physiology", "🧠 Intelligence"
+        ])
 
-        with tab_raport:
-            render_report_tab(df_plot, rider_weight, cp_input)
+        # ===== 📊 OVERVIEW =====
+        with tab_overview:
+            show_breadcrumb("📊 Overview")
+            sub_raport, sub_kpi, sub_trends = st.tabs([
+                "📋 Raport", "📈 KPI", "📉 Trends"
+            ])
+            with sub_raport:
+                render_report_tab(df_plot, rider_weight, cp_input)
+            with sub_kpi:
+                render_kpi_tab(df_plot, df_plot_resampled, metrics, rider_weight, decoupling_percent, drift_z2, vt1_vent, vt2_vent)
+            with sub_trends:
+                render_trends_tab(df_plot)
 
-        with tab_kpi:
-            render_kpi_tab(df_plot, df_plot_resampled, metrics, rider_weight, decoupling_percent, drift_z2, vt1_vent, vt2_vent)
+        # ===== ⚡ PERFORMANCE =====
+        with tab_performance:
+            show_breadcrumb("⚡ Performance")
+            sub_power, sub_intervals, sub_biomech, sub_model = st.tabs([
+                "🔋 Power", "⏱️ Intervals", "🦵 Biomech", "📐 Model"
+            ])
+            with sub_power:
+                render_power_tab(df_plot, df_plot_resampled, cp_input, w_prime_input)
+            with sub_intervals:
+                render_intervals_tab(df_plot, df_plot_resampled, cp_input, rider_weight, rider_age, is_male)
+            with sub_biomech:
+                render_biomech_tab(df_plot, df_plot_resampled)
+            with sub_model:
+                render_model_tab(df_plot, cp_input, w_prime_input)
 
-        with tab_power:
-             render_power_tab(df_plot, df_plot_resampled, cp_input, w_prime_input)
+        # ===== 🫀 PHYSIOLOGY =====
+        with tab_physiology:
+            show_breadcrumb("🫀 Physiology")
+            sub_hrv, sub_smo2, sub_hemo, sub_vent, sub_thermal = st.tabs([
+                "💓 HRV", "🩸 SmO2", "🧬 Hematology", "🫁 Ventilation", "🌡️ Thermal"
+            ])
+            with sub_hrv:
+                render_hrv_tab(df_clean_pl)
+            with sub_smo2:
+                render_smo2_tab(df_plot, training_notes, uploaded_file.name)
+            with sub_hemo:
+                render_hemo_tab(df_plot)
+            with sub_vent:
+                render_vent_tab(df_plot, training_notes, uploaded_file.name)
+            with sub_thermal:
+                render_thermal_tab(df_plot)
 
-        with tab_intervals:
-             render_intervals_tab(df_plot, df_plot_resampled, cp_input, rider_weight, rider_age, is_male)
-
-        with tab_hrv:
-             render_hrv_tab(df_clean_pl)
-
-        with tab_biomech:
-             render_biomech_tab(df_plot, df_plot_resampled)
-
-        with tab_thermal:
-             render_thermal_tab(df_plot)
-
-        with tab_trends:
-             render_trends_tab(df_plot)
-            
-        with tab_nutrition:
-             render_nutrition_tab(df_plot, cp_input, vt1_watts, vt2_watts)
-
-        with tab_smo2:
-             render_smo2_tab(df_plot, training_notes, uploaded_file.name)
-             
-        with tab_hemo:
-             render_hemo_tab(df_plot)
-             
-        with tab_vent:
-             render_vent_tab(df_plot, training_notes, uploaded_file.name)
-             
-        with tab_limiters:
-             render_limiters_tab(df_plot, cp_input, vt2_vent)
-             
-        with tab_model:
-             render_model_tab(df_plot, cp_input, w_prime_input)
-             
-        with tab_ai:
-             render_ai_coach_tab(df_plot_resampled)
+        # ===== 🧠 INTELLIGENCE =====
+        with tab_intelligence:
+            show_breadcrumb("🧠 Intelligence")
+            sub_nutrition, sub_limiters, sub_ai = st.tabs([
+                "🍎 Nutrition", "🚧 Limiters", "🤖 AI Coach"
+            ])
+            with sub_nutrition:
+                render_nutrition_tab(df_plot, cp_input, vt1_watts, vt2_watts)
+            with sub_limiters:
+                render_limiters_tab(df_plot, cp_input, vt2_vent)
+            with sub_ai:
+                render_ai_coach_tab(df_plot_resampled)
 
 # ===== DOCX EXPORT BUTTON =====
 st.sidebar.markdown("---")

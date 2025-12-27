@@ -10,3 +10,4 @@ statsmodels
 python-docx
 mlx
 numba
+kaleido==0.2.1

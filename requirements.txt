@@ -5,7 +5,6 @@ plotly
 numpy
 scipy
 neurokit2
-io
 matplotlib
 BytesIO
 stats

@@ -41,7 +41,14 @@ def render_report_tab(df_plot, rider_weight, cp_input):
             df_z = df_plot.copy()
             df_z['Zone'] = pd.cut(df_z['watts'], bins=bins, labels=labels, right=False)
             pcts = (df_z['Zone'].value_counts().sort_index() / len(df_z) * 100).round(1)
-            fig_hist = go.Figure(go.Bar(x=pcts.values, y=labels, orientation='h', marker_color=colors, text=pcts.apply(lambda x: f"{x}%"), textposition='auto'))
+            fig_hist = go.Figure(go.Bar(
+                x=pcts.values, 
+                y=pcts.index, 
+                orientation='h', 
+                marker_color=[colors[labels.index(z)] for z in pcts.index], 
+                text=[f"{v:.1f}%" for v in pcts.values], 
+                textposition='auto'
+            ))
             fig_hist.update_layout(template="plotly_dark", height=250, xaxis=dict(visible=False), yaxis=dict(showgrid=False), margin=dict(t=20, b=20))
             st.plotly_chart(fig_hist, use_container_width=True)
     

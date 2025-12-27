@@ -439,7 +439,6 @@ html {
 [data-testid="stPlotlyChart"],
 .stPlotlyChart {
     overflow: visible !important;
-    min-height: 400px;
 }
 
 /* Główny kontener Plotly */

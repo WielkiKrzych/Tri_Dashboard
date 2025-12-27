@@ -1085,6 +1085,7 @@ def calculate_w_prime_balance(_df_pl_active, cp: float, w_prime: float):
     result_df = _calculate_w_prime_balance_cached(df_bytes, float(cp), float(w_prime))
     return result_df
 
+@st.cache_data
 def load_data(file):
     try:
         file.seek(0)
@@ -1232,6 +1233,7 @@ def calculate_metrics(df_pl, cp_val):
         'np_est': np_est, 'ef_factor': ef_factor, 'work_above_cp_kj': work_above_cp_kj
     }
 
+@st.cache_data
 def calculate_dynamic_dfa(df_pl, window_sec=300, step_sec=30):
     """
     Oblicza metryki HRV (RMSSD, SDNN) w oknie przesuwnym.

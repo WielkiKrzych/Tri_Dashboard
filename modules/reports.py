@@ -19,62 +19,40 @@ def generate_docx_report(metrics, df_plot, df_plot_resampled, uploaded_file, cp_
     
     doc = Document()
     
-    # --- OBLICZENIA DODATKOWE DLA RAPORTU ---
-    # 1. Normalized Power (NP)
-    if 'watts' in df_plot.columns:
-        rolling_30s = df_plot['watts'].rolling(window=30, min_periods=1).mean()
-        np_val = np.power(np.mean(np.power(rolling_30s, 4)), 0.25)
-    else:
-        np_val = 0
-
-    # 2. Praca (Total Work in kJ)
-    total_work_kj = df_plot['watts'].sum() / 1000 if 'watts' in df_plot.columns else 0
-
-    # 3. Pulse Power & EF (Efficiency Factor)
-    avg_pp = 0
-    if 'watts' in df_plot.columns and 'heartrate' in df_plot.columns:
-        # Filtrujemy zera
-        mask = (df_plot['watts'] > 10) & (df_plot['heartrate'] > 40)
-        if mask.sum() > 0:
-            avg_pp = (df_plot.loc[mask, 'watts'] / df_plot.loc[mask, 'heartrate']).mean()
+    # --- OBLICZENIA POBIERANE Z METRICS (Code Centralization) ---
+    # Wszystkie kluczowe obliczenia powinny być wykonane w app.py lub modules/calculations.py
+    # i przekazane w słowniku metrics.
     
-    # 4. Temperatura i HSI
-    max_core = df_plot['core_temperature'].max() if 'core_temperature' in df_plot.columns else 0
-    avg_core = df_plot['core_temperature'].mean() if 'core_temperature' in df_plot.columns else 0
-    max_hsi = df_plot['hsi'].max() if 'hsi' in df_plot.columns else 0
+    np_val = metrics.get('np', 0)
+    total_work_kj = metrics.get('work_kj', 0)
+    avg_pp = metrics.get('avg_pp', 0)
+    max_hsi = metrics.get('max_hsi', 0)
+    max_core = metrics.get('max_core', 0)
+    avg_core = metrics.get('avg_core', 0)
+    avg_rmssd = metrics.get('avg_rmssd', 0)
+    carbs_total = metrics.get('carbs_total', 0)
+    vo2_max_est = metrics.get('vo2_max_est', 0)
 
-    # 5. RMSSD (Jeśli dostępne w kolumnach lub obliczone wcześniej, tutaj uproszczona ekstrakcja)
-    avg_rmssd = 0
-    if 'rmssd' in df_plot.columns:
-        avg_rmssd = df_plot['rmssd'].mean()
-    elif 'hrv' in df_plot.columns:
-        avg_rmssd = df_plot['hrv'].mean() # Często HRV w plikach to RMSSD
+    # Uzupełnianie brakujących prostych statystyk (Fallback)
+    if np_val == 0 and 'watts' in df_plot.columns:
+         rolling_30s = df_plot['watts'].rolling(window=30, min_periods=1).mean()
+         np_val = np.power(np.mean(np.power(rolling_30s, 4)), 0.25)
 
-    # 6. Spalone Węglowodany (Logika z tab_nutrition)
-    carbs_total = 0
-    if 'watts' in df_plot.columns:
-        # Zakładamy efficiency 22%
+    if total_work_kj == 0 and 'watts' in df_plot.columns:
+        total_work_kj = df_plot['watts'].sum() / 1000
+
+    if carbs_total == 0 and 'watts' in df_plot.columns:
         energy_kcal_sec = (df_plot['watts'] / 0.22) / 4184.0
-        
-        # Frakcje węgli wg stref (uproszczone dla raportu)
-        conditions = [
-            (df_plot['watts'] < vt1_watts),
-            (df_plot['watts'] >= vt1_watts) & (df_plot['watts'] < vt2_watts),
-            (df_plot['watts'] >= vt2_watts)
-        ]
-        choices = [0.3, 0.8, 1.1] 
-        carb_fraction = np.select(conditions, choices, default=1.0)
-        
-        carbs_burned_sec = (energy_kcal_sec * carb_fraction) / 4.0
+        carbs_burned_sec = (energy_kcal_sec * 1.0) / 4.0 
         carbs_total = carbs_burned_sec.sum()
 
-    # 7. VO2max (Estymacja z 5 min MMP)
-    vo2_max_est = 0
-    if 'watts' in df_plot.columns:
-        mmp_5m = df_plot['watts'].rolling(300).mean().max()
-        if not pd.isna(mmp_5m):
-            vo2_max_est = (10.8 * mmp_5m / rider_weight) + 7
+    if max_core == 0 and 'core_temperature' in df_plot.columns:
+        max_core = df_plot['core_temperature'].max()
+        avg_core = df_plot['core_temperature'].mean()
 
+    if max_hsi == 0 and 'hsi' in df_plot.columns:
+        max_hsi = df_plot['hsi'].max()
+    
     # --- KONIEC OBLICZEŃ ---
 
     # STYLE

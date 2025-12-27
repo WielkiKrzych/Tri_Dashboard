@@ -362,8 +362,113 @@ def calculate_metrics(df_pl, cp_val):
         except Exception:
             df_above_cp = df_pl[df_pl['watts'] > cp_val] if 'watts' in df_pl.columns else pd.DataFrame()
             work_above_cp_kj = (df_above_cp['watts'].sum() / 1000) if len(df_above_cp)>0 else 0.0
+
     return {
-        'avg_watts': avg_watts, 'avg_hr': avg_hr, 'avg_cadence': avg_cadence,
-        'avg_vent': avg_vent, 'avg_rr': avg_rr, 'power_hr': power_hr,
-        'np_est': np_est, 'ef_factor': ef_factor, 'work_above_cp_kj': work_above_cp_kj
+        "avg_watts": avg_watts,
+        "avg_hr": avg_hr,
+        "avg_cadence": avg_cadence,
+        "avg_vent": avg_vent,
+        "avg_rr": avg_rr,
+        "power_hr": power_hr,
+        "ef_factor": ef_factor,
+        "work_above_cp_kj": work_above_cp_kj
     }
+
+def calculate_normalized_power(df_pl):
+    """
+    Oblicza Normalized Power (NP) wg Coggana.
+    Wymaga kolumny 'watts' lub 'watts_smooth'.
+    """
+    df = df_pl.to_pandas() if hasattr(df_pl, "to_pandas") else df_pl.copy()
+    col = 'watts' if 'watts' in df.columns else ('watts_smooth' if 'watts_smooth' in df.columns else None)
+    
+    if col is None:
+        return 0.0
+        
+    # Rolling 30s avg
+    rolling_30s = df[col].rolling(window=30, min_periods=1).mean()
+    # 4th power
+    rolling_pow4 = np.power(rolling_30s, 4)
+    # Mean
+    avg_pow4 = np.mean(rolling_pow4)
+    # 4th root
+    np_val = np.power(avg_pow4, 0.25)
+    
+    if pd.isna(np_val):
+        return df[col].mean()
+        
+    return np_val
+
+def estimate_carbs_burned(df_pl, vt1_watts, vt2_watts):
+    """
+    Estymuje zużycie węglowodanów w oparciu o strefy mocy.
+    Założenie: Efficiency 22%.
+    """
+    df = df_pl.to_pandas() if hasattr(df_pl, "to_pandas") else df_pl.copy()
+    if 'watts' not in df.columns:
+        return 0.0
+        
+    # Energy per second (kcal/s)
+    # Power (W = J/s). Efficiency ~22% -> Total Energy = Power / 0.22
+    # 1 kcal = 4184 J
+    energy_kcal_sec = (df['watts'] / 0.22) / 4184.0
+    
+    # Frakcje węgli wg stref (uproszczone)
+    conditions = [
+        (df['watts'] < vt1_watts),
+        (df['watts'] >= vt1_watts) & (df['watts'] < vt2_watts),
+        (df['watts'] >= vt2_watts)
+    ]
+    choices = [0.3, 0.8, 1.1] # % udziału węgli
+    carb_fraction = np.select(conditions, choices, default=1.0)
+    
+    # 1 g węgli = 4 kcal
+    carbs_burned_sec = (energy_kcal_sec * carb_fraction) / 4.0
+    
+    return carbs_burned_sec.sum()
+
+def calculate_pulse_power_stats(df_pl):
+    """
+    Oblicza statystyki Pulse Power (Efficiency): Avg PP, Trend Drop %.
+    """
+    df = df_pl.to_pandas() if hasattr(df_pl, "to_pandas") else df_pl.copy()
+    
+    col_w = 'watts_smooth' if 'watts_smooth' in df.columns else 'watts'
+    col_hr = 'heartrate_smooth' if 'heartrate_smooth' in df.columns else 'heartrate'
+    
+    if col_w not in df.columns or col_hr not in df.columns:
+        return 0.0, 0.0, pd.DataFrame() # Avg, Drop, DF_PP
+        
+    # Filtrujemy sensowne wartości
+    mask = (df[col_w] > 50) & (df[col_hr] > 90)
+    df_pp = df[mask].copy()
+    
+    if df_pp.empty:
+        return 0.0, 0.0, pd.DataFrame()
+        
+    df_pp['pulse_power'] = df_pp[col_w] / df_pp[col_hr]
+    avg_pp = df_pp['pulse_power'].mean()
+    
+    # Trend
+    if len(df_pp) > 100:
+        x = df_pp['time'] if 'time' in df_pp.columns else np.arange(len(df_pp))
+        y = df_pp['pulse_power'].values
+        idx = np.isfinite(x) & np.isfinite(y)
+        if np.sum(idx) > 10:
+             z = np.polyfit(x[idx], y[idx], 1)
+             slope = z[0]
+             intercept = z[1]
+             # Total drop in % over the session
+             start_val = intercept + slope * x.iloc[0]
+             end_val = intercept + slope * x.iloc[-1]
+             
+             if start_val != 0:
+                 drop_pct = (end_val - start_val) / start_val * 100
+             else:
+                 drop_pct = 0.0
+        else:
+            drop_pct = 0.0
+    else:
+        drop_pct = 0.0
+        
+    return avg_pp, drop_pct, df_pp

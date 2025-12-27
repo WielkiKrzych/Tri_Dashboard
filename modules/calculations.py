@@ -5,35 +5,34 @@ import streamlit as st
 from numba import jit
 from .utils import _serialize_df_to_parquet_bytes
 
-@jit(nopython=True)
+@jit(nopython=True, fastmath=True)
 def calculate_w_prime_fast(watts, time, cp, w_prime_cap):
     n = len(watts)
     w_bal = np.empty(n, dtype=np.float64)
     curr_w = w_prime_cap
     
-    # Obliczamy różnice czasu (dt) wewnątrz Numby dla szybkości
-    # Dla pierwszego punktu zakładamy 1 sekundę, dla reszty różnicę
-    dt = np.empty(n, dtype=np.float64)
-    dt[0] = 1.0 
-    for i in range(1, n):
-        val = time[i] - time[i-1]
-        # Zabezpieczenie przed zerowym czasem lub ujemnym (błędy w pliku)
-        if val <= 0:
-            dt[i] = 1.0
-        else:
-            dt[i] = val
-
+    # Pre-calculate dt locally to keep it in cache
+    prev_time = time[0]
+    
     for i in range(n):
-        # Logika: CP - Moc = delta. 
-        # Jeśli delta > 0 (jedziesz lekko) -> regeneracja.
-        # Jeśli delta < 0 (jedziesz mocno) -> spalanie.
-        delta = (cp - watts[i]) * dt[i]
+        # Calculate dt on the fly to save memory/pass
+        if i == 0:
+            dt = 1.0
+        else:
+            dt = time[i] - prev_time
+            if dt <= 0: dt = 1.0 # fix artifacts
+            prev_time = time[i]
+            
+        # Differential W' Model
+        # dW/dt = CP - P
+        delta = (cp - watts[i]) * dt
+        
+        # Integral
         curr_w += delta
         
-        # Nie możemy mieć więcej niż 100% baterii
+        # Boundary conditions
         if curr_w > w_prime_cap:
             curr_w = w_prime_cap
-        # Nie możemy mieć mniej niż 0% baterii
         elif curr_w < 0:
             curr_w = 0.0
             
@@ -101,12 +100,91 @@ def calculate_w_prime_balance(_df_pl_active, cp: float, w_prime: float):
     result_df = _calculate_w_prime_balance_cached(df_bytes, float(cp), float(w_prime))
     return result_df
 
+@jit(nopython=True)
+def _fast_dfa_loop(time_values, rr_values, window_sec, step_sec):
+    n = len(time_values)
+    results_time = []
+    results_alpha = []
+    results_rmssd = []
+    results_sdnn = []
+    results_mean_rr = []
+    
+    # Znajdź początek i koniec
+    start_t = time_values[0]
+    end_t = time_values[-1]
+    
+    curr_t = start_t + window_sec
+    
+    # Optymalizacja: Indeksy "przesuwnego okna"
+    # Zamiast szukać maską (O(N)), trzymamy wskaźniki left_idx i right_idx (O(N) łącznie)
+    left_idx = 0
+    right_idx = 0
+    
+    while curr_t < end_t:
+        # Przesuń prawy wskaźnik
+        while right_idx < n and time_values[right_idx] <= curr_t:
+            right_idx += 1
+            
+        # Przesuń lewy wskaźnik (okno ma długość window_sec)
+        win_start = curr_t - window_sec
+        while left_idx < right_idx and time_values[left_idx] < win_start:
+            left_idx += 1
+            
+        # Mamy zakres [left_idx, right_idx)
+        window_len = right_idx - left_idx
+        
+        if window_len >= 30:
+            # Kopiujemy wycinek do tablicy (wymagane dla obliczeń w Numba)
+            window_rr = rr_values[left_idx:right_idx]
+            
+            # --- OUTLIER REMOVAL (IQR) ---
+            q25 = np.nanpercentile(window_rr, 25)
+            q75 = np.nanpercentile(window_rr, 75)
+            iqr = q75 - q25
+            lower = q25 - 1.5 * iqr
+            upper = q75 + 1.5 * iqr
+            
+            # Ręczne filtrowanie w pętli (szybsze w Numba niż boolean indexing z nową alokacją)
+            # Ale boolean indexing w Numba też jest OK. Zróbmy prosto:
+            clean_rr = window_rr[(window_rr > lower) & (window_rr < upper)]
+            
+            if len(clean_rr) >= 20:
+                # --- METRYKI ---
+                # RMSSD
+                diffs_sq_sum = 0.0
+                for k in range(len(clean_rr) - 1):
+                    d = clean_rr[k+1] - clean_rr[k]
+                    diffs_sq_sum += d*d
+                rmssd = np.sqrt(diffs_sq_sum / (len(clean_rr) - 1))
+                
+                # SDNN
+                sdnn = np.std(clean_rr)
+                mean_rr = np.mean(clean_rr)
+                
+                # Pseudo-Alpha1
+                if mean_rr > 0:
+                    cv = (rmssd / mean_rr) * 100
+                    alpha1 = 0.4 + (cv / 15.0)
+                    if alpha1 < 0.3: alpha1 = 0.3
+                    if alpha1 > 1.5: alpha1 = 1.5
+                else:
+                    alpha1 = 0.5
+                
+                results_time.append(curr_t)
+                results_alpha.append(alpha1)
+                results_rmssd.append(rmssd)
+                results_sdnn.append(sdnn)
+                results_mean_rr.append(mean_rr)
+        
+        curr_t += step_sec
+        
+    return results_time, results_alpha, results_rmssd, results_sdnn, results_mean_rr
+
 @st.cache_data
 def calculate_dynamic_dfa(df_pl, window_sec=300, step_sec=30):
     """
     Oblicza metryki HRV (RMSSD, SDNN) w oknie przesuwnym.
-    Działa z danymi resamplowanymi (1 Hz) i surowymi R-R.
-    Zwraca pseudo-DFA bazujący na zmienności HRV.
+    ZOPTOLIMALIZOWANA WERSJA Z NUMBA.
     """
 
     df = df_pl.to_pandas() if hasattr(df_pl, "to_pandas") else df_pl.copy()
@@ -124,67 +202,33 @@ def calculate_dynamic_dfa(df_pl, window_sec=300, step_sec=30):
 
     # Automatyczna detekcja jednostek
     mean_val = rr_data[rr_col].mean()
-    if mean_val < 2.0:  # Prawdopodobnie sekundy
-        rr_data = rr_data.copy()
+    if mean_val < 2.0:  # Sekundy -> ms
         rr_data[rr_col] = rr_data[rr_col] * 1000
-    elif mean_val > 2000:  # Prawdopodobnie mikrosekundy
-        rr_data = rr_data.copy()
+    elif mean_val > 2000:  # Mikrosekundy -> ms
         rr_data[rr_col] = rr_data[rr_col] / 1000
 
-    rr_values = rr_data[rr_col].values
-    time_values = rr_data['time'].values
+    # Konwersja do float64 dla Numby
+    rr_values = rr_data[rr_col].values.astype(np.float64)
+    time_values = rr_data['time'].values.astype(np.float64)
 
-    results = []
-    
-    max_time = time_values[-1]
-    curr_time = time_values[0] + window_sec
-
-    while curr_time < max_time:
-        mask = (time_values >= (curr_time - window_sec)) & (time_values <= curr_time)
-        window_rr = rr_values[mask]
+    # --- URUCHOMIENIE NUMBA ENGINE ---
+    try:
+        r_time, r_alpha, r_rmssd, r_sdnn, r_mean_rr = _fast_dfa_loop(time_values, rr_values, float(window_sec), float(step_sec))
         
-        if len(window_rr) >= 30:
-            try:
-                # Usuwamy outliers
-                q1, q3 = np.percentile(window_rr, [25, 75])
-                iqr = q3 - q1
-                mask_valid = (window_rr > q1 - 1.5*iqr) & (window_rr < q3 + 1.5*iqr)
-                clean_rr = window_rr[mask_valid]
-                
-                if len(clean_rr) >= 20:
-                    # Oblicz RMSSD (różnice kolejnych interwałów)
-                    diffs = np.diff(clean_rr)
-                    rmssd = np.sqrt(np.mean(diffs**2))
-                    sdnn = np.std(clean_rr)
-                    mean_rr = np.mean(clean_rr)
-                    
-                    # Pseudo-Alpha1: normalizacja RMSSD/SDNN do skali 0.5-1.5
-                    # Wysoki RMSSD/SDNN = wysoka zmienność = wysoki alpha (stan zrelaksowany)
-                    # Niski RMSSD/SDNN = niska zmienność = niski alpha (stres)
-                    cv = (rmssd / mean_rr) * 100  # Coefficient of variation
-                    
-                    # Mapowanie CV do alpha1 (empiryczne)
-                    # CV ~1-2% = niska zmienność = alpha ~0.5 (stres)
-                    # CV ~5-10% = wysoka zmienność = alpha ~1.0 (relaks)
-                    alpha1 = 0.4 + (cv / 15.0)  # Skalowanie
-                    alpha1 = np.clip(alpha1, 0.3, 1.5)
-                    
-                    results.append({
-                        'time': curr_time, 
-                        'alpha1': alpha1,
-                        'rmssd': rmssd,
-                        'sdnn': sdnn,
-                        'mean_rr': mean_rr
-                    })
-            except Exception:
-                pass 
+        if not r_time:
+             return None, "Brak wyników (zbyt mało danych w oknach?)"
+
+        results = pd.DataFrame({
+            'time': r_time,
+            'alpha1': r_alpha,
+            'rmssd': r_rmssd,
+            'sdnn': r_sdnn,
+            'mean_rr': r_mean_rr
+        })
+        return results, None
         
-        curr_time += step_sec
-
-    if not results:
-        return None, f"Nie udało się obliczyć HRV. Dane: {len(rr_data)} próbek"
-
-    return pd.DataFrame(results), None
+    except Exception as e:
+        return None, f"Błąd obliczeń Numba: {e}"
 
 def calculate_advanced_kpi(df_pl):
     df = df_pl.to_pandas() if hasattr(df_pl, "to_pandas") else df_pl.copy()

@@ -9,6 +9,7 @@ try:
     import mlx.core as mx
     import mlx.nn as nn
     import mlx.optimizers as optim
+    import mlx.utils
     MLX_AVAILABLE = True
 except ImportError:
     pass
@@ -37,7 +38,7 @@ if MLX_AVAILABLE:
                      flattened_params[f"{k}.{sub_v}"] = sub_v
             else:
                 flattened_params[k] = v
-        mx.savez(filepath, **dict(mx.tree_flatten(model.parameters())))
+        mx.savez(filepath, **dict(mlx.utils.tree_flatten(model.parameters())))
 
     def load_model(model, filepath):
         if os.path.exists(filepath):

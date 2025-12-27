@@ -1,9 +1,39 @@
+from typing import Union, Optional, Tuple, Dict, Any, List
 import numpy as np
 import pandas as pd
 import io
 import streamlit as st
 from numba import jit
 from .utils import _serialize_df_to_parquet_bytes
+from .constants import (
+    MIN_SAMPLES_HRV, MIN_SAMPLES_DFA_WINDOW, MIN_SAMPLES_ACTIVE,
+    MIN_SAMPLES_Z2_DRIFT, EFFICIENCY_FACTOR, KCAL_PER_JOULE,
+    KCAL_PER_GRAM_CARB, CARB_FRACTION_BELOW_VT1, CARB_FRACTION_VT1_VT2,
+    CARB_FRACTION_ABOVE_VT2, DFA_ALPHA_MIN, DFA_ALPHA_MAX,
+    MIN_WATTS_ACTIVE, MIN_HR_ACTIVE, MIN_WATTS_DECOUPLING, MIN_HR_DECOUPLING,
+    WINDOW_LONG, WINDOW_SHORT
+)
+
+
+def ensure_pandas(df: Union[pd.DataFrame, Any]) -> pd.DataFrame:
+    """
+    Convert any DataFrame-like object to pandas DataFrame.
+    Minimizes unnecessary copying when already a pandas DataFrame.
+    
+    Args:
+        df: Input data (pandas DataFrame, Polars DataFrame, or dict)
+        
+    Returns:
+        pandas DataFrame
+    """
+    if isinstance(df, pd.DataFrame):
+        return df
+    if hasattr(df, 'to_pandas'):
+        return df.to_pandas()
+    if isinstance(df, dict):
+        return pd.DataFrame(df)
+    return pd.DataFrame(df)
+
 
 @jit(nopython=True, fastmath=True)
 def calculate_w_prime_fast(watts, time, cp, w_prime_cap):
@@ -177,27 +207,25 @@ def _fast_dfa_loop(time_values, rr_values, window_sec, step_sec):
                 results_mean_rr.append(mean_rr)
         
         curr_t += step_sec
-        
     return results_time, results_alpha, results_rmssd, results_sdnn, results_mean_rr
 
 @st.cache_data
-def calculate_dynamic_dfa(df_pl, window_sec=300, step_sec=30):
+def calculate_dynamic_dfa(df_pl, window_sec: int = 300, step_sec: int = 30) -> Tuple[Optional[pd.DataFrame], Optional[str]]:
     """
-    Oblicza metryki HRV (RMSSD, SDNN) w oknie przesuwnym.
-    ZOPTOLIMALIZOWANA WERSJA Z NUMBA.
+    Calculate HRV metrics (RMSSD, SDNN) in a sliding window.
+    Optimized version with Numba.
     """
-
-    df = df_pl.to_pandas() if hasattr(df_pl, "to_pandas") else df_pl.copy()
+    df = ensure_pandas(df_pl)
     
     rr_col = next((c for c in ['rr', 'rr_interval', 'hrv', 'ibi', 'r-r', 'rr_ms'] if c in df.columns), None)
     
     if rr_col is None:
-        return None, "Brak kolumny z danymi R-R/HRV"
+        return None, "Missing R-R/HRV data column"
 
     rr_data = df[['time', rr_col]].dropna()
     rr_data = rr_data[rr_data[rr_col] > 0]
     
-    if len(rr_data) < 100:
+    if len(rr_data) < MIN_SAMPLES_HRV:
         return None, f"Za mało danych R-R ({len(rr_data)} < 100)"
 
     # Automatyczna detekcja jednostek
@@ -230,39 +258,48 @@ def calculate_dynamic_dfa(df_pl, window_sec=300, step_sec=30):
     except Exception as e:
         return None, f"Błąd obliczeń Numba: {e}"
 
-def calculate_advanced_kpi(df_pl):
-    df = df_pl.to_pandas() if hasattr(df_pl, "to_pandas") else df_pl.copy()
+def calculate_advanced_kpi(df_pl: Union[pd.DataFrame, Any]) -> Tuple[float, float]:
+    """Calculate decoupling percentage and efficiency factor."""
+    df = ensure_pandas(df_pl)
     if 'watts_smooth' not in df.columns or 'heartrate_smooth' not in df.columns:
         return 0.0, 0.0
-    df_active = df[(df['watts_smooth'] > 100) & (df['heartrate_smooth'] > 80)]
-    if len(df_active) < 600: return 0.0, 0.0
+    df_active = df[(df['watts_smooth'] > MIN_WATTS_DECOUPLING) & (df['heartrate_smooth'] > MIN_HR_DECOUPLING)]
+    if len(df_active) < MIN_SAMPLES_ACTIVE: 
+        return 0.0, 0.0
     mid = len(df_active) // 2
     p1, p2 = df_active.iloc[:mid], df_active.iloc[mid:]
     hr1 = p1['heartrate_smooth'].mean()
     hr2 = p2['heartrate_smooth'].mean()
-    if hr1 == 0 or hr2 == 0: return 0.0, 0.0
+    if hr1 == 0 or hr2 == 0: 
+        return 0.0, 0.0
     ef1 = p1['watts_smooth'].mean() / hr1
     ef2 = p2['watts_smooth'].mean() / hr2
-    if ef1 == 0: return 0.0, 0.0
+    if ef1 == 0: 
+        return 0.0, 0.0
     return ((ef1 - ef2) / ef1) * 100, (df_active['watts_smooth'] / df_active['heartrate_smooth']).mean()
 
-def calculate_z2_drift(df_pl, cp):
-    df = df_pl.to_pandas() if hasattr(df_pl, "to_pandas") else df_pl.copy()
+def calculate_z2_drift(df_pl: Union[pd.DataFrame, Any], cp: float) -> float:
+    """Calculate cardiac drift in Zone 2."""
+    df = ensure_pandas(df_pl)
     if 'watts_smooth' not in df.columns or 'heartrate_smooth' not in df.columns:
         return 0.0
+    # Z2 is 55-75% of CP
     df_z2 = df[(df['watts_smooth'] >= 0.55*cp) & (df['watts_smooth'] <= 0.75*cp) & (df['heartrate_smooth'] > 60)]
-    if len(df_z2) < 300: return 0.0
+    if len(df_z2) < MIN_SAMPLES_Z2_DRIFT: 
+        return 0.0
     mid = len(df_z2) // 2
     p1, p2 = df_z2.iloc[:mid], df_z2.iloc[mid:]
     hr1 = p1['heartrate_smooth'].mean()
     hr2 = p2['heartrate_smooth'].mean()
-    if hr1 == 0 or hr2 == 0: return 0.0
+    if hr1 == 0 or hr2 == 0: 
+        return 0.0
     ef1 = p1['watts_smooth'].mean() / hr1
     ef2 = p2['watts_smooth'].mean() / hr2
     return ((ef1 - ef2) / ef1) * 100 if ef1 != 0 else 0.0
 
-def calculate_heat_strain_index(df_pl):
-    df = df_pl.to_pandas() if hasattr(df_pl, "to_pandas") else df_pl.copy()
+def calculate_heat_strain_index(df_pl: Union[pd.DataFrame, Any]) -> pd.DataFrame:
+    """Calculate Heat Strain Index (HSI) based on core temp and HR."""
+    df = ensure_pandas(df_pl)
     core_col = 'core_temperature_smooth' if 'core_temperature_smooth' in df.columns else None
     if not core_col or 'heartrate_smooth' not in df.columns:
         df['hsi'] = None
@@ -283,8 +320,9 @@ def calculate_trend(x, y):
         return p(x)
     except: return None
 
-def process_data(df):
-    df_pd = df.to_pandas() if hasattr(df, "to_pandas") else df.copy()
+def process_data(df: Union[pd.DataFrame, Any]) -> pd.DataFrame:
+    """Process raw data: resample, smooth, and add time columns."""
+    df_pd = ensure_pandas(df)
 
     if 'time' not in df_pd.columns:
         df_pd['time'] = np.arange(len(df_pd)).astype(float)
@@ -318,8 +356,8 @@ def process_data(df):
     df_resampled['time'] = df_resampled.index.total_seconds()
     df_resampled['time_min'] = df_resampled['time'] / 60.0
 
-    window_long = '30s'
-    window_short = '5s'
+    window_long = WINDOW_LONG
+    window_short = WINDOW_SHORT
     smooth_cols = ['watts', 'heartrate', 'cadence', 'smo2', 'torque', 'core_temperature',
                    'skin_temperature', 'velocity_smooth', 'tymebreathrate', 'tymeventilation', 'thb']
     
@@ -374,12 +412,12 @@ def calculate_metrics(df_pl, cp_val):
         "work_above_cp_kj": work_above_cp_kj
     }
 
-def calculate_normalized_power(df_pl):
+def calculate_normalized_power(df_pl: Union[pd.DataFrame, Any]) -> float:
     """
-    Oblicza Normalized Power (NP) wg Coggana.
-    Wymaga kolumny 'watts' lub 'watts_smooth'.
+    Calculate Normalized Power (NP) using Coggan's formula.
+    Requires 'watts' or 'watts_smooth' column.
     """
-    df = df_pl.to_pandas() if hasattr(df_pl, "to_pandas") else df_pl.copy()
+    df = ensure_pandas(df_pl)
     col = 'watts' if 'watts' in df.columns else ('watts_smooth' if 'watts_smooth' in df.columns else None)
     
     if col is None:
@@ -399,39 +437,36 @@ def calculate_normalized_power(df_pl):
         
     return np_val
 
-def estimate_carbs_burned(df_pl, vt1_watts, vt2_watts):
+def estimate_carbs_burned(df_pl: Union[pd.DataFrame, Any], vt1_watts: float, vt2_watts: float) -> float:
     """
-    Estymuje zużycie węglowodanów w oparciu o strefy mocy.
-    Założenie: Efficiency 22%.
+    Estimate carbohydrate consumption based on power zones.
+    Assumption: 22% mechanical efficiency.
     """
-    df = df_pl.to_pandas() if hasattr(df_pl, "to_pandas") else df_pl.copy()
+    df = ensure_pandas(df_pl)
     if 'watts' not in df.columns:
         return 0.0
         
     # Energy per second (kcal/s)
-    # Power (W = J/s). Efficiency ~22% -> Total Energy = Power / 0.22
-    # 1 kcal = 4184 J
-    energy_kcal_sec = (df['watts'] / 0.22) / 4184.0
+    # Power (W = J/s). Efficiency ~22% -> Total Energy = Power / efficiency
+    energy_kcal_sec = (df['watts'] / EFFICIENCY_FACTOR) * KCAL_PER_JOULE
     
-    # Frakcje węgli wg stref (uproszczone)
+    # Carb fraction by zone
     conditions = [
         (df['watts'] < vt1_watts),
         (df['watts'] >= vt1_watts) & (df['watts'] < vt2_watts),
         (df['watts'] >= vt2_watts)
     ]
-    choices = [0.3, 0.8, 1.1] # % udziału węgli
+    choices = [CARB_FRACTION_BELOW_VT1, CARB_FRACTION_VT1_VT2, CARB_FRACTION_ABOVE_VT2]
     carb_fraction = np.select(conditions, choices, default=1.0)
     
-    # 1 g węgli = 4 kcal
-    carbs_burned_sec = (energy_kcal_sec * carb_fraction) / 4.0
+    # 1 g carbs = 4 kcal
+    carbs_burned_sec = (energy_kcal_sec * carb_fraction) / KCAL_PER_GRAM_CARB
     
     return carbs_burned_sec.sum()
 
-def calculate_pulse_power_stats(df_pl):
-    """
-    Oblicza statystyki Pulse Power (Efficiency): Avg PP, Trend Drop %.
-    """
-    df = df_pl.to_pandas() if hasattr(df_pl, "to_pandas") else df_pl.copy()
+def calculate_pulse_power_stats(df_pl: Union[pd.DataFrame, Any]) -> Tuple[float, float, pd.DataFrame]:
+    """Calculate Pulse Power (Efficiency) statistics: Avg PP, Trend Drop %."""
+    df = ensure_pandas(df_pl)
     
     col_w = 'watts_smooth' if 'watts_smooth' in df.columns else 'watts'
     col_hr = 'heartrate_smooth' if 'heartrate_smooth' in df.columns else 'heartrate'

@@ -33,18 +33,21 @@ def generate_docx_report(metrics, df_plot, df_plot_resampled, uploaded_file, cp_
     carbs_total = metrics.get('carbs_total', 0)
     vo2_max_est = metrics.get('vo2_max_est', 0)
 
-    # Uzupełnianie brakujących prostych statystyk (Fallback)
+    # Metrics should be pre-calculated in app.py
+    # Fallback warnings for debugging if metrics are missing
+    import logging
+    
     if np_val == 0 and 'watts' in df_plot.columns:
-         rolling_30s = df_plot['watts'].rolling(window=30, min_periods=1).mean()
-         np_val = np.power(np.mean(np.power(rolling_30s, 4)), 0.25)
+        logging.warning("NP not pre-calculated in app.py - using fallback calculation")
+        rolling_30s = df_plot['watts'].rolling(window=30, min_periods=1).mean()
+        np_val = np.power(np.mean(np.power(rolling_30s, 4)), 0.25)
 
     if total_work_kj == 0 and 'watts' in df_plot.columns:
+        logging.warning("work_kj not pre-calculated in app.py - using fallback")
         total_work_kj = df_plot['watts'].sum() / 1000
 
-    if carbs_total == 0 and 'watts' in df_plot.columns:
-        energy_kcal_sec = (df_plot['watts'] / 0.22) / 4184.0
-        carbs_burned_sec = (energy_kcal_sec * 1.0) / 4.0 
-        carbs_total = carbs_burned_sec.sum()
+    if carbs_total == 0:
+        logging.warning("carbs_total not pre-calculated in app.py")
 
     if max_core == 0 and 'core_temperature' in df_plot.columns:
         max_core = df_plot['core_temperature'].max()
@@ -53,7 +56,7 @@ def generate_docx_report(metrics, df_plot, df_plot_resampled, uploaded_file, cp_
     if max_hsi == 0 and 'hsi' in df_plot.columns:
         max_hsi = df_plot['hsi'].max()
     
-    # --- KONIEC OBLICZEŃ ---
+    # --- END FALLBACK CALCULATIONS ---
 
     # STYLE
     style = doc.styles['Normal']

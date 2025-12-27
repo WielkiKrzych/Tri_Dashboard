@@ -128,6 +128,20 @@ def render_vent_tab(target_df, training_notes, uploaded_file_name):
             else:
                 slope_ve = 0; intercept_ve = 0; trend_desc_ve = "N/A"
 
+            # === AUTOMATYCZNA DETEKCJA STREFY (VT1/VT2) ===
+            def detect_vent_zone(slope_val):
+                """Wykrywa strefę wentylacyjną na podstawie slope VE."""
+                if slope_val < 0.02:
+                    return "⚪ Bardzo niska intensywność", "info", "Wentylacja stabilna. Strefa regeneracji."
+                elif slope_val <= 0.05:
+                    return "🟢 Poniżej VT1 (Strefa tlenowa)", "success", "Liniowy wzrost VE. Komfortowa intensywność tlenowa."
+                elif slope_val <= 0.15:
+                    return "🟡 VT1-VT2 (Strefa progowa)", "warning", "Pierwsze przełamanie wentylacyjne. Buforowanie kwasu mlekowego."
+                else:
+                    return "🔴 Powyżej VT2 (Hiperwentylacja)", "error", "Wykładniczy wzrost VE. Organizm nie nadąża z usuwaniem CO2."
+            
+            zone_name, zone_type, zone_desc = detect_vent_zone(slope_ve)
+
             # Formatowanie czasu dla wyświetlania
             def fmt_time_v(seconds):
                 try:
@@ -156,6 +170,18 @@ def render_vent_tab(target_df, training_notes, uploaded_file_name):
             # Kolorowanie trendu (Tu odwrotnie niż w SmO2: Duży wzrost = Czerwony/Ostrzegawczy)
             trend_color = "inverse" if slope_ve > 0.1 else "normal"
             mv5.metric("Trend VE (Slope)", trend_desc_ve, delta=trend_desc_ve, delta_color=trend_color)
+
+            # Wyświetl wykrytą strefę
+            st.markdown("---")
+            st.markdown("### 🎯 Automatyczna Detekcja Progu Wentylacyjnego")
+            if zone_type == "info":
+                st.info(f"**{zone_name}**\n\n{zone_desc}")
+            elif zone_type == "success":
+                st.success(f"**{zone_name}**\n\n{zone_desc}")
+            elif zone_type == "warning":
+                st.warning(f"**{zone_name}**\n\n{zone_desc}")
+            else:
+                st.error(f"**{zone_name}**\n\n{zone_desc}")
 
             # 5. Wykres
             fig_vent = go.Figure()

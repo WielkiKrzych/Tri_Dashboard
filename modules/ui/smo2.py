@@ -129,6 +129,20 @@ def render_smo2_tab(target_df, training_notes, uploaded_file_name):
                     intercept = 0
                     trend_desc = "N/A"
 
+                # === AUTOMATYCZNA DETEKCJA STREFY (LT1/LT2) ===
+                def detect_smo2_zone(slope_val):
+                    """Wykrywa strefę metaboliczną na podstawie slope SmO2."""
+                    if slope_val > 0.005:
+                        return "🟢 Poniżej LT1", "success", "Podaż tlenu przewyższa zużycie. Strefa regeneracji lub rozgrzewki."
+                    elif slope_val >= -0.005:
+                        return "🟡 Steady State (LT1-LT2)", "warning", "Równowaga tlenowa. Możesz utrzymać tę intensywność długo."
+                    elif slope_val >= -0.01:
+                        return "🟠 Zbliżasz się do LT2", "warning", "Powolna desaturacja. Blisko progu beztlenowego."
+                    else:
+                        return "🔴 Powyżej LT2 (Anaerobic)", "error", "Dług tlenowy. Intensywność nie do utrzymania na dłużej."
+                
+                zone_name, zone_type, zone_desc = detect_smo2_zone(slope)
+
                 st.subheader(f"Metryki dla odcinka: {start_time_str} - {nd_time_str} (Czas trwania: {duration_sec}s)")
                 m1, m2, m3, m4, m5 = st.columns(5)
                 m1.metric("Śr. Moc", f"{avg_watts:.0f} W")
@@ -138,6 +152,16 @@ def render_smo2_tab(target_df, training_notes, uploaded_file_name):
                 
                 delta_color = "normal" if slope >= -0.01 else "inverse" 
                 m5.metric("SmO2 Trend (Slope)", trend_desc, delta=trend_desc, delta_color=delta_color)
+
+                # Wyświetl wykrytą strefę
+                st.markdown("---")
+                st.markdown("### 🎯 Automatyczna Detekcja Progu")
+                if zone_type == "success":
+                    st.success(f"**{zone_name}**\n\n{zone_desc}")
+                elif zone_type == "warning":
+                    st.warning(f"**{zone_name}**\n\n{zone_desc}")
+                else:
+                    st.error(f"**{zone_name}**\n\n{zone_desc}")
 
                 fig_smo2 = go.Figure()
 

@@ -1,5 +1,7 @@
 import streamlit as st
 import pandas as pd
+from datetime import datetime
+import time
 import plotly.express as px
 import plotly.graph_objects as go
 import numpy as np
@@ -7,730 +9,37 @@ import io
 from io import BytesIO
 from scipy import stats
 import neurokit2 as nk
-
-try:
-    import sweatpy as sw
-    SWEATP_AVAILABLE = True
-except Exception:
-    SWEATP_AVAILABLE = False
-    MLX_AVAILABLE = False
-try:
-    import mlx.core as mx
-    import mlx.nn as nn
-    import mlx.optimizers as optim
-    MLX_AVAILABLE = True
-except ImportError:
-    pass
-
-# --- MLX MODULE (APPLE SILICON NEURAL NETWORK) ---
+from pathlib import Path
 import os
+import zipfile
 import json
-import time
 
-MLX_AVAILABLE = False
-try:
-    import mlx.core as mx
-    import mlx.nn as nn
-    import mlx.optimizers as optim
-    MLX_AVAILABLE = True
-except ImportError:
-    pass
+# --- MODULE IMPORTS ---
+from modules.config import Config
+from modules.utils import parse_time_input, load_data, _serialize_df_to_parquet_bytes, normalize_columns_pandas
+from modules.calculations import (
+    calculate_w_prime_balance, calculate_dynamic_dfa, calculate_advanced_kpi,
+    calculate_z2_drift, calculate_heat_strain_index, calculate_vo2max,
+    calculate_trend, calculate_metrics, process_data
+)
+from modules.plots import apply_chart_style, add_stats_to_legend
+from modules.ml_logic import (
+    MLX_AVAILABLE, train_cycling_brain, predict_only, MODEL_FILE, HISTORY_FILE
+)
+from modules.notes import TrainingNotes
+from modules.reports import generate_docx_report, export_all_charts_as_png
 
-MODEL_FILE = "cycling_brain_weights.npz"
-HISTORY_FILE = "brain_evolution_history.json"
-
-if MLX_AVAILABLE:
-    class PhysioNet(nn.Module):
-        def __init__(self):
-            super().__init__()
-            self.l1 = nn.Linear(3, 64)
-            self.l2 = nn.Linear(64, 64)
-            self.l3 = nn.Linear(64, 1)
-
-        def __call__(self, x):
-            x = nn.relu(self.l1(x))
-            x = nn.relu(self.l2(x))
-            return self.l3(x)
-
-    def save_model(model, filepath):
-        flattened_params = {}
-        for k, v in model.parameters().items():
-            if isinstance(v, dict):
-                 for sub_k, sub_v in v.items():
-                     flattened_params[f"{k}.{sub_v}"] = sub_v
-            else:
-                flattened_params[k] = v
-        mx.savez(filepath, **dict(mx.tree_flatten(model.parameters())))
-
-    def load_model(model, filepath):
-        if os.path.exists(filepath):
-            try:
-                weights = mx.load(filepath)
-                
-                try:
-                    model.update(weights)
-                except Exception:
-                    current_params = model.parameters()
-                    new_params = {}
-                    
-                    for k, v in weights.items():
-                        parts = k.split('.')
-                        if len(parts) == 2:
-                            layer, param = parts
-                            if layer not in new_params: new_params[layer] = {}
-                            new_params[layer][param] = v
-                    
-                    model.update(new_params)
-                
-                return True
-            except Exception as e:
-                st.sidebar.error(f"⚠️ Błąd AI: {e}")
-                print(f"DEBUG ERROR: {e}")
-                return False
-        return False
-
-    def update_history(hr_base, hr_thresh):
-        """Zapisuje historię Baza/Próg do JSON z obsługą None"""
-        history = []
-        if os.path.exists(HISTORY_FILE):
-            try:
-                with open(HISTORY_FILE, 'r') as f:
-                    history = json.load(f)
-            except: pass
-        
-        entry = {
-            "timestamp": time.time(),
-            "date": time.strftime("%Y-%m-%d %H:%M"),
-            "hr_base": float(hr_base) if hr_base is not None else None,
-            "hr_thresh": float(hr_thresh) if hr_thresh is not None else None
-        }
-        history.append(entry)
-        
-        with open(HISTORY_FILE, 'w') as f:
-            json.dump(history, f)
-        return history
-
-    def predict_only(df):
-        """Tylko predykcja (bez treningu) - dla automatycznego wykresu"""
-        if not os.path.exists(MODEL_FILE):
-            return None
-            
-        w = df['watts_smooth'].values / 500.0
-        c = df['cadence_smooth'].values / 120.0 if 'cadence_smooth' in df else np.zeros_like(w)
-        t = df['time_min'].values / df['time_min'].max()
-        X_np = np.column_stack((w, c, t)).astype(np.float32)
-        X = mx.array(X_np)
-        
-        model = PhysioNet()
-        if load_model(model, MODEL_FILE):
-            y_pred_scaled = model(X)
-            return np.array(y_pred_scaled).flatten() * 200.0
-        return None
-    
-    def filter_and_prepare(df, target_watts, tolerance=15, min_samples=30):
-        mask = (df['watts_smooth'] >= target_watts - tolerance) & \
-            (df['watts_smooth'] <= target_watts + tolerance)
-        
-        if mask.sum() < min_samples:
-            return None, None
-
-        df_filtered = df[mask].copy()
-        w = df_filtered['watts_smooth'].values / 500.0
-        c = df_filtered['cadence_smooth'].values / 120.0 if 'cadence_smooth' in df_filtered else np.zeros_like(w)
-        t = df_filtered['time_min'].values / df['time_min'].max()
-        y = df_filtered['heartrate_smooth'].values / 200.0
-
-        X = mx.array(np.column_stack((w, c, t)).astype(np.float32))
-        Y = mx.array(y.astype(np.float32).reshape(-1, 1))
-        return X, Y
-
-    def train_cycling_brain(df, epochs=200):
-        model = PhysioNet()
-        mx.eval(model.parameters())
-        
-        loaded = load_model(model, MODEL_FILE)
-        
-        def mse_loss(pred, target): return mx.mean((pred - target) ** 2)
-        optimizer = optim.Adam(learning_rate=0.02)
-        def train_step(model, X, y):
-            loss = mse_loss(model(X), y)
-            return loss
-        loss_and_grad_fn = nn.value_and_grad(model, train_step)
-
-        status_container = st.empty()
-        bar = st.progress(0)
-        
-        results = {"base": None, "thresh": None}
-        targets = [("base", 280), ("thresh", 360)]
-        
-        status_container.info("Trenowanie modelu ogólnego (cały plik)...")
-        w_all = df['watts_smooth'].values / 500.0
-        c_all = df['cadence_smooth'].values / 120.0 if 'cadence_smooth' in df else np.zeros_like(w_all)
-        t_all = df['time_min'].values / df['time_min'].max()
-        y_all = df['heartrate_smooth'].values / 200.0
-        X_all = mx.array(np.column_stack((w_all, c_all, t_all)).astype(np.float32))
-        Y_all = mx.array(y_all.astype(np.float32).reshape(-1, 1))
-        
-        for i in range(100): 
-            loss, grads = loss_and_grad_fn(model, X_all, Y_all)
-            optimizer.update(model, grads)
-            mx.eval(model.parameters(), optimizer.state)
-        
-        y_pred_full = np.array(model(X_all)).flatten() * 200.0
-        save_model(model, MODEL_FILE) 
-
-        step = 0
-        total_steps = len(targets) * epochs
-        
-        for name, watts in targets:
-            status_container.info(f"Kalibracja strefy: {watts}W...")
-            
-            X_chunk, y_chunk = filter_and_prepare(df, watts)
-            
-            if X_chunk is not None:
-                for i in range(epochs):
-                    loss, grads = loss_and_grad_fn(model, X_chunk, y_chunk)
-                    optimizer.update(model, grads)
-                    mx.eval(model.parameters(), optimizer.state)
-                    if i % 10 == 0: 
-                        step += 10
-                        bar.progress(min(step / total_steps, 1.0))
-                
-                in_vec = mx.array([[watts/500.0, 80.0/120.0, 0.5]]) 
-                pred = float(model(in_vec)[0][0]) * 200.0
-                results[name] = pred
-            else:
-                results[name] = None
-                step += epochs
-                
-        bar.empty(); status_container.empty()
-
-        history = update_history(results["base"], results["thresh"])
-
-        return y_pred_full, results["base"], results["thresh"], loaded, history
-
-from fpdf import FPDF
-import base64
-
-class PDFReport(FPDF):
-    def header(self):
-        self.set_font('Arial', 'B', 15)
-        self.cell(0, 10, 'Pro Athlete Dashboard - Raport Treningowy', 0, 1, 'C')
-        self.ln(10)
-
-    def footer(self):
-        self.set_y(-15)
-        self.set_font('Arial', 'I', 8)
-        self.cell(0, 10, f'Strona {self.page_no()}', 0, 0, 'C')
-
-def create_download_link(val, filename):
-    b64 = base64.b64encode(val)  # val looks like b'...'
-    return f'<a href="data:application/octet-stream;base64,{b64.decode()}" download="{filename}.pdf">📥 Pobierz Raport PDF</a>'
 
 st.set_page_config(page_title="Pro Athlete Dashboard", layout="wide", page_icon="⚡")
 
-st.markdown("""
-    <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&family=Rajdhani:wght@500;600;700&display=swap');
+def load_css(file_name):
+    with open(file_name) as f:
+        st.markdown(f'<style>{f.read()}</style>', unsafe_allow_html=True)
 
-    /* GLOBALNE TŁO */
-    .stApp {
-        background: radial-gradient(circle at 10% 20%, #1a1f25 0%, #0e1117 90%);
-        color: #e0e0e0;
-        font-family: 'Inter', sans-serif;
-    }
+load_css('style.css')
 
-    /* TYPOGRAFIA */
-    h1, h2, h3, h4, h5 {
-        font-family: 'Rajdhani', sans-serif !important;
-        text-transform: uppercase;
-        letter-spacing: 1px;
-        color: #ffffff !important;
-        text-shadow: 0 2px 4px rgba(0,0,0,0.5);
-    }
-    h1 { font-weight: 700; color: #00cc96 !important; }
-
-    /* SIDEBAR */
-    [data-testid="stSidebar"] {
-        background-color: #050505;
-        border-right: 1px solid #30363d;
-    }
-
-    /* METRYKI */
-    [data-testid="stMetric"] {
-        background: rgba(255, 255, 255, 0.03);
-        backdrop-filter: blur(10px);
-        -webkit-backdrop-filter: blur(10px);
-        border-radius: 12px;
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        padding: 15px !important;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
-        transition: all 0.3s ease;
-    }
-    [data-testid="stMetric"]:hover {
-        transform: translateY(-3px);
-        border-color: #00cc96;
-        box-shadow: 0 8px 15px rgba(0, 204, 150, 0.2);
-    }
-    
-    /* Kolor etykiety metryki */
-    [data-testid="stMetricLabel"] {
-        font-size: 0.9rem !important;
-        color: #8b949e !important;
-        font-family: 'Rajdhani', sans-serif;
-    }
-    /* Kolor wartości metryki */
-    [data-testid="stMetricValue"] {
-        font-family: 'Rajdhani', sans-serif;
-        font-weight: 600;
-        color: #f0f6fc !important;
-    }
-
-    /* ZAKŁADKI */
-    .stTabs [data-baseweb="tab-list"] {
-        gap: 8px;
-        background-color: transparent;
-        padding-bottom: 10px;
-    }
-    .stTabs [data-baseweb="tab"] {
-        height: 40px;
-        border-radius: 8px;
-        background-color: rgba(255,255,255,0.05);
-        color: #c9d1d9;
-        border: none;
-        font-family: 'Rajdhani', sans-serif;
-        font-weight: 600;
-        padding: 0 20px;
-    }
-    .stTabs [aria-selected="true"] {
-        background-color: #00cc96 !important;
-        color: #000000 !important;
-    }
-
-    /* INFO BOXY */
-    .stAlert {
-        background-color: rgba(22, 27, 34, 0.9);
-        border: 1px solid #30363d;
-        border-left: 5px solid #58a6ff;
-        border-radius: 8px;
-        color: #c9d1d9;
-    }
-    </style>
-""", unsafe_allow_html=True)
-
-# --- 2. KONFIGURACJA STAŁYCH ---
-class Config:
-    SMOOTH_WINDOW = 30
-    SMOOTH_WINDOW_SHORT = 5
-    COLOR_POWER = '#00cc96'
-    COLOR_HR = '#ef553b'
-    COLOR_SMO2 = '#ab63fa'
-    COLOR_VE = '#ffa15a'
-    COLOR_RR = '#19d3f3'
-    COLOR_THB = '#e377c2'
-    COLOR_TORQUE = '#e377c2'
-
-# --- 3. FUNKCJE POMOCNICZE ---
-
-def parse_time_input(t_str):
-    try:
-        parts = list(map(int, t_str.split(':')))
-        if len(parts) == 3: return parts[0]*3600 + parts[1]*60 + parts[2]
-        if len(parts) == 2: return parts[0]*60 + parts[1]
-        if len(parts) == 1: return parts[0]
-    except: return None
-    return None
-
-def _serialize_df_to_parquet_bytes(df):
-    bio = io.BytesIO()
-    try:
-        df.to_parquet(bio, index=False)
-        return bio.getvalue()
-    except Exception:
-        bio = io.BytesIO()
-        df.to_csv(bio, index=False)
-        return bio.getvalue()
-
-@st.cache_data
-def _calculate_w_prime_balance_cached(df_bytes: bytes, cp: float, w_prime: float):
-    try:
-        bio = io.BytesIO(df_bytes)
-        try:
-            df_pd = pd.read_parquet(bio)
-        except Exception:
-            bio.seek(0)
-            df_pd = pd.read_csv(bio)
-
-        if 'watts' not in df_pd.columns:
-            df_pd['w_prime_balance'] = np.nan
-            return df_pd
-
-        watts = df_pd['watts'].to_numpy(dtype=float)
-
-        if 'time' in df_pd.columns:
-            time_arr = df_pd['time'].to_numpy(dtype=float)
-            if not np.all(np.diff(time_arr) >= 0):
-                order = np.argsort(time_arr)
-                time_arr = time_arr[order]
-                watts = watts[order]
-                inv_order = np.argsort(order)
-            else:
-                inv_order = None
-        else:
-            time_arr = np.arange(len(watts), dtype=float)
-            inv_order = None
-
-        dt = np.diff(time_arr, prepend=time_arr[0])
-        if len(dt) > 1:
-            dt[0] = dt[1] if dt[1] > 0 else 1.0
-        else:
-            dt[0] = 1.0
-
-        w_bal = np.empty_like(watts, dtype=float)
-        curr_w = float(w_prime)
-
-        for i in range(len(watts)):
-            p = watts[i]
-            delta = (cp - p) * dt[i]   # >0 -> ładowanie, <0 -> zużycie
-            curr_w += delta
-            if curr_w > w_prime:
-                curr_w = float(w_prime)
-            if curr_w < 0:
-                curr_w = 0.0
-            w_bal[i] = curr_w
-
-        if inv_order is not None:
-            w_bal = w_bal[inv_order]
-
-        df_pd['w_prime_balance'] = w_bal
-        return df_pd
-
-    except Exception as e:
-        try:
-            bio = io.BytesIO(df_bytes)
-            try:
-                df_pd = pd.read_parquet(bio)
-            except Exception:
-                bio.seek(0)
-                df_pd = pd.read_csv(bio)
-            df_pd['w_prime_balance'] = np.zeros(len(df_pd))
-            return df_pd
-        except Exception:
-            return pd.DataFrame({'w_prime_balance': []})
-
-def calculate_w_prime_balance(_df_pl_active, cp: float, w_prime: float):
-    if isinstance(_df_pl_active, dict):
-        df_pd = pd.DataFrame(_df_pl_active)
-    elif hasattr(_df_pl_active, 'to_pandas'):
-        df_pd = _df_pl_active.to_pandas()
-    else:
-        df_pd = _df_pl_active.copy()
-    if 'time' not in df_pd.columns:
-        df_pd['time'] = np.arange(len(df_pd), dtype=float)
-    df_bytes = _serialize_df_to_parquet_bytes(df_pd)
-    result_df = _calculate_w_prime_balance_cached(df_bytes, float(cp), float(w_prime))
-    return result_df
-
-def load_data(file):
-    try:
-        file.seek(0)
-        df_pd = pd.read_csv(file, low_memory=False) 
-    except:
-        file.seek(0)
-        df_pd = pd.read_csv(file, sep=';', low_memory=False)
-
-    df_pd.columns = [str(c).lower().strip() for c in df_pd.columns]
-    rename_map = {}
-    if 've' in df_pd.columns and 'tymeventilation' not in df_pd.columns: rename_map['ve'] = 'tymeventilation'
-    if 'ventilation' in df_pd.columns and 'tymeventilation' not in df_pd.columns: rename_map['ventilation'] = 'tymeventilation'
-    if 'total_hemoglobin' in df_pd.columns and 'thb' not in df_pd.columns: rename_map['total_hemoglobin'] = 'thb'
-    if rename_map: 
-        df_pd = df_pd.rename(columns=rename_map)
-
-    if 'hrv' in df_pd.columns:
-        df_pd['hrv'] = df_pd['hrv'].astype(str)
-        def clean_hrv_hardcore(val):
-            val = val.strip().lower()
-            if val == 'nan' or val == '': 
-                return np.nan
-            if ':' in val:
-                try:
-                    parts = [float(x) for x in val.split(':') if x]
-                    return np.mean(parts) if parts else np.nan
-                except:
-                    return np.nan
-            try:
-                return float(val)
-            except:
-                return np.nan
-
-        df_pd['hrv'] = df_pd['hrv'].apply(clean_hrv_hardcore)
-        df_pd['hrv'] = pd.to_numeric(df_pd['hrv'], errors='coerce')
-        df_pd['hrv'] = df_pd['hrv'].interpolate(method='linear').ffill().bfill()
-
-    if 'time' not in df_pd.columns:
-        df_pd['time'] = np.arange(len(df_pd)).astype(float)
-
-    numeric_cols = ['watts', 'heartrate', 'cadence', 'smo2', 'thb', 'temp', 'torque', 'core_temperature', 
-                    'skin_temperature', 'velocity_smooth', 'tymebreathrate', 'tymeventilation', 'rr', 'rr_interval', 'hrv', 'ibi', 'time', 'skin_temp', 'core_temp', 'power']
-    
-    for col in numeric_cols:
-        if col in df_pd.columns:
-            df_pd[col] = pd.to_numeric(df_pd[col], errors='coerce')
-
-    return df_pd
-
-def normalize_columns_pandas(df_pd):
-    mapping = {}
-    cols = [c.lower() for c in df_pd.columns]
-    if 've' in cols and 'tymeventilation' not in cols:
-        mapping[[c for c in df_pd.columns if c.lower() == 've'][0]] = 'tymeventilation'
-    if 'ventilation' in cols and 'tymeventilation' not in cols:
-        mapping[[c for c in df_pd.columns if c.lower() == 'ventilation'][0]] = 'tymeventilation'
-    if 'total_hemoglobin' in cols and 'thb' not in cols:
-        mapping[[c for c in df_pd.columns if c.lower() == 'total_hemoglobin'][0]] = 'thb'
-    df_pd = df_pd.rename(columns=mapping)
-    df_pd.columns = [c.lower() for c in df_pd.columns]
-    return df_pd
-
-def process_data(df):
-    df_pd = df.to_pandas() if hasattr(df, "to_pandas") else df.copy()
-
-    if 'time' not in df_pd.columns:
-        df_pd['time'] = np.arange(len(df_pd)).astype(float)
-    df_pd['time'] = pd.to_numeric(df_pd['time'], errors='coerce')
-    
-    # Usuń wiersze z NaN w kolumnie time przed utworzeniem indeksu
-    df_pd = df_pd.dropna(subset=['time'])
-    
-    # Wypełnij brakujące wartości time sekwencyjnie jeśli są duplikaty lub luki
-    if df_pd['time'].isna().any() or len(df_pd) == 0:
-        df_pd['time'] = np.arange(len(df_pd)).astype(float)
-
-    df_pd = df_pd.sort_values('time').reset_index(drop=True)
-    df_pd['time_dt'] = pd.to_timedelta(df_pd['time'], unit='s')
-    
-    # Upewnij się, że indeks nie ma NaN
-    df_pd = df_pd[df_pd['time_dt'].notna()]
-    df_pd = df_pd.set_index('time_dt')
-
-    num_cols = df_pd.select_dtypes(include=['float64', 'int64']).columns.tolist()
-    if num_cols:
-        # Użyj metody 'linear' zamiast 'time' dla większej niezawodności
-        df_pd[num_cols] = df_pd[num_cols].interpolate(method='linear').ffill().bfill()
-
-    try:
-        df_numeric = df_pd.select_dtypes(include=[np.number])
-        df_resampled = df_numeric.resample('1S').mean()
-        df_resampled = df_resampled.interpolate(method='linear').ffill().bfill()
-    except Exception:
-        df_resampled = df_pd
-    df_resampled['time'] = df_resampled.index.total_seconds()
-    df_resampled['time_min'] = df_resampled['time'] / 60.0
-
-    window_long = '30s'
-    window_short = '5s'
-    smooth_cols = ['watts', 'heartrate', 'cadence', 'smo2', 'torque', 'core_temperature',
-                   'skin_temperature', 'velocity_smooth', 'tymebreathrate', 'tymeventilation', 'thb']
-    
-    for col in smooth_cols:
-        if col in df_resampled.columns:
-            df_resampled[f'{col}_smooth'] = df_resampled[col].rolling(window=window_long, min_periods=1).mean()
-            df_resampled[f'{col}_smooth_5s'] = df_resampled[col].rolling(window=window_short, min_periods=1).mean()
-
-    df_resampled = df_resampled.reset_index(drop=True)
-
-    return df_resampled
-
-def calculate_metrics(df_pl, cp_val):
-    cols = df_pl.columns
-    avg_watts = df_pl['watts'].mean() if 'watts' in cols else 0
-    avg_hr = df_pl['heartrate'].mean() if 'heartrate' in cols else 0
-    avg_cadence = df_pl['cadence'].mean() if 'cadence' in cols else 0
-    avg_vent = df_pl['tymeventilation'].mean() if 'tymeventilation' in cols else 0
-    avg_rr = df_pl['tymebreathrate'].mean() if 'tymebreathrate' in cols else 0
-    power_hr = (avg_watts / avg_hr) if avg_hr > 0 else 0
-    np_est = avg_watts * 1.05
-    ef_factor = (np_est / avg_hr) if avg_hr > 0 else 0
-    work_above_cp_kj = 0.0
-    if 'watts' in cols:
-        try:
-            if hasattr(df_pl, "select"):
-                t = df_pl['time'].to_numpy().astype(float)
-                w = df_pl['watts'].to_numpy().astype(float)
-            else:
-                t = df_pl['time'].values.astype(float)
-                w = df_pl['watts'].values.astype(float)
-            dt = np.diff(t, prepend=t[0])
-            if len(dt) > 1:
-                dt[0] = dt[1] if dt[1] > 0 else np.median(dt[1:]) if len(dt)>2 else 1.0
-            else:
-                dt = np.ones_like(w)
-            excess = np.maximum(w - cp_val, 0.0)
-            energy_j = np.sum(excess * dt)  # w·s = J
-            work_above_cp_kj = energy_j / 1000.0
-        except Exception:
-            df_above_cp = df_pl[df_pl['watts'] > cp_val] if 'watts' in df_pl.columns else pd.DataFrame()
-            work_above_cp_kj = (df_above_cp['watts'].sum() / 1000) if len(df_above_cp)>0 else 0.0
-    return {
-        'avg_watts': avg_watts, 'avg_hr': avg_hr, 'avg_cadence': avg_cadence,
-        'avg_vent': avg_vent, 'avg_rr': avg_rr, 'power_hr': power_hr,
-        'np_est': np_est, 'ef_factor': ef_factor, 'work_above_cp_kj': work_above_cp_kj
-    }
-
-def calculate_dynamic_dfa(df_pl, window_sec=300, step_sec=30):
-    """
-    Oblicza metryki HRV (RMSSD, SDNN) w oknie przesuwnym.
-    Działa z danymi resamplowanymi (1 Hz) i surowymi R-R.
-    Zwraca pseudo-DFA bazujący na zmienności HRV.
-    """
-
-    df = df_pl.to_pandas() if hasattr(df_pl, "to_pandas") else df_pl.copy()
-    
-    rr_col = next((c for c in ['rr', 'rr_interval', 'hrv', 'ibi', 'r-r', 'rr_ms'] if c in df.columns), None)
-    
-    if rr_col is None:
-        return None, "Brak kolumny z danymi R-R/HRV"
-
-    rr_data = df[['time', rr_col]].dropna()
-    rr_data = rr_data[rr_data[rr_col] > 0]
-    
-    if len(rr_data) < 100:
-        return None, f"Za mało danych R-R ({len(rr_data)} < 100)"
-
-    # Automatyczna detekcja jednostek
-    mean_val = rr_data[rr_col].mean()
-    if mean_val < 2.0:  # Prawdopodobnie sekundy
-        rr_data = rr_data.copy()
-        rr_data[rr_col] = rr_data[rr_col] * 1000
-    elif mean_val > 2000:  # Prawdopodobnie mikrosekundy
-        rr_data = rr_data.copy()
-        rr_data[rr_col] = rr_data[rr_col] / 1000
-
-    rr_values = rr_data[rr_col].values
-    time_values = rr_data['time'].values
-
-    results = []
-    
-    max_time = time_values[-1]
-    curr_time = time_values[0] + window_sec
-
-    while curr_time < max_time:
-        mask = (time_values >= (curr_time - window_sec)) & (time_values <= curr_time)
-        window_rr = rr_values[mask]
-        
-        if len(window_rr) >= 30:
-            try:
-                # Usuwamy outliers
-                q1, q3 = np.percentile(window_rr, [25, 75])
-                iqr = q3 - q1
-                mask_valid = (window_rr > q1 - 1.5*iqr) & (window_rr < q3 + 1.5*iqr)
-                clean_rr = window_rr[mask_valid]
-                
-                if len(clean_rr) >= 20:
-                    # Oblicz RMSSD (różnice kolejnych interwałów)
-                    diffs = np.diff(clean_rr)
-                    rmssd = np.sqrt(np.mean(diffs**2))
-                    sdnn = np.std(clean_rr)
-                    mean_rr = np.mean(clean_rr)
-                    
-                    # Pseudo-Alpha1: normalizacja RMSSD/SDNN do skali 0.5-1.5
-                    # Wysoki RMSSD/SDNN = wysoka zmienność = wysoki alpha (stan zrelaksowany)
-                    # Niski RMSSD/SDNN = niska zmienność = niski alpha (stres)
-                    cv = (rmssd / mean_rr) * 100  # Coefficient of variation
-                    
-                    # Mapowanie CV do alpha1 (empiryczne)
-                    # CV ~1-2% = niska zmienność = alpha ~0.5 (stres)
-                    # CV ~5-10% = wysoka zmienność = alpha ~1.0 (relaks)
-                    alpha1 = 0.4 + (cv / 15.0)  # Skalowanie
-                    alpha1 = np.clip(alpha1, 0.3, 1.5)
-                    
-                    results.append({
-                        'time': curr_time, 
-                        'alpha1': alpha1,
-                        'rmssd': rmssd,
-                        'sdnn': sdnn,
-                        'mean_rr': mean_rr
-                    })
-            except Exception:
-                pass 
-        
-        curr_time += step_sec
-
-    if not results:
-        return None, f"Nie udało się obliczyć HRV. Dane: {len(rr_data)} próbek"
-
-    return pd.DataFrame(results), None
-
-def calculate_advanced_kpi(df_pl):
-    df = df_pl.to_pandas() if hasattr(df_pl, "to_pandas") else df_pl.copy()
-    if 'watts_smooth' not in df.columns or 'heartrate_smooth' not in df.columns:
-        return 0.0, 0.0
-    df_active = df[(df['watts_smooth'] > 100) & (df['heartrate_smooth'] > 80)]
-    if len(df_active) < 600: return 0.0, 0.0
-    mid = len(df_active) // 2
-    p1, p2 = df_active.iloc[:mid], df_active.iloc[mid:]
-    hr1 = p1['heartrate_smooth'].mean()
-    hr2 = p2['heartrate_smooth'].mean()
-    if hr1 == 0 or hr2 == 0: return 0.0, 0.0
-    ef1 = p1['watts_smooth'].mean() / hr1
-    ef2 = p2['watts_smooth'].mean() / hr2
-    if ef1 == 0: return 0.0, 0.0
-    return ((ef1 - ef2) / ef1) * 100, (df_active['watts_smooth'] / df_active['heartrate_smooth']).mean()
-
-def calculate_z2_drift(df_pl, cp):
-    df = df_pl.to_pandas() if hasattr(df_pl, "to_pandas") else df_pl.copy()
-    if 'watts_smooth' not in df.columns or 'heartrate_smooth' not in df.columns:
-        return 0.0
-    df_z2 = df[(df['watts_smooth'] >= 0.55*cp) & (df['watts_smooth'] <= 0.75*cp) & (df['heartrate_smooth'] > 60)]
-    if len(df_z2) < 300: return 0.0
-    mid = len(df_z2) // 2
-    p1, p2 = df_z2.iloc[:mid], df_z2.iloc[mid:]
-    hr1 = p1['heartrate_smooth'].mean()
-    hr2 = p2['heartrate_smooth'].mean()
-    if hr1 == 0 or hr2 == 0: return 0.0
-    ef1 = p1['watts_smooth'].mean() / hr1
-    ef2 = p2['watts_smooth'].mean() / hr2
-    return ((ef1 - ef2) / ef1) * 100 if ef1 != 0 else 0.0
-
-def calculate_heat_strain_index(df_pl):
-    df = df_pl.to_pandas() if hasattr(df_pl, "to_pandas") else df_pl.copy()
-    core_col = 'core_temperature_smooth' if 'core_temperature_smooth' in df.columns else None
-    if not core_col or 'heartrate_smooth' not in df.columns:
-        df['hsi'] = None
-        return df
-    df['hsi'] = ((5 * (df[core_col] - 37.0) / 2.5) + (5 * (df['heartrate_smooth'] - 60.0) / 120.0)).clip(0.0, 10.0)
-    return df
-
-def calculate_vo2max(mmp_5m, rider_weight):
-    if mmp_5m is None or pd.isna(mmp_5m) or rider_weight <= 0: return 0.0
-    return (10.8 * mmp_5m / rider_weight) + 7
-
-def calculate_trend(x, y):
-    try:
-        idx = np.isfinite(x) & np.isfinite(y)
-        if np.sum(idx) < 2: return None
-        z = np.polyfit(x[idx], y[idx], 1)
-        p = np.poly1d(z)
-        return p(x)
-    except: return None
-
-def apply_chart_style(fig, title=None):
-    fig.update_layout(
-        template="plotly_dark",
-        plot_bgcolor='rgba(0,0,0,0)',
-        paper_bgcolor='rgba(0,0,0,0)',
-        title=dict(
-            text=title, 
-            font=dict(family="Rajdhani", size=24, color="#f0f6fc")
-        ) if title else None,
-        font=dict(family="Inter", size=12, color="#c9d1d9"),
-        xaxis=dict(showgrid=False, zeroline=False, showline=True, linecolor='#30363d'),
-        yaxis=dict(showgrid=True, gridcolor='rgba(255,255,255,0.05)', zeroline=False),
-        margin=dict(l=20, r=20, t=50, b=20),
-        hovermode="x unified"
-    )
-    return fig
+# Inicjalizacja notatek
+training_notes = TrainingNotes()
 
 # --- APP START ---
 
@@ -740,6 +49,8 @@ st.sidebar.header("Ustawienia Zawodnika")
 with st.sidebar.expander("⚙️ Parametry Fizyczne", expanded=True):
     rider_weight = st.number_input("Waga Zawodnika [kg]", value=95.0, step=0.5, min_value=30.0, max_value=200.0, key="weight")
     rider_height = st.number_input("Wzrost [cm]", value=180, step=1, min_value=100, max_value=250, key="height")
+    rider_age = st.number_input("Wiek [lata]", value=30, step=1, min_value=10, max_value=100, key="age")
+    is_male = st.checkbox("Mężczyzna?", value=True, key="gender_m")
     
     st.markdown("---")
     vt1_watts = st.number_input("VT1 (Próg Tlenowy) [W]", value=280, min_value=0, key="vt1_w")
@@ -751,7 +62,7 @@ with st.sidebar.expander("⚙️ Parametry Fizyczne", expanded=True):
     vt2_vent = st.number_input("VT2 (Próg Beztlenowy) [L/min]", value=136.0, min_value=0.0, key="vt2_v")
 
 st.sidebar.divider()
-cp_input = st.sidebar.number_input("Moc Krytyczna (CP/FTP) [W]", value=410, min_value=1, key="cp_in")
+cp_input = st.sidebar.number_input("Moc Krytyczna (CP) [W]", value=410, min_value=1, key="cp_in")
 w_prime_input = st.sidebar.number_input("W' (W Prime) [J]", value=31000, min_value=0, key="wp_in")
 st.sidebar.divider()
 crank_length = st.sidebar.number_input("Długość korby [mm]", value=160.0, key="crank")
@@ -813,17 +124,112 @@ if uploaded_file is not None:
         else:
             tss_header = 0; if_header = 0
 
-        m1, m2, m3, m4 = st.columns(4)
+        # ===== STICKY HEADER - PANEL Z KLUCZOWYMI METRYKAMI =====
+        st.markdown("""
+        <style>
+        .sticky-metrics {
+            position: sticky;
+            top: 60px;
+            z-index: 999;
+            background: linear-gradient(135deg, #1a1f25 0%, #0e1117 100%);
+            padding: 15px;
+            border-radius: 10px;
+            border: 1px solid #30363d;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+            margin-bottom: 20px;
+            backdrop-filter: blur(10px);
+        }
+        .sticky-metrics h4 {
+            margin: 0 0 10px 0;
+            color: #00cc96;
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .metric-row {
+            display: flex;
+            justify-content: space-around;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .metric-box {
+            flex: 1;
+            min-width: 120px;
+            background: rgba(255, 255, 255, 0.03);
+            padding: 10px;
+            border-radius: 8px;
+            text-align: center;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .metric-box .label {
+            font-size: 11px;
+            color: #8b949e;
+            text-transform: uppercase;
+        }
+        .metric-box .value {
+            font-size: 20px;
+            font-weight: 700;
+            color: #f0f6fc;
+            margin-top: 5px;
+        }
+        .metric-box .unit {
+            font-size: 12px;
+            color: #8b949e;
+        }
+        </style>
+        """, unsafe_allow_html=True)
+
+        # Oblicz metryki dla sticky panelu
+        avg_power = metrics.get('avg_watts', 0)
+        avg_hr = metrics.get('avg_hr', 0)
+        avg_smo2 = df_plot['smo2'].mean() if 'smo2' in df_plot.columns else 0
+        avg_cadence = metrics.get('avg_cadence', 0)
+        avg_ve = metrics.get('avg_vent', 0)
+        duration_min = len(df_plot) / 60 if len(df_plot) > 0 else 0
+
+        st.markdown(f"""
+        <div class="sticky-metrics">
+            <h4>⚡ Live Training Summary</h4>
+            <div class="metric-row">
+                <div class="metric-box">
+                    <div class="label">Avg Power</div>
+                    <div class="value">{avg_power:.0f} <span class="unit">W</span></div>
+                </div>
+                <div class="metric-box">
+                    <div class="label">Avg HR</div>
+                    <div class="value">{avg_hr:.0f} <span class="unit">bpm</span></div>
+                </div>
+                <div class="metric-box">
+                    <div class="label">Avg SmO2</div>
+                    <div class="value">{avg_smo2:.1f} <span class="unit">%</span></div>
+                </div>
+                <div class="metric-box">
+                    <div class="label">Cadence</div>
+                    <div class="value">{avg_cadence:.0f} <span class="unit">rpm</span></div>
+                </div>
+                <div class="metric-box">
+                    <div class="label">Avg VE</div>
+                    <div class="value">{avg_ve:.0f} <span class="unit">L/min</span></div>
+                </div>
+                <div class="metric-box">
+                    <div class="label">Duration</div>
+                    <div class="value">{duration_min:.0f} <span class="unit">min</span></div>
+                </div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+        # ===== KONIEC STICKY HEADER =====
+
+        m1, m2, m3 = st.columns(3)
         m1.metric("NP (Norm. Power)", f"{np_header:.0f} W", help="Normalized Power (Coggan Formula)")
         m2.metric("TSS", f"{tss_header:.0f}", help=f"IF: {if_header:.2f}")
         m3.metric("Praca [kJ]", f"{df_plot['watts'].sum()/1000:.0f}")
-        m4.metric("W' Min [J]", f"{df_plot['w_prime_balance'].min():.0f}", delta_color="inverse")
-
+        
         # --- ZAKŁADKI ---
         tab_raport, tab_kpi, tab_power, tab_hrv, tab_biomech, tab_thermal, tab_trends, tab_nutrition, tab_smo2, tab_hemo, tab_vent, tab_limiters, tab_model, tab_ai = st.tabs(
             ["Raport", "KPI", "Power", "HRV", "Biomech", "Thermal", "Trends", "Nutrition", "SmO2 Analysis", "Hematology Analysis", "Ventilation Analysis", "Limiters Analysis", "Model Analysis", "AI Coach"]
         )
-
+                
        # --- TAB RAPORT ---
         with tab_raport:
             st.header("Executive Summary")
@@ -904,46 +310,7 @@ if uploaded_file is not None:
             c4.metric("Kadencja", f"{metrics['avg_cadence']:.0f} RPM")
             vo2max_est = calculate_vo2max(df_plot['watts'].rolling(window=300).mean().max() if 'watts' in df_plot.columns else 0, rider_weight)
             c5.metric("Szac. VO2max", f"{vo2max_est:.1f}", help="Estymowane na podstawie mocy 5-minutowej (ACSM).")
-
-            st.markdown("---")
-            st.subheader("🧠 Kompendium Analityczne (Średnie)")
-            with st.expander("⚡️ Szacowane VO2max (Wydolność Tlenowa)", expanded=False):
-                st.markdown("""
-                * **Teoria:** VO2max to maksymalna ilość tlenu, jaką Twój organizm potrafi pochłonąć, przetransportować i zużyć w ciągu minuty. Jest to kluczowy wskaźnik wydolności tlenowej.
-                * **Estymacja:** Obliczone na podstawie Twojej maksymalnej mocy utrzymanej przez 5 minut (MMP 5') oraz wagi, z użyciem formuły ACSM. To jest *szacunek*, a nie pomiar laboratoryjny.
-                * **Praktyka:** Wyższy VO2max generalnie koreluje z lepszymi wynikami w sportach wytrzymałościowych. Trening interwałowy o wysokiej intensywności (HIIT) jest skuteczną metodą podnoszenia tego wskaźnika.
-                """)
-            with st.expander("🚴 Średnia Moc (Mechanika)", expanded=True):
-                st.markdown("""
-                * **Teoria:** Mierzy zewnętrzne obciążenie (External Load). Mówi "ile pracy wykonałeś", ale nie "jak bardzo Cię to kosztowało".
-                * **Praktyka (Triathlon):** * Ważniejsza jest **Moc Znormalizowana (NP)**. Jeśli NP jest dużo wyższe od średniej (>10%), jazda była szarpana (nieekonomiczna).
-                    * W "czasówkach" dążymy do **Variability Index (VI) = 1.00-1.05**.
-                """)
-            with st.expander("❤️ Średnie Tętno (Fizjologia)", expanded=True):
-                st.markdown("""
-                * **Teoria:** Mierzy wewnętrzny koszt (Internal Load). Zależy od rzutu serca (Stroke Volume x HR).
-                * **Praktyka:**
-                    * Jest opóźnione względem mocy.
-                    * Podatne na temperaturę, kofeinę i stres (tzw. cardiac drift).
-                    * Niskie tętno przy wysokiej mocy = **Wysoka wydajność**.
-                """)
-            with st.expander("🩸 Średnie SmO2 (Metabolizm Lokalny)", expanded=True):
-                st.markdown("""
-                * **Teoria:** Bilans dostaw i zużycia tlenu bezpośrednio w mięśniu.
-                * **Praktyka:**
-                    * **> 60-70%:** Praca tlenowa, stabilna. Pełna resynteza ATP.
-                    * **< 40-30%:** Praca beztlenowa. Mięsień korzysta z rezerw mioglobiny i glikolizy beztlenowej.
-                    * Stabilne SmO2 przy rosnącym tętnie to często oznaka przegrzania, a nie braku paliwa.
-                """)
-            with st.expander("🦶 Kadencja (Układ Nerwowy)", expanded=True):
-                st.markdown("""
-                * **Teoria:** Relacja między siłą (mięśnie) a szybkością skurczu (układ nerwowy).
-                * **Praktyka (Triathlon):**
-                    * Zalecana wyższa kadencja (**85-95 RPM**).
-                    * Oszczędza glikogen (mniej siły na obrót) i "rozluźnia" nogi przed biegiem.
-                    * Zbyt niska kadencja ("ubijanie kapusty") niszczy włókna mięśniowe (mikrourazy).
-                """)
-
+                     
             st.divider()
             c5, c6, c7, c8 = st.columns(4)
             c5.metric("Power/HR", f"{metrics['power_hr']:.2f}")
@@ -1000,6 +367,202 @@ if uploaded_file is not None:
                 * **Tętno:** Może paradoksalnie spadać (zmęczenie układu nerwowego) lub rosnąć (panika organizmu).
                 * **SmO2:** Gwałtowny spadek lub chaotyczne skoki.
                 """)
+
+            st.divider()
+            
+            c1, c2 = st.columns(2)
+            
+            # LEWA KOLUMNA: SmO2 + TREND
+            with c1:
+                st.subheader("SmO2")
+                # Szukamy odpowiedniej kolumny
+                col_smo2 = 'smo2_smooth_ultra' if 'smo2_smooth_ultra' in df_plot.columns else ('smo2_smooth' if 'smo2_smooth' in df_plot.columns else None)
+                
+                if col_smo2:
+                    fig_s = go.Figure()
+                    
+                    # 1. SmO2 (Linia)
+                    fig_s.add_trace(go.Scatter(
+                        x=df_plot_resampled['time_min'], 
+                        y=df_plot_resampled[col_smo2], 
+                        name='SmO2', 
+                        line=dict(color='#ab63fa', width=2), 
+                        hovertemplate="SmO2: %{y:.1f}%<extra></extra>"
+                    ))
+                    
+                    # 2. Trend (Linia przerywana)
+                    trend_y = calculate_trend(df_plot_resampled['time_min'].values, df_plot_resampled[col_smo2].values)
+                    if trend_y is not None:
+                        fig_s.add_trace(go.Scatter(
+                            x=df_plot_resampled['time_min'], 
+                            y=trend_y, 
+                            name='Trend', 
+                            line=dict(color='white', dash='dash', width=1.5), 
+                            hovertemplate="Trend: %{y:.1f}%<extra></extra>"
+                        ))
+                    
+                    # Layout "Pro"
+                    fig_s.update_layout(
+                        template="plotly_dark",
+                        title="Lokalna Oksydacja (SmO2)",
+                        hovermode="x unified", # <--- To robi robotę
+                        yaxis=dict(title="SmO2 [%]", range=[0, 100]), # Sztywna skala dla czytelności
+                        legend=dict(orientation="h", y=1.1, x=0),
+                        margin=dict(l=10, r=10, t=40, b=10),
+                        height=400
+                    )
+                    
+                    st.plotly_chart(fig_s, use_container_width=True)
+                    
+                    st.info("""
+                    **💡 Hemodynamika Mięśniowa (SmO2) - Lokalny Monitoring:**
+                    
+                    SmO2 to "wskaźnik paliwa" bezpośrednio w pracującym mięśniu (zazwyczaj czworogłowym uda).
+                    * **Równowaga (Linia Płaska):** Podaż tlenu = Zapotrzebowanie. To stan zrównoważony (Steady State).
+                    * **Desaturacja (Spadek):** Popyt > Podaż. Wchodzisz w dług tlenowy. Jeśli dzieje się to przy stałej mocy -> zmęczenie metaboliczne.
+                    * **Reoksygenacja (Wzrost):** Odpoczynek. Szybkość powrotu do normy to doskonały wskaźnik wytrenowania (regeneracji).
+                    """)
+                else:
+                     st.info("Brak danych SmO2")
+
+            # PRAWA KOLUMNA: TĘTNO (HR)
+            with c2:
+                st.subheader("Tętno")
+                
+                # Przepisane na go.Figure dla spójności stylu z resztą aplikacji
+                fig_h = go.Figure()
+                fig_h.add_trace(go.Scatter(
+                    x=df_plot_resampled['time_min'], 
+                    y=df_plot_resampled['heartrate_smooth'], 
+                    name='HR', 
+                    fill='tozeroy', # Ładne wypełnienie pod wykresem
+                    line=dict(color='#ef553b', width=2), 
+                    hovertemplate="HR: %{y:.0f} BPM<extra></extra>"
+                ))
+                
+                fig_h.update_layout(
+                    template="plotly_dark",
+                    title="Odpowiedź Sercowa (HR)",
+                    hovermode="x unified", # <--- To robi robotę
+                    yaxis=dict(title="HR [bpm]"),
+                    margin=dict(l=10, r=10, t=40, b=10),
+                    height=400
+                )
+                
+                st.plotly_chart(fig_h, use_container_width=True)
+                
+                st.info("""
+                **💡 Reakcja Sercowo-Naczyniowa (HR) - Globalny System:**
+                
+                Serce to pompa centralna. Jego reakcja jest **opóźniona** względem wysiłku.
+                * **Lag (Opóźnienie):** W krótkich interwałach (np. 30s) tętno nie zdąży wzrosnąć, mimo że moc jest max. Nie steruj sprintami na tętno!
+                * **Decoupling (Rozjazd):** Jeśli moc jest stała, a tętno rośnie (dryfuje) -> organizm walczy z przegrzaniem lub odwodnieniem.
+                * **Recovery HR:** Jak szybko tętno spada po wysiłku? Szybki spadek = sprawne przywspółczulne układu nerwowego (dobra forma).
+                """)
+
+            st.divider()
+
+            st.subheader("Wentylacja (VE) i Oddechy (RR)")
+            
+            fig_v = go.Figure()
+            
+            # 1. WENTYLACJA (Oś Lewa)
+            if 'tymeventilation_smooth' in df_plot_resampled.columns:
+                fig_v.add_trace(go.Scatter(
+                    x=df_plot_resampled['time_min'], 
+                    y=df_plot_resampled['tymeventilation_smooth'], 
+                    name="VE", 
+                    line=dict(color='#ffa15a', width=2), 
+                    hovertemplate="VE: %{y:.1f} L/min<extra></extra>"
+                ))
+                
+                # Trend VE
+                trend_ve = calculate_trend(df_plot_resampled['time_min'].values, df_plot_resampled['tymeventilation_smooth'].values)
+                if trend_ve is not None:
+                     fig_v.add_trace(go.Scatter(
+                         x=df_plot_resampled['time_min'], 
+                         y=trend_ve, 
+                         name="Trend VE", 
+                         line=dict(color='#ffa15a', dash='dash', width=1.5), 
+                         hovertemplate="Trend: %{y:.1f} L/min<extra></extra>"
+                     ))
+            
+            # 2. ODDECHY / RR (Oś Prawa)
+            if 'tymebreathrate_smooth' in df_plot_resampled.columns:
+                fig_v.add_trace(go.Scatter(
+                    x=df_plot_resampled['time_min'], 
+                    y=df_plot_resampled['tymebreathrate_smooth'], 
+                    name="RR", 
+                    yaxis="y2", # Druga oś
+                    line=dict(color='#19d3f3', dash='dot', width=2), 
+                    hovertemplate="RR: %{y:.1f} /min<extra></extra>"
+                ))
+            
+            # Linie Progi Wentylacyjne (Zostawiamy jako stałe linie odniesienia)
+            fig_v.add_hline(y=vt1_vent, line_dash="dot", line_color="green", annotation_text="VT1", annotation_position="bottom right")
+            fig_v.add_hline(y=vt2_vent, line_dash="dot", line_color="red", annotation_text="VT2", annotation_position="bottom right")
+
+            # LAYOUT (Unified Hover)
+            fig_v.update_layout(
+                template="plotly_dark",
+                title="Mechanika Oddechu (Wydajność vs Częstość)",
+                hovermode="x unified", # <--- To łączy dane w jeden dymek
+                
+                # Oś Lewa
+                yaxis=dict(title="Wentylacja [L/min]"),
+                
+                # Oś Prawa
+                yaxis2=dict(
+                    title="Kadencja Oddechu [RR]", 
+                    overlaying="y", 
+                    side="right", 
+                    showgrid=False
+                ),
+                
+                legend=dict(orientation="h", y=1.1, x=0),
+                margin=dict(l=10, r=10, t=40, b=10),
+                height=450
+            )
+            
+            st.plotly_chart(fig_v, use_container_width=True)
+            
+            st.info("""
+            **💡 Interpretacja: Mechanika Oddychania**
+
+            * **Wzorzec Prawidłowy (Efektywność):** Wentylacja (VE) rośnie liniowo wraz z mocą, a częstość (RR) jest stabilna. Oznacza to głęboki, spokojny oddech.
+            * **Wzorzec Niekorzystny (Płytki Oddech):** Bardzo wysokie RR (>40-50) przy stosunkowo niskim VE. Oznacza to "dyszenie" - powietrze wchodzi tylko do "martwej strefy" płuc, nie biorąc udziału w wymianie gazowej.
+            * **Dryf Wentylacyjny:** Jeśli przy stałej mocy VE ciągle rośnie (rosnący trend pomarańczowej linii), oznacza to narastającą kwasicę (organizm próbuje wydmuchać CO2) lub zmęczenie mięśni oddechowych.
+            * **Próg VT2 (RCP):** Punkt załamania, gdzie VE wystrzeliwuje pionowo w górę. To Twoja "czerwona linia" metaboliczna.
+            """)
+            
+            col_vent_full = 'tymeventilation_smooth' if 'tymeventilation_smooth' in df_plot.columns else ('tymeventilation' if 'tymeventilation' in df_plot.columns else None)
+            
+            if col_vent_full:
+                st.markdown("#### Czas w Strefach Wentylacyjnych")
+                total_samples = len(df_plot)
+                z1_count = len(df_plot[df_plot[col_vent_full] < vt1_vent])
+                z2_count = len(df_plot[(df_plot[col_vent_full] >= vt1_vent) & (df_plot[col_vent_full] < vt2_vent)])
+                z3_count = len(df_plot[df_plot[col_vent_full] >= vt2_vent])
+                
+                def format_time(seconds):
+                    m, s = divmod(seconds, 60)
+                    h, m = divmod(m, 60)
+                    if h > 0: return f"{int(h)}h {int(m)}m {int(s)}s"
+                    return f"{int(m)}m {int(s)}s"
+
+                z1_time = format_time(z1_count)
+                z2_time = format_time(z2_count)
+                z3_time = format_time(z3_count)
+                
+                z1_pct = z1_count / total_samples * 100 if total_samples > 0 else 0
+                z2_pct = z2_count / total_samples * 100 if total_samples > 0 else 0
+                z3_pct = z3_count / total_samples * 100 if total_samples > 0 else 0
+                
+                c_z1, c_z2, c_z3 = st.columns(3)
+                c_z1.metric(f"Tlenowa (< {vt1_vent} L)", z1_time, f"{z1_pct:.1f}%")
+                c_z2.metric(f"Mieszana ({vt1_vent}-{vt2_vent} L)", z2_time, f"{z2_pct:.1f}%")
+                c_z3.metric(f"Beztlenowa (> {vt2_vent} L)", z3_time, f"{z3_pct:.1f}%")
+
 
         # --- TAB POWER ---
         with tab_power:
@@ -1232,14 +795,187 @@ if uploaded_file is not None:
                     st.warning("Zbyt mało danych (jazda poniżej 50W lub HR poniżej 90bpm), aby obliczyć wiarygodne Pulse Power.")
             else:
                 st.error("Brak danych mocy lub tętna.")
+                
+            # --- GROSS EFFICIENCY ---
+            st.divider()
+            st.subheader("⚙️ Gross Efficiency (GE%) - Estymacja")
+            st.caption("Stosunek mocy generowanej (Waty) do spalanej energii (Metabolizm). Typowo: 18-23%.")
+
+            # 1. Sprawdzamy, czy mamy potrzebne dane
+            if 'watts_smooth' in df_plot_resampled.columns and 'heartrate_smooth' in df_plot_resampled.columns:
+                
+                # 2. Obliczamy Moc Metaboliczną (Wzór Keytela na podstawie HR)
+                # Wzór zwraca kJ/min. Zamieniamy to na Waty (J/s).
+                # P_met [W] = (kJ/min * 1000) / 60
+                
+                # Współczynniki Keytela
+                gender_factor = -55.0969 if is_male else -20.4022
+                
+                # Obliczenie wydatku energetycznego (EE) w kJ/min dla każdej sekundy
+                # Używamy wygładzonego HR, żeby uniknąć skoków
+                ee_kj_min = gender_factor + \
+                            (0.6309 * df_plot_resampled['heartrate_smooth']) + \
+                            (0.1988 * rider_weight) + \
+                            (0.2017 * rider_age)
+                
+                # Konwersja na Waty Metaboliczne (P_met)
+                # Uwaga: EE nie może być ujemne ani zerowe (serce bije)
+                p_metabolic = (ee_kj_min * 1000) / 60
+                p_metabolic = p_metabolic.replace(0, np.nan) # Unikamy dzielenia przez zero
+                
+                # 3. Obliczamy Gross Efficiency (GE)
+                # GE = (Moc Mechaniczna / Moc Metaboliczna) * 100
+                # Filtrujemy momenty, gdzie nie pedałujesz (Moc < 10W), bo wtedy GE=0
+                
+                ge_series = (df_plot_resampled['watts_smooth'] / p_metabolic) * 100
+                
+                # Filtrujemy dane nierealistyczne i "zimny start"
+                # 1. Watts > 40 (żeby nie dzielić przez zero na postojach)
+                # 2. GE między 5% a 30% (wszystko powyżej 30% to błąd pomiaru lub HR Lag)
+                # 3. HR > 100 bpm (Wzór Keytela bardzo słabo działa dla niskiego tętna!)
+                
+                mask_ge = (df_plot_resampled['watts_smooth'] > 100) & \
+                        (ge_series > 5) & (ge_series < 30) & \
+                        (df_plot_resampled['heartrate_smooth'] > 110) 
+                
+                # Zerujemy błędne wartości (zamieniamy na NaN, żeby nie rysowały się na wykresie)
+                df_ge = pd.DataFrame({
+                    'time_min': df_plot_resampled['time_min'],
+                    'ge': ge_series,
+                    'watts': df_plot_resampled['watts_smooth']
+                })
+                df_ge.loc[~mask_ge, 'ge'] = np.nan
+                
+                # 4. Czyszczenie danych (Realistyczne ramy fizjologiczne)
+                # GE rzadko przekracza 30% (chyba że zjeżdżasz z góry i HR spada szybciej niż waty)
+                # GE poniżej 0% to błąd.
+                mask_ge = (df_plot_resampled['watts_smooth'] > 40) & \
+                        (ge_series > 5) & (ge_series < 35)
+                
+                df_ge = pd.DataFrame({
+                    'time_min': df_plot_resampled['time_min'],
+                    'ge': ge_series,
+                    'watts': df_plot_resampled['watts_smooth']
+                })
+                # Zerujemy nierealistyczne wartości do wykresu
+                df_ge.loc[~mask_ge, 'ge'] = np.nan
+
+                if not df_ge['ge'].isna().all():
+                    avg_ge = df_ge['ge'].mean()
+                    
+                    # KOLUMNY Z WYNIKAMI
+                    cg1, cg2, cg3 = st.columns(3)
+                    cg1.metric("Średnie GE", f"{avg_ge:.1f}%", help="Pro: 23%+, Amator: 18-21%")
+                    
+                    # Trend GE (czy spada w czasie?)
+                    valid_ge = df_ge.dropna(subset=['ge'])
+                    if len(valid_ge) > 100:
+                        slope_ge, _, _, _, _ = stats.linregress(valid_ge['time_min'], valid_ge['ge'])
+                        total_drift_ge = slope_ge * (valid_ge['time_min'].iloc[-1] - valid_ge['time_min'].iloc[0])
+                        cg2.metric("Zmiana GE (Trend)", f"{total_drift_ge:.1f}%", delta_color="inverse" if total_drift_ge < 0 else "normal")
+                    else:
+                        cg2.metric("Zmiana GE", "-")
+
+                    cg3.info("Wartości powyżej 25% mogą wynikać z opóźnienia tętna względem mocy (np. krótkie interwały). Analizuj trendy na długich odcinkach.")
+
+                    # WYKRES GE
+                    fig_ge = go.Figure()
+                    
+                    # Linia GE
+                    fig_ge.add_trace(go.Scatter(
+                        x=df_ge['time_min'], 
+                        y=df_ge['ge'],
+                        mode='lines',
+                        name='Gross Efficiency (%)',
+                        line=dict(color='#00cc96', width=1.5),
+                        connectgaps=False, # Nie łączymy przerw (postojów)
+                        hovertemplate="GE: %{y:.1f}%<extra></extra>"
+                    ))
+                    
+                    # Tło (Moc)
+                    fig_ge.add_trace(go.Scatter(
+                        x=df_ge['time_min'], 
+                        y=df_ge['watts'],
+                        mode='lines',
+                        name='Moc (Tło)',
+                        yaxis='y2',
+                        line=dict(color='rgba(255,255,255,0.1)', width=1),
+                        fill='tozeroy',
+                        fillcolor='rgba(255,255,255,0.05)',
+                        hoverinfo='skip'
+                    ))
+                    
+                    # Linia Trendu GE
+                    if len(valid_ge) > 100:
+                        trend_line = np.poly1d(np.polyfit(valid_ge['time_min'], valid_ge['ge'], 1))(valid_ge['time_min'])
+                        fig_ge.add_trace(go.Scatter(
+                            x=valid_ge['time_min'],
+                            y=trend_line,
+                            mode='lines',
+                            name='Trend GE',
+                            line=dict(color='white', width=2, dash='dash')
+                        ))
+
+                    fig_ge.update_layout(
+                        template="plotly_dark",
+                        title="Efektywność Brutto (GE%) w Czasie",
+                        hovermode="x unified",
+                        yaxis=dict(title="GE [%]", range=[10, 30]),
+                        yaxis2=dict(title="Moc [W]", overlaying='y', side='right', showgrid=False),
+                        height=400,
+                        margin=dict(l=10, r=10, t=40, b=10),
+                        legend=dict(orientation="h", y=1.1, x=0)
+                    )
+                    
+                    st.plotly_chart(fig_ge, use_container_width=True)
+                    
+                    with st.expander("🧠 Jak interpretować GE?", expanded=False):
+                        st.markdown("""
+                        **Fizjologia GE:**
+                        * **< 18%:** Niska wydajność. Dużo energii tracisz na ciepło i nieskoordynowane ruchy (kołysanie biodrami). Częste u początkujących.
+                        * **19-21%:** Standard amatorski. Dobrze wytrenowany kolarz klubowy.
+                        * **22-24%:** Poziom ELITE / PRO. Twoje mięśnie to maszyny.
+                        * **> 25%:** Podejrzane (chyba że jesteś zwycięzcą Tour de France). Często wynika z błędów pomiaru (np. miernik mocy zawyża, tętno zaniżone, jazda w dół).
+
+                        **Dlaczego GE spada w czasie?**
+                        Gdy się męczysz, rekrutujesz włókna mięśniowe typu II (szybkokurczliwe), które są mniej wydajne tlenowo. Dodatkowo rośnie temperatura ciała (Core Temp), co kosztuje energię. Spadek GE pod koniec długiego treningu to doskonały wskaźnik zmęczenia metabolicznego.
+                        """)
+                else:
+                    st.warning("Brak wystarczających danych do obliczenia GE (zbyt krótkie odcinki stabilnej jazdy).")
+            else:
+                st.error("Do obliczenia GE potrzebujesz danych Mocy (Watts) oraz Tętna (HR).")
 
         # --- TAB HRV ---
         with tab_hrv:
             st.header("Analiza Zmienności Rytmu Serca (HRV)")
-            
-            with st.spinner("Obliczanie metryk HRV..."):
-                df_dfa, dfa_error = calculate_dynamic_dfa(df_clean_pl)
 
+            # 1. Inicjalizacja "Pamięci" (Session State)
+            if 'df_dfa' not in st.session_state:
+                st.session_state.df_dfa = None
+            if 'dfa_error' not in st.session_state:
+                st.session_state.dfa_error = None
+
+            # 2. Obsługa Przycisku
+            if st.session_state.df_dfa is None and st.session_state.dfa_error is None:
+                st.info("💡 Analiza DFA Alpha-1 wymaga zaawansowanych obliczeń fraktalnych.")
+                st.markdown("Kliknij przycisk poniżej, aby uruchomić algorytm. Może to zająć od kilku do kilkunastu sekund.")
+                
+                if st.button("🚀 Oblicz HRV i DFA Alpha-1"):
+                    with st.spinner("Analiza geometrii rytmu serca... Proszę czekać..."):
+                        try:
+                            result_df, error_msg = calculate_dynamic_dfa(df_clean_pl)
+                            
+                            st.session_state.df_dfa = result_df
+                            st.session_state.dfa_error = error_msg
+                            
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Wystąpił błąd krytyczny algorytmu: {e}")
+
+            # 3. Pobranie danych z pamięci do zmiennych lokalnych
+            df_dfa = st.session_state.df_dfa
+            dfa_error = st.session_state.dfa_error
+           
             if df_dfa is not None and not df_dfa.empty:
                 
                 df_dfa = df_dfa.sort_values('time')
@@ -1462,206 +1198,9 @@ if uploaded_file is not None:
             
             st.divider()
             
-            c1, c2 = st.columns(2)
-            
-            # LEWA KOLUMNA: SmO2 + TREND
-            with c1:
-                st.subheader("SmO2")
-                # Szukamy odpowiedniej kolumny
-                col_smo2 = 'smo2_smooth_ultra' if 'smo2_smooth_ultra' in df_plot.columns else ('smo2_smooth' if 'smo2_smooth' in df_plot.columns else None)
-                
-                if col_smo2:
-                    fig_s = go.Figure()
-                    
-                    # 1. SmO2 (Linia)
-                    fig_s.add_trace(go.Scatter(
-                        x=df_plot_resampled['time_min'], 
-                        y=df_plot_resampled[col_smo2], 
-                        name='SmO2', 
-                        line=dict(color='#ab63fa', width=2), 
-                        hovertemplate="SmO2: %{y:.1f}%<extra></extra>"
-                    ))
-                    
-                    # 2. Trend (Linia przerywana)
-                    trend_y = calculate_trend(df_plot_resampled['time_min'].values, df_plot_resampled[col_smo2].values)
-                    if trend_y is not None:
-                        fig_s.add_trace(go.Scatter(
-                            x=df_plot_resampled['time_min'], 
-                            y=trend_y, 
-                            name='Trend', 
-                            line=dict(color='white', dash='dash', width=1.5), 
-                            hovertemplate="Trend: %{y:.1f}%<extra></extra>"
-                        ))
-                    
-                    # Layout "Pro"
-                    fig_s.update_layout(
-                        template="plotly_dark",
-                        title="Lokalna Oksydacja (SmO2)",
-                        hovermode="x unified", # <--- To robi robotę
-                        yaxis=dict(title="SmO2 [%]", range=[0, 100]), # Sztywna skala dla czytelności
-                        legend=dict(orientation="h", y=1.1, x=0),
-                        margin=dict(l=10, r=10, t=40, b=10),
-                        height=400
-                    )
-                    
-                    st.plotly_chart(fig_s, use_container_width=True)
-                    
-                    st.info("""
-                    **💡 Hemodynamika Mięśniowa (SmO2) - Lokalny Monitoring:**
-                    
-                    SmO2 to "wskaźnik paliwa" bezpośrednio w pracującym mięśniu (zazwyczaj czworogłowym uda).
-                    * **Równowaga (Linia Płaska):** Podaż tlenu = Zapotrzebowanie. To stan zrównoważony (Steady State).
-                    * **Desaturacja (Spadek):** Popyt > Podaż. Wchodzisz w dług tlenowy. Jeśli dzieje się to przy stałej mocy -> zmęczenie metaboliczne.
-                    * **Reoksygenacja (Wzrost):** Odpoczynek. Szybkość powrotu do normy to doskonały wskaźnik wytrenowania (regeneracji).
-                    """)
-                else:
-                     st.info("Brak danych SmO2")
 
-            # PRAWA KOLUMNA: TĘTNO (HR)
-            with c2:
-                st.subheader("Tętno")
-                
-                # Przepisane na go.Figure dla spójności stylu z resztą aplikacji
-                fig_h = go.Figure()
-                fig_h.add_trace(go.Scatter(
-                    x=df_plot_resampled['time_min'], 
-                    y=df_plot_resampled['heartrate_smooth'], 
-                    name='HR', 
-                    fill='tozeroy', # Ładne wypełnienie pod wykresem
-                    line=dict(color='#ef553b', width=2), 
-                    hovertemplate="HR: %{y:.0f} BPM<extra></extra>"
-                ))
-                
-                fig_h.update_layout(
-                    template="plotly_dark",
-                    title="Odpowiedź Sercowa (HR)",
-                    hovermode="x unified", # <--- To robi robotę
-                    yaxis=dict(title="HR [bpm]"),
-                    margin=dict(l=10, r=10, t=40, b=10),
-                    height=400
-                )
-                
-                st.plotly_chart(fig_h, use_container_width=True)
-                
-                st.info("""
-                **💡 Reakcja Sercowo-Naczyniowa (HR) - Globalny System:**
-                
-                Serce to pompa centralna. Jego reakcja jest **opóźniona** względem wysiłku.
-                * **Lag (Opóźnienie):** W krótkich interwałach (np. 30s) tętno nie zdąży wzrosnąć, mimo że moc jest max. Nie steruj sprintami na tętno!
-                * **Decoupling (Rozjazd):** Jeśli moc jest stała, a tętno rośnie (dryfuje) -> organizm walczy z przegrzaniem lub odwodnieniem.
-                * **Recovery HR:** Jak szybko tętno spada po wysiłku? Szybki spadek = sprawne przywspółczulne układu nerwowego (dobra forma).
-                """)
 
-            st.divider()
 
-            st.subheader("Wentylacja (VE) i Oddechy (RR)")
-            
-            fig_v = go.Figure()
-            
-            # 1. WENTYLACJA (Oś Lewa)
-            if 'tymeventilation_smooth' in df_plot_resampled.columns:
-                fig_v.add_trace(go.Scatter(
-                    x=df_plot_resampled['time_min'], 
-                    y=df_plot_resampled['tymeventilation_smooth'], 
-                    name="VE", 
-                    line=dict(color='#ffa15a', width=2), 
-                    hovertemplate="VE: %{y:.1f} L/min<extra></extra>"
-                ))
-                
-                # Trend VE
-                trend_ve = calculate_trend(df_plot_resampled['time_min'].values, df_plot_resampled['tymeventilation_smooth'].values)
-                if trend_ve is not None:
-                     fig_v.add_trace(go.Scatter(
-                         x=df_plot_resampled['time_min'], 
-                         y=trend_ve, 
-                         name="Trend VE", 
-                         line=dict(color='#ffa15a', dash='dash', width=1.5), 
-                         hovertemplate="Trend: %{y:.1f} L/min<extra></extra>"
-                     ))
-            
-            # 2. ODDECHY / RR (Oś Prawa)
-            if 'tymebreathrate_smooth' in df_plot_resampled.columns:
-                fig_v.add_trace(go.Scatter(
-                    x=df_plot_resampled['time_min'], 
-                    y=df_plot_resampled['tymebreathrate_smooth'], 
-                    name="RR", 
-                    yaxis="y2", # Druga oś
-                    line=dict(color='#19d3f3', dash='dot', width=2), 
-                    hovertemplate="RR: %{y:.1f} /min<extra></extra>"
-                ))
-            
-            # Linie Progi Wentylacyjne (Zostawiamy jako stałe linie odniesienia)
-            fig_v.add_hline(y=vt1_vent, line_dash="dot", line_color="green", annotation_text="VT1", annotation_position="bottom right")
-            fig_v.add_hline(y=vt2_vent, line_dash="dot", line_color="red", annotation_text="VT2", annotation_position="bottom right")
-
-            # LAYOUT (Unified Hover)
-            fig_v.update_layout(
-                template="plotly_dark",
-                title="Mechanika Oddechu (Wydajność vs Częstość)",
-                hovermode="x unified", # <--- To łączy dane w jeden dymek
-                
-                # Oś Lewa
-                yaxis=dict(title="Wentylacja [L/min]"),
-                
-                # Oś Prawa
-                yaxis2=dict(
-                    title="Kadencja Oddechu [RR]", 
-                    overlaying="y", 
-                    side="right", 
-                    showgrid=False
-                ),
-                
-                legend=dict(orientation="h", y=1.1, x=0),
-                margin=dict(l=10, r=10, t=40, b=10),
-                height=450
-            )
-            
-            st.plotly_chart(fig_v, use_container_width=True)
-            
-            st.info("""
-            **💡 Interpretacja: Mechanika Oddychania**
-
-            * **Wzorzec Prawidłowy (Efektywność):** Wentylacja (VE) rośnie liniowo wraz z mocą, a częstość (RR) jest stabilna. Oznacza to głęboki, spokojny oddech.
-            * **Wzorzec Niekorzystny (Płytki Oddech):** Bardzo wysokie RR (>40-50) przy stosunkowo niskim VE. Oznacza to "dyszenie" - powietrze wchodzi tylko do "martwej strefy" płuc, nie biorąc udziału w wymianie gazowej.
-            * **Dryf Wentylacyjny:** Jeśli przy stałej mocy VE ciągle rośnie (rosnący trend pomarańczowej linii), oznacza to narastającą kwasicę (organizm próbuje wydmuchać CO2) lub zmęczenie mięśni oddechowych.
-            * **Próg VT2 (RCP):** Punkt załamania, gdzie VE wystrzeliwuje pionowo w górę. To Twoja "czerwona linia" metaboliczna.
-            """)
-            
-            col_vent_full = 'tymeventilation_smooth' if 'tymeventilation_smooth' in df_plot.columns else ('tymeventilation' if 'tymeventilation' in df_plot.columns else None)
-            
-            if col_vent_full:
-                st.markdown("#### Czas w Strefach Wentylacyjnych")
-                total_samples = len(df_plot)
-                z1_count = len(df_plot[df_plot[col_vent_full] < vt1_vent])
-                z2_count = len(df_plot[(df_plot[col_vent_full] >= vt1_vent) & (df_plot[col_vent_full] < vt2_vent)])
-                z3_count = len(df_plot[df_plot[col_vent_full] >= vt2_vent])
-                
-                def format_time(seconds):
-                    m, s = divmod(seconds, 60)
-                    h, m = divmod(m, 60)
-                    if h > 0: return f"{int(h)}h {int(m)}m {int(s)}s"
-                    return f"{int(m)}m {int(s)}s"
-
-                z1_time = format_time(z1_count)
-                z2_time = format_time(z2_count)
-                z3_time = format_time(z3_count)
-                
-                z1_pct = z1_count / total_samples * 100 if total_samples > 0 else 0
-                z2_pct = z2_count / total_samples * 100 if total_samples > 0 else 0
-                z3_pct = z3_count / total_samples * 100 if total_samples > 0 else 0
-                
-                c_z1, c_z2, c_z3 = st.columns(3)
-                c_z1.metric(f"Tlenowa (< {vt1_vent} L)", z1_time, f"{z1_pct:.1f}%")
-                c_z2.metric(f"Mieszana ({vt1_vent}-{vt2_vent} L)", z2_time, f"{z2_pct:.1f}%")
-                c_z3.metric(f"Beztlenowa (> {vt2_vent} L)", z3_time, f"{z3_pct:.1f}%")
-
-            if 'tymeventilation' in df_plot.columns:
-                st.markdown("#### Średnie Wartości (10 min)")
-                df_s = df_plot.copy()
-                df_s['Int'] = (df_s['time_min'] // 10).astype(int)
-                grp = df_s.groupby('Int')[['tymeventilation', 'tymebreathrate']].mean().reset_index()
-                grp['Czas'] = grp['Int'].apply(lambda x: f"{x*10}-{(x+1)*10} min")
-                st.dataframe(grp[['Czas', 'tymeventilation', 'tymebreathrate']].style.format("{:.1f}", subset=['tymeventilation', 'tymebreathrate']), use_container_width=True, hide_index=True)
 
         # --- TAB BIOMECH ---
         with tab_biomech:
@@ -2263,10 +1802,62 @@ if uploaded_file is not None:
             st.session_state.smo2_start_sec = 600  # 10 minut domyślnie
         if 'smo2_end_sec' not in st.session_state:
             st.session_state.smo2_end_sec = 1200  # 20 minut domyślnie
+            
+        # ===== NOTATKI SmO2 =====
+        with st.expander("📝 Dodaj Notatkę do tej Analizy", expanded=False):
+            note_col1, note_col2 = st.columns([1, 2])
+            with note_col1:
+                note_time = st.number_input(
+                    "Czas (min)", 
+                    min_value=0.0, 
+                    max_value=float(len(target_df)/60) if len(target_df) > 0 else 60,
+                    value=float(len(target_df)/120) if len(target_df) > 0 else 15,
+                    step=0.5,
+                    key="smo2_note_time"
+                )
+            with note_col2:
+                note_text = st.text_input(
+                    "Notatka",
+                    key="smo2_note_text",
+                    placeholder="Np. 'Atak 500W', 'Próg beztlenowy', 'Błąd sensoryka'"
+                )
+            
+            if st.button("➕ Dodaj Notatkę", key="smo2_add_note"):
+                if note_text:
+                    training_notes.add_note(uploaded_file.name, note_time, "smo2", note_text)
+                    st.success(f"✅ Notatka: {note_text} @ {note_time:.1f} min")
+                else:
+                    st.warning("Wpisz tekst notatki!")
+
+        # Wyświetl istniejące notatki SmO2
+        existing_notes_smo2 = training_notes.get_notes_for_metric(uploaded_file.name, "smo2")
+        if existing_notes_smo2:
+            st.subheader("📋 Notatki SmO2")
+            for idx, note in enumerate(existing_notes_smo2):
+                col_note, col_del = st.columns([4, 1])
+                with col_note:
+                    st.info(f"⏱️ **{note['time_minute']:.1f} min** | {note['text']}")
+                with col_del:
+                    if st.button("🗑️", key=f"del_smo2_note_{idx}"):
+                        training_notes.delete_note(uploaded_file.name, idx)
+                        st.rerun()
+
+        st.markdown("---")
+        # ===== KONIEC NOTATEK SmO2 =====
 
         st.info("💡 **NOWA FUNKCJA:** Zaznacz obszar na wykresie poniżej (kliknij i przeciągnij), aby automatycznie obliczyć metryki!")
 
         # Opcjonalne: ręczne wprowadzenie czasu (dla precyzji)
+        def parse_time_to_seconds(t_str):
+            try:
+                parts = list(map(int, t_str.split(':')))
+                if len(parts) == 3: return parts[0]*3600 + parts[1]*60 + parts[2]
+                if len(parts) == 2: return parts[0]*60 + parts[1]
+                if len(parts) == 1: return parts[0]
+            except:
+                return None
+            return None
+
         with st.expander("🔧 Ręczne wprowadzenie zakresu czasowego (opcjonalne)", expanded=False):
             col_inp1, col_inp2 = st.columns(2)
             with col_inp1:
@@ -2285,16 +1876,6 @@ if uploaded_file is not None:
         # Użyj wartości z session_state
         startsec = st.session_state.smo2_start_sec
         endsec = st.session_state.smo2_end_sec
-
-        def parse_time_to_seconds(t_str):
-            try:
-                parts = list(map(int, t_str.split(':')))
-                if len(parts) == 3: return parts[0]*3600 + parts[1]*60 + parts[2]
-                if len(parts) == 2: return parts[0]*60 + parts[1]
-                if len(parts) == 1: return parts[0]
-            except:
-                return None
-            return None
 
         start_time_str = st.session_state.get('smo2_manual_start', "01:00:00")
         nd_time_str = st.session_state.get('smo2_manual_end', "01:20:00")
@@ -2695,6 +2276,48 @@ if uploaded_file is not None:
                 st.session_state.vent_start_sec = 600  # 10 minut domyślnie
         if 'vent_end_sec' not in st.session_state:
                 st.session_state.vent_end_sec = 1200  # 20 minut domyślnie
+                
+        # ===== NOTATKI VENTILATION =====
+        with st.expander("📝 Dodaj Notatkę do tej Analizy", expanded=False):
+            note_col1, note_col2 = st.columns([1, 2])
+            with note_col1:
+                note_time_vent = st.number_input(
+                    "Czas (min)", 
+                    min_value=0.0, 
+                    max_value=float(len(target_df)/60) if len(target_df) > 0 else 60,
+                    value=float(len(target_df)/120) if len(target_df) > 0 else 15,
+                    step=0.5,
+                    key="vent_note_time"
+                )
+            with note_col2:
+                note_text_vent = st.text_input(
+                    "Notatka",
+                    key="vent_note_text",
+                    placeholder="Np. 'Próg beztlenowy', 'VE jump', 'Spłycenie oddechu'"
+                )
+            
+            if st.button("➕ Dodaj Notatkę", key="vent_add_note"):
+                if note_text_vent:
+                    training_notes.add_note(uploaded_file.name, note_time_vent, "ventilation", note_text_vent)
+                    st.success(f"✅ Notatka: {note_text_vent} @ {note_time_vent:.1f} min")
+                else:
+                    st.warning("Wpisz tekst notatki!")
+
+        # Wyświetl istniejące notatki Ventilation
+        existing_notes_vent = training_notes.get_notes_for_metric(uploaded_file.name, "ventilation")
+        if existing_notes_vent:
+            st.subheader("📋 Notatki Wentylacji")
+            for idx, note in enumerate(existing_notes_vent):
+                col_note, col_del = st.columns([4, 1])
+                with col_note:
+                    st.info(f"⏱️ **{note['time_minute']:.1f} min** | {note['text']}")
+                with col_del:
+                    if st.button("🗑️", key=f"del_vent_note_{idx}"):
+                        training_notes.delete_note(uploaded_file.name, idx)
+                        st.rerun()
+
+        st.markdown("---")
+        # ===== KONIEC NOTATEK VENTILATION =====
 
         st.info("💡 **NOWA FUNKCJA:** Zaznacz obszar na wykresie poniżej (kliknij i przeciągnij), aby automatycznie obliczyć metryki!")
 
@@ -2990,7 +2613,16 @@ if uploaded_file is not None:
             with col_ai_1:
                 st.info("System Neuralny Gotowy.")
                 if st.button("🚀 Trenuj Mózg (Aktualizuj)", type="primary"):
-                    pass 
+                    with st.spinner("Trening sieci neuronowej (200 epok)..."):
+                        try:
+                            # Trenujemy na resamplowanych danych (1 sekunda)
+                            y_p, b_val, t_val, was_loaded, history = train_cycling_brain(df_plot_resampled, epochs=200)
+                            
+                            st.success(f"✅ Trening Zakończony! Baza: {b_val:.1f}, Próg: {t_val:.1f}")
+                            time.sleep(1)
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Błąd treningu: {e}") 
                 
                 last_base, last_thresh = "-", "-"
                 
@@ -3211,427 +2843,62 @@ if uploaded_file is not None:
         else:
             st.warning("Za mało danych (wymagane min. 20 minut jazdy z pomiarem mocy).")
 
-       # --- EXPORT DO PDF (Wersja CLEAN & STABLE) ---
-from fpdf import FPDF
-import datetime
 
-# 1. Funkcja czyszcząca tekst (niezbędna dla FPDF bez zewnętrznych czcionek)
-def clean_text(text):
-    if text is None: return ""
-    text = str(text)
-    replacements = {
-        'ą': 'a', 'ć': 'c', 'ę': 'e', 'ł': 'l', 'ń': 'n', 'ó': 'o', 'ś': 's', 'ź': 'z', 'ż': 'z',
-        'Ą': 'A', 'Ć': 'C', 'Ę': 'E', 'Ł': 'L', 'Ń': 'N', 'Ó': 'O', 'Ś': 'S', 'Ź': 'Z', 'Ż': 'Z',
-        '²': '2', '³': '3', '°': 'st.', '≈': '~', 'Δ': 'delta', 'Średnia': 'Srednia'
-    }
-    for k, v in replacements.items():
-        text = text.replace(k, v)
-    # Usuwamy znaki, których standardowy font nie ogarnie
-    return text.encode('latin-1', 'replace').decode('latin-1')
 
-def fmt_time(seconds):
-    try:
-        seconds = int(seconds)
-        h = seconds // 3600
-        m = (seconds % 3600) // 60
-        s = seconds % 60
-        if h > 0: return f"{h}h {m}m"
-        return f"{m}m {s}s"
-    except: return "-"
-
-class ProPDF(FPDF):
-    def header(self):
-        # Pasek koloru na górze
-        self.set_fill_color(0, 204, 150) # Streamlit Green
-        self.rect(0, 0, 210, 5, 'F')
-        
-        self.ln(5)
-        self.set_font('Arial', 'B', 18)
-        self.set_text_color(40, 40, 40)
-        self.cell(0, 10, 'RAPORT TRENINGOWY', 0, 1, 'L')
-        
-        self.set_font('Arial', '', 10)
-        self.set_text_color(100, 100, 100)
-        self.cell(0, 5, 'Pro Athlete Dashboard Analysis', 0, 1, 'L')
-        
-        self.ln(5)
-        self.set_draw_color(200, 200, 200)
-        self.line(10, 30, 200, 30)
-        self.ln(10)
-
-    def footer(self):
-        self.set_y(-15)
-        self.set_font('Arial', 'I', 8)
-        self.set_text_color(150)
-        self.cell(0, 10, f'Data generowania: {datetime.datetime.now().strftime("%Y-%m-%d %H:%M")} | Strona {self.page_no()}', 0, 0, 'C')
-
-    def section_header(self, title):
-        self.ln(5)
-        self.set_font('Arial', 'B', 12)
-        self.set_fill_color(240, 240, 240)
-        self.set_text_color(0, 0, 0)
-        # Pełna szerokość paska
-        self.cell(0, 8, f"  {clean_text(title)}", 0, 1, 'L', 1)
-        self.ln(3)
-
-    def kpi_box(self, label, value, unit, x, y, w=45):
-        # Tło
-        self.set_xy(x, y)
-        self.set_fill_color(255, 255, 255)
-        self.set_draw_color(220, 220, 220)
-        self.rect(x, y, w, 18, 'DF')
-        
-        # Label (Góra, mniejsza czcionka)
-        self.set_xy(x, y+2)
-        self.set_font('Arial', '', 7)
-        self.set_text_color(100)
-        self.cell(w, 4, clean_text(label), 0, 2, 'C')
-        
-        # Value (Środek, duża czcionka)
-        self.set_font('Arial', 'B', 11)
-        self.set_text_color(0)
-        self.cell(w, 6, clean_text(value), 0, 2, 'C')
-        
-        # Unit (Dół, mała czcionka)
-        self.set_font('Arial', '', 7)
-        self.set_text_color(150)
-        self.cell(w, 4, clean_text(unit), 0, 0, 'C')
-
-    def create_table_row(self, data, widths, fill=False):
-        """Tworzy wiersz tabeli z podanymi danymi i szerokościami kolumn."""
-        self.set_font('Arial', '', 9)
-        self.set_text_color(40, 40, 40)
-        if fill:
-            self.set_fill_color(245, 245, 245)
-        else:
-            self.set_fill_color(255, 255, 255)
-        
-        for i, datum in enumerate(data):
-            w = widths[i] if i < len(widths) else widths[-1]
-            self.cell(w, 7, clean_text(str(datum)), 1, 0, 'C', fill)
-        self.ln()
-
-    def create_table_header(self, headers, widths):
-        """Tworzy nagłówek tabeli."""
-        self.set_font('Arial', 'B', 9)
-        self.set_fill_color(60, 60, 60)
-        self.set_text_color(255, 255, 255)
-        
-        for i, header in enumerate(headers):
-            w = widths[i] if i < len(widths) else widths[-1]
-            self.cell(w, 8, clean_text(str(header)), 1, 0, 'C', 1)
-        self.ln()
-        self.set_text_color(0, 0, 0)
-
+# ===== DOCX EXPORT BUTTON =====
 st.sidebar.markdown("---")
-st.sidebar.header("🖨️ Export Raportu")
+st.sidebar.header("📄 Export Raportu")
 
 if 'df_plot' in locals() and uploaded_file is not None:
+    # Kolumny dla przycisków
+    col_docx, col_png = st.sidebar.columns(2)
     
-    def generate_final_pdf():
-        pdf = ProPDF()
-        pdf.add_page()
-        
-        # --- OBLICZENIA POMOCNICZE (Pre-Calc) ---
-        
-        # 1. VO2Max (MMP 5min)
-        vo2_max_est = 0
-        if 'watts' in df_plot.columns:
-            mmp_5m = df_plot['watts'].rolling(300).mean().max()
-            if not pd.isna(mmp_5m):
-                vo2_max_est = (10.8 * mmp_5m / rider_weight) + 7
-        
-        # 2. WĘGLOWODANY (Dokładna metoda strefowa)
-        carbs_total = 0
-        if 'watts' in df_plot.columns:
-            energy_kcal_series = (df_plot['watts'] / 0.22) / 4184.0
-            conditions = [
-                (df_plot['watts'] < vt1_watts),
-                (df_plot['watts'] >= vt1_watts) & (df_plot['watts'] < vt2_watts),
-                (df_plot['watts'] >= vt2_watts)
-            ]
-            choices = [0.3, 0.8, 1.1]
-            carb_fraction = np.select(conditions, choices, default=1.0)
-            carbs_series = (energy_kcal_series * carb_fraction) / 4.0
-            carbs_total = carbs_series.sum()
-
-        # 3. Pulse Power Interpretacja
-        pp_trend_txt = "Brak danych"
-        pp_interpret = "N/A"
-        if 'watts_smooth' in df_plot.columns and 'heartrate_smooth' in df_plot.columns:
-            mask = (df_plot['watts_smooth'] > 50) & (df_plot['heartrate_smooth'] > 90)
-            df_sub = df_plot[mask].copy()
-            if not df_sub.empty:
-                df_sub['pp'] = df_sub['watts_smooth'] / df_sub['heartrate_smooth']
-                slope, intercept, _, _, _ = stats.linregress(np.arange(len(df_sub)), df_sub['pp'].values)
-                trend_pct = ((intercept + slope*len(df_sub)) - intercept) / intercept * 100 if intercept != 0 else 0
-                pp_trend_txt = f"{trend_pct:.1f}%"
-                
-                if trend_pct < -10: pp_interpret = "Krytyczny Dryf"
-                elif trend_pct < -5: pp_interpret = "Umiarkowany Dryf"
-                elif trend_pct > 5: pp_interpret = "Wzrost Wydajnosci"
-                else: pp_interpret = "Stabilna Wydolnosc"
-
-        # --- SEKCJA 1: PODSUMOWANIE (GRID 4x2) ---
-        pdf.section_header("1. Podsumowanie Wykonania (KPI)")
-        
-        avg_w = metrics.get('avg_watts', 0)
-        avg_hr = metrics.get('avg_hr', 0)
-        work_kj = metrics.get('work_above_cp_kj', 0)
-        
-        start_x = 10
-        start_y = pdf.get_y()
-        w_box = 45
-        gap = 2
-        
-        # Rząd 1
-        pdf.kpi_box("Srednia Moc", f"{avg_w:.0f}", "W", start_x, start_y, w_box)
-        pdf.kpi_box("Srednie HR", f"{avg_hr:.0f}", "bpm", start_x + w_box + gap, start_y, w_box)
-        pdf.kpi_box("Szac. VO2Max", f"{vo2_max_est:.1f}", "ml/kg/min", start_x + (w_box + gap)*2, start_y, w_box)
-        pdf.kpi_box("Spalone Wegle", f"{carbs_total:.0f}", "g", start_x + (w_box + gap)*3, start_y, w_box)
-        
-        # Rząd 2
-        start_y += 20
-        pdf.kpi_box("Decoupling (Dryf)", f"{decoupling_percent:.1f}", "%", start_x, start_y, w_box)
-        pdf.kpi_box("Efficiency (EF)", f"{metrics.get('ef_factor', 0):.2f}", "W/bpm", start_x + w_box + gap, start_y, w_box)
-        vent_val = metrics.get('avg_vent', 0)
-        pdf.kpi_box("Wentylacja (VE)", f"{vent_val:.1f}", "L/min", start_x + (w_box + gap)*2, start_y, w_box)
-        
-        if 'smo2' in df_plot.columns:
-            pdf.kpi_box("Srednie SmO2", f"{df_plot['smo2'].mean():.1f}", "%", start_x + (w_box + gap)*3, start_y, w_box)
-        else:
-            pdf.kpi_box("Srednie SmO2", "-", "%", start_x + (w_box + gap)*3, start_y, w_box)
+    with col_docx:
+        # Generuj DOCX
+        try:
+            # AKTUALIZACJA: Dodano w_prime_input na końcu
+            docx_doc = generate_docx_report(
+                metrics, df_plot, df_plot_resampled, uploaded_file, cp_input,
+                vt1_watts, vt2_watts, rider_weight, vt1_vent, vt2_vent, w_prime_input
+            )
             
-        pdf.set_y(start_y + 25)
-
-        # --- SEKCJA 2: ANALIZA FIZJOLOGICZNA (Tabela) ---
-        pdf.section_header("2. Fizjologia i Pulse Power")
-        
-        pdf.set_fill_color(220)
-        pdf.set_font('Arial', 'B', 9)
-        pdf.cell(60, 8, "Parametr", 1, 0, 'L', 1)
-        pdf.cell(40, 8, "Wartosc", 1, 0, 'C', 1)
-        pdf.cell(90, 8, "Interpretacja / Status", 1, 1, 'L', 1)
-        
-        pdf.set_font('Arial', '', 9)
-        
-        pdf.cell(60, 8, clean_text("Pulse Power Trend"), 1)
-        pdf.cell(40, 8, clean_text(pp_trend_txt), 1, 0, 'C')
-        if "Stabilna" in pp_interpret: pdf.set_text_color(0, 150, 0)
-        elif "Dryf" in pp_interpret: pdf.set_text_color(200, 0, 0)
-        pdf.cell(90, 8, clean_text(pp_interpret), 1, 1, 'L')
-        pdf.set_text_color(0)
-        
-        pdf.cell(60, 8, clean_text("Praca Beztlenowa (>CP)"), 1)
-        pdf.cell(40, 8, f"{work_kj:.0f} kJ", 1, 0, 'C')
-        w_status = "Bezpiecznie" if work_kj < w_prime_input else "Przekroczono W' (Ryzykowne)"
-        pdf.cell(90, 8, clean_text(w_status), 1, 1, 'L')
-        
-        if 'core_temperature' in df_plot.columns:
-            max_t = df_plot['core_temperature'].max()
-            t_status = "Komfort" if max_t < 38.5 else ("Stres Cieplny" if max_t < 39.0 else "PRZEGRZANIE")
-            pdf.cell(60, 8, clean_text("Temp. Maksymalna"), 1)
-            pdf.cell(40, 8, f"{max_t:.2f} C", 1, 0, 'C')
-            pdf.cell(90, 8, clean_text(t_status), 1, 1, 'L')
-
-        pdf.ln(5)
-
-        # --- SEKCJA 3: HRV & VT1 ESTIMATION ---
-        pdf.section_header("3. HRV: Progi i Geometria")
-        
-        vt1_w_est = "-"
-        vt1_hr_est = "-"
-        alpha_avg_txt = "-"
-        
-        rr_col = next((c for c in df_clean_pl.columns if any(x in c.lower() for x in ['rr', 'hrv', 'ibi', 'r-r'])), None)
-        
-        if rr_col:
-            try:
-                temp_dfa, _ = calculate_dynamic_dfa(df_clean_pl, window_sec=120)
-                if temp_dfa is not None and not temp_dfa.empty:
-                    alpha_avg_txt = f"{temp_dfa['alpha1'].mean():.2f}"
-                    
-                    orig_times = df_plot['time'].values
-                    orig_watts = df_plot['watts_smooth'].values
-                    orig_hr = df_plot['heartrate_smooth'].values
-                    dfa_times = temp_dfa['time'].values
-                    dfa_watts = np.interp(dfa_times, orig_times, orig_watts)
-                    dfa_hr = np.interp(dfa_times, orig_times, orig_hr)
-                    
-                    valid_mask = (temp_dfa['time'] > 300) & (temp_dfa['alpha1'] < 0.75)
-                    stress_df = temp_dfa[valid_mask]
-                    
-                    if not stress_df.empty:
-                        idx = stress_df.index[0]
-                        vt1_w_est = f"{dfa_watts[idx]:.0f} W"
-                        vt1_hr_est = f"{dfa_hr[idx]:.0f} bpm"
-                    else:
-                        vt1_w_est = "Alpha > 0.75"
-                        vt1_hr_est = "-"
-            except: pass
-
-        pdf.set_fill_color(240)
-        pdf.cell(50, 8, "Parametr HRV", 1, 0, 'L', 1)
-        pdf.cell(40, 8, "Wynik", 1, 0, 'C', 1)
-        pdf.cell(100, 8, "Opis", 1, 1, 'L', 1)
-        
-        pdf.cell(50, 8, "Est. VT1 (Moc)", 1)
-        pdf.set_font('Arial', 'B', 9)
-        pdf.cell(40, 8, clean_text(vt1_w_est), 1, 0, 'C')
-        pdf.set_font('Arial', '', 8)
-        pdf.cell(100, 8, "Moc przy ktorej Alpha-1 spada ponizej 0.75", 1, 1)
-        
-        pdf.set_font('Arial', '', 9)
-        pdf.cell(50, 8, "Est. VT1 (HR)", 1)
-        pdf.set_font('Arial', 'B', 9)
-        pdf.cell(40, 8, clean_text(vt1_hr_est), 1, 0, 'C')
-        pdf.set_font('Arial', '', 8)
-        pdf.cell(100, 8, "Tetno na pierwszym progu wentylacyjnym", 1, 1)
-        
-        pdf.set_font('Arial', '', 9)
-        pdf.cell(50, 8, "Srednie DFA Alpha-1", 1)
-        pdf.cell(40, 8, alpha_avg_txt, 1, 0, 'C')
-        pdf.set_font('Arial', '', 8)
-        pdf.cell(100, 8, "Korelacja fraktalna (1.0 = Baza, 0.5 = Prog beztlenowy)", 1, 1)
-
-        pdf.ln(5)
-
-        # --- SEKCJA 4: CZAS W STREFACH ---
-        pdf.section_header("4. Czas w Strefach")
-        if 'watts' in df_plot.columns:
-            pdf.set_fill_color(0, 204, 150)
-            pdf.set_text_color(255)
-            z_headers = ['Strefa', 'Zakres', 'Czas', '%']
-            w_z = [60, 45, 45, 40]
-            for i, h in enumerate(z_headers):
-                pdf.cell(w_z[i], 7, h, 1, 0, 'C', 1)
-            pdf.ln()
+            # Zapisz do BytesIO
+            docx_buffer = BytesIO()
+            docx_doc.save(docx_buffer)
+            docx_buffer.seek(0)
             
-            pdf.set_text_color(0)
-            zones = [
-                ("Z1 Recovery", 0, 0.55*cp_input),
-                ("Z2 Endurance", 0.56*cp_input, 0.75*cp_input),
-                ("Z3 Tempo", 0.76*cp_input, 0.90*cp_input),
-                ("Z4 Threshold", 0.91*cp_input, 1.05*cp_input),
-                ("Z5 VO2Max", 1.06*cp_input, 1.20*cp_input),
-                ("Z6 Anaerobic", 1.21*cp_input, 2000)
-            ]
-            total_t = len(df_plot)
-            
-            for i, (name, low, high) in enumerate(zones):
-                count = len(df_plot[(df_plot['watts'] >= low) & (df_plot['watts'] < high)])
-                pct = count/total_t*100 if total_t>0 else 0
-                range_s = f"{low:.0f}-{high:.0f} W" if high < 1999 else f"> {low:.0f} W"
-                fill = (i % 2 == 1)
-                pdf.create_table_row([name, range_s, fmt_time(count), f"{pct:.1f}%"], w_z, fill=fill)
-
-        # Pomocniczy parser (lokalny dla pewności)
-        def _local_parse(t_str):
-            try:
-                parts = list(map(int, t_str.split(':')))
-                if len(parts) == 3: return parts[0]*3600 + parts[1]*60 + parts[2]
-                if len(parts) == 2: return parts[0]*60 + parts[1]
-                if len(parts) == 1: return parts[0]
-            except: return None
-            return None
-
-        # --- SEKCJA 5: ANALIZA ODCINKA (SmO2) ---
-        pdf.ln(5)
-        pdf.section_header("5. Analiza Wybranego Odcinka (SmO2)")
-        
-        s_int_str = start_time_str if 'start_time_str' in globals() else "Brak"
-        e_int_str = end_time_str if 'end_time_str' in globals() else "Brak"
-        
-        s_sec_val = _local_parse(s_int_str)
-        e_sec_val = _local_parse(e_int_str)
-        
-        found_smo2 = False
-        if s_sec_val is not None and e_sec_val is not None:
-            col_s = 'smo2_smooth' if 'smo2_smooth' in df_plot.columns else ('smo2' if 'smo2' in df_plot.columns else None)
-            col_w = 'watts_smooth' if 'watts_smooth' in df_plot.columns else 'watts'
-            
-            if col_s and col_w:
-                mask_int = (df_plot['time'] >= s_sec_val) & (df_plot['time'] <= e_sec_val)
-                df_int = df_plot[mask_int].copy()
-                if not df_int.empty:
-                    found_smo2 = True
-                    dur_int = e_sec_val - s_sec_val
-                    
-                    avg_w_int = df_int[col_w].mean()
-                    avg_s_int = df_int[col_s].mean()
-                    min_s_int = df_int[col_s].min()
-                    
-                    slope_s, _, _, _, _ = stats.linregress(df_int['time'], df_int[col_s])
-                    
-                    pdf.set_font('Arial', '', 10)
-                    pdf.cell(0, 5, f"Zakres: {s_int_str} - {e_int_str} (Czas: {dur_int}s)", 0, 1)
-                    start_x = 10; start_y = pdf.get_y() + 5; w_box = 45; gap = 2
-                    
-                    pdf.kpi_box("Srednia Moc", f"{avg_w_int:.0f}", "W", start_x, start_y, w_box)
-                    pdf.kpi_box("Srednie SmO2", f"{avg_s_int:.1f}", "%", start_x + w_box + gap, start_y, w_box)
-                    pdf.kpi_box("Min SmO2", f"{min_s_int:.1f}", "%", start_x + (w_box + gap)*2, start_y, w_box)
-                    pdf.kpi_box("Slope SmO2", f"{slope_s:.4f}", "%/s", start_x + (w_box + gap)*3, start_y, w_box)
-                    pdf.ln(25)
-        
-        if not found_smo2:
-            pdf.set_font('Arial', 'I', 9)
-            pdf.cell(0, 10, clean_text("Brak danych lub nie wybrano odcinka w zakladce SmO2."), 0, 1)
-
-        # --- SEKCJA 6: ANALIZA ODCINKA (WENTYLACJA) ---
-        # NOWOŚĆ: To jest ten blok, o który prosiłeś
-        pdf.section_header("6. Analiza Wybranego Odcinka (Wentylacja)")
-        
-        # Pobieramy zmienne z zakładki Vent (muszą być globalne)
-        s_vent_str = start_time_v if 'start_time_v' in globals() else "Brak"
-        e_vent_str = end_time_v if 'end_time_v' in globals() else "Brak"
-        
-        s_v_sec = _local_parse(s_vent_str)
-        e_v_sec = _local_parse(e_vent_str)
-        
-        found_vent = False
-        if s_v_sec is not None and e_v_sec is not None:
-            col_ve = 'tymeventilation' if 'tymeventilation' in df_plot.columns else None
-            col_w = 'watts' if 'watts' in df_plot.columns else None
-            
-            if col_ve and col_w:
-                mask_v = (df_plot['time'] >= s_v_sec) & (df_plot['time'] <= e_v_sec)
-                df_v = df_plot[mask_v].copy()
-                
-                if not df_v.empty:
-                    found_vent = True
-                    dur_v = e_v_sec - s_v_sec
-                    
-                    avg_w_v = df_v[col_w].mean()
-                    avg_ve_v = df_v[col_ve].mean()
-                    ve_w_ratio = avg_ve_v / avg_w_v if avg_w_v > 0 else 0
-                    
-                    slope_ve, _, _, _, _ = stats.linregress(df_v['time'], df_v[col_ve])
-                    
-                    pdf.set_font('Arial', '', 10)
-                    pdf.cell(0, 5, f"Zakres: {s_vent_str} - {e_vent_str} (Czas: {dur_v}s)", 0, 1)
-                    
-                    start_x = 10; start_y = pdf.get_y() + 5; w_box = 45; gap = 2
-                    
-                    pdf.kpi_box("Srednia Moc", f"{avg_w_v:.0f}", "W", start_x, start_y, w_box)
-                    pdf.kpi_box("Srednie VE", f"{avg_ve_v:.1f}", "L/min", start_x + w_box + gap, start_y, w_box)
-                    pdf.kpi_box("Wydajnosc (VE/W)", f"{ve_w_ratio:.3f}", "L/W", start_x + (w_box + gap)*2, start_y, w_box)
-                    pdf.kpi_box("Slope VE", f"{slope_ve:.4f}", "L/s", start_x + (w_box + gap)*3, start_y, w_box)
-                    
-                    pdf.ln(25)
-
-        if not found_vent:
-            pdf.set_font('Arial', 'I', 9)
-            pdf.cell(0, 10, clean_text("Brak danych lub nie wybrano odcinka w zakladce Ventilation."), 0, 1)
-
-        return pdf.output(dest='S').encode('latin-1', 'replace')
-
-    pdf_bytes = generate_final_pdf()
+            st.sidebar.download_button(
+                label="📥 Pobierz Raport DOCX",
+                data=docx_buffer.getvalue(),
+                file_name=f"Raport_{uploaded_file.name.split('.')[0]}.docx",
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                use_container_width=True
+            )
+        except Exception as e:
+            st.sidebar.error(f"Błąd DOCX: {e}")
     
-    st.sidebar.download_button(
-        label="📄 Pobierz Raport PRO (PDF)",
-        data=pdf_bytes,
-        file_name=f"Raport_PRO_{uploaded_file.name.split('.')[0]}.pdf",
-        mime="application/pdf"
-    )
+
+    with col_png:
+    # Generuj PNG ZIP
+        try:
+            png_zip = export_all_charts_as_png(
+                df_plot, df_plot_resampled, cp_input, vt1_watts, vt2_watts,
+                metrics, rider_weight, uploaded_file,
+                st.session_state.get('vent_start_sec'), st.session_state.get('vent_end_sec'),
+                st.session_state.get('smo2_start_sec'), st.session_state.get('smo2_end_sec')
+            )
+            
+            st.sidebar.download_button(
+                label="📸 Pobierz Wykresy PNG (ZIP)",
+                data=png_zip,
+                file_name=f"Wykresy_{uploaded_file.name.split('.')[0]}.zip",
+                mime="application/zip",
+                use_container_width=True
+            )
+        except Exception as e:
+            st.sidebar.error(f"Błąd PNG: {e}")
+
+        
 else:
-    st.sidebar.info("Wgraj plik aby pobrac PDF.")
+    st.sidebar.info("Wgraj plik aby pobrać raport.")
+# ===== KONIEC DOCX =====

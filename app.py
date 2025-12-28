@@ -134,6 +134,10 @@ def render_environment_tab(*args, **kwargs):
     from modules.ui.environment_ui import render_environment_tab as _render
     return _render(*args, **kwargs)
 
+def render_history_import_tab(*args, **kwargs):
+    from modules.ui.history_import_ui import render_history_import_tab as _render
+    return _render(*args, **kwargs)
+
 from modules.comparison import render_compare_dashboard
 from modules.settings import SettingsManager
 from modules.health_alerts import HealthMonitor
@@ -570,8 +574,8 @@ if uploaded_file is not None:
         # ===== 📈 ANALYTICS (NOWA GRUPA) =====
         with tab_analytics:
             show_breadcrumb("📈 Analytics")
-            sub_history, sub_environment, sub_community = st.tabs([
-                "📊 History", "🌡️ Environment", "👥 Community"
+            sub_history, sub_environment, sub_community, sub_import = st.tabs([
+                "📊 History", "🌡️ Environment", "👥 Community", "📂 Import"
             ])
             with sub_history:
                 render_trends_history_tab()
@@ -581,6 +585,8 @@ if uploaded_file is not None:
             with sub_community:
                 vo2max_val = metrics.get('vo2_max_est', 0) if 'metrics' in dir() else 0
                 render_community_tab(cp_input, rider_weight, vo2max_val, rider_age, 'M' if is_male else 'F')
+            with sub_import:
+                render_history_import_tab(cp_input)
 
 # ===== DOCX EXPORT BUTTON =====
 st.sidebar.markdown("---")

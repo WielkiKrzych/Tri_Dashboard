@@ -23,6 +23,14 @@ from modules.calculations import (
     get_stamina_interpretation,
     get_vlamax_interpretation,
     DEFAULT_PDC_DURATIONS,
+    # NEW functions
+    estimate_tte,
+    classify_phenotype,
+    get_phenotype_description,
+    calculate_durability_index,
+    get_durability_interpretation,
+    calculate_recovery_score,
+    get_recovery_recommendation,
 )
 
 
@@ -38,6 +46,20 @@ def _format_duration(seconds: int) -> str:
         hours = seconds // 3600
         mins = (seconds % 3600) // 60
         return f"{hours}h{mins:02d}" if mins else f"{hours}h"
+
+
+def _format_tte(seconds: float) -> str:
+    """Format TTE to human-readable string."""
+    if seconds == float('inf'):
+        return "∞ (sustainable)"
+    elif seconds < 60:
+        return f"{seconds:.0f}s"
+    elif seconds < 3600:
+        mins = int(seconds // 60)
+        secs = int(seconds % 60)
+        return f"{mins}:{secs:02d}"
+    else:
+        return ">1h"
 
 
 def _create_pdc_chart(pdc: Dict[int, float], cp: float) -> go.Figure:
@@ -156,48 +178,124 @@ def render_pdc_tab(
         st.warning("Za mało danych do wygenerowania krzywej mocy.")
         return
     
-    # ===== PDC CHART =====
-    fig_pdc = _create_pdc_chart(pdc, cp)
-    st.plotly_chart(fig_pdc, use_container_width=True)
-    
-    # ===== KEY METRICS =====
-    st.subheader("📈 Kluczowe Metryki")
-    
     # Get MMP values
     mmp_5s = pdc.get(5)
     mmp_1min = pdc.get(60)
     mmp_5min = pdc.get(300)
     mmp_20min = pdc.get(1200)
     
+    # ===== PHENOTYPE BADGE (NEW) =====
+    phenotype = classify_phenotype(pdc, rider_weight)
+    emoji, name, desc = get_phenotype_description(phenotype)
+    
+    st.markdown(f"""
+    <div style="background: linear-gradient(90deg, rgba(255,215,0,0.2), transparent); 
+                padding: 15px; border-radius: 10px; margin-bottom: 20px;">
+        <h3 style="margin:0;">{emoji} Twój Fenotyp: <span style="color: #FFD700;">{name}</span></h3>
+        <p style="margin:5px 0 0 0; opacity: 0.8;">{desc}</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # ===== PDC CHART =====
+    fig_pdc = _create_pdc_chart(pdc, cp)
+    st.plotly_chart(fig_pdc, use_container_width=True)
+    
+    # ===== KEY METRICS + TTE (NEW) =====
+    st.subheader("📈 Kluczowe Metryki & Time to Exhaustion")
+    
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
         if mmp_5s:
+            tte_5s = estimate_tte(mmp_5s, cp, w_prime)
             st.metric("⚡ MMP 5s", f"{mmp_5s:.0f} W", 
                      f"{mmp_5s/rider_weight:.1f} W/kg" if rider_weight > 0 else None)
+            st.caption(f"TTE: {_format_tte(tte_5s)}")
         else:
             st.metric("⚡ MMP 5s", "—")
     
     with col2:
         if mmp_1min:
+            tte_1min = estimate_tte(mmp_1min, cp, w_prime)
             st.metric("🔥 MMP 1min", f"{mmp_1min:.0f} W",
                      f"{mmp_1min/rider_weight:.1f} W/kg" if rider_weight > 0 else None)
+            st.caption(f"TTE: {_format_tte(tte_1min)}")
         else:
             st.metric("🔥 MMP 1min", "—")
     
     with col3:
         if mmp_5min:
+            tte_5min = estimate_tte(mmp_5min, cp, w_prime)
             st.metric("💪 MMP 5min", f"{mmp_5min:.0f} W",
                      f"{mmp_5min/rider_weight:.1f} W/kg" if rider_weight > 0 else None)
+            st.caption(f"TTE: {_format_tte(tte_5min)}")
         else:
             st.metric("💪 MMP 5min", "—")
     
     with col4:
         if mmp_20min:
+            tte_20min = estimate_tte(mmp_20min, cp, w_prime)
             st.metric("🏔️ MMP 20min", f"{mmp_20min:.0f} W",
                      f"{mmp_20min/rider_weight:.1f} W/kg" if rider_weight > 0 else None)
+            st.caption(f"TTE: {_format_tte(tte_20min)}")
         else:
             st.metric("🏔️ MMP 20min", "—")
+    
+    st.divider()
+    
+    # ===== DURABILITY INDEX (NEW) =====
+    st.subheader("🛡️ Durability Index")
+    
+    durability, avg_first, avg_second = calculate_durability_index(df_plot, min_duration_min=20)
+    
+    if durability is not None:
+        durability_interp = get_durability_interpretation(durability)
+        
+        col_d1, col_d2, col_d3 = st.columns(3)
+        
+        with col_d1:
+            delta_color = "normal" if durability >= 90 else "inverse"
+            st.metric(
+                "Durability Index",
+                f"{durability:.1f}%",
+                delta=f"{durability - 100:.1f}%" if durability < 100 else "+0%",
+                delta_color=delta_color,
+                help="Stosunek średniej mocy w 2. połowie do 1. połowy treningu"
+            )
+        
+        with col_d2:
+            st.metric("Śr. Moc (1. połowa)", f"{avg_first:.0f} W")
+        
+        with col_d3:
+            st.metric("Śr. Moc (2. połowa)", f"{avg_second:.0f} W")
+        
+        st.info(f"**Interpretacja:** {durability_interp}")
+    else:
+        st.info("Potrzeba minimum 20 minut treningu do obliczenia Durability Index.")
+    
+    st.divider()
+    
+    # ===== RECOVERY SCORE (NEW) =====
+    st.subheader("🔄 Recovery Score")
+    
+    if 'w_prime_balance' in df_plot.columns and w_prime > 0:
+        w_bal_end = df_plot['w_prime_balance'].iloc[-1]
+        recovery_score = calculate_recovery_score(w_bal_end, w_prime, time_since_effort_sec=0)
+        zone_rec, zone_desc = get_recovery_recommendation(recovery_score)
+        
+        col_r1, col_r2 = st.columns([1, 2])
+        
+        with col_r1:
+            st.metric(
+                "Recovery Score",
+                f"{recovery_score:.0f}/100",
+                help="Gotowość do następnego treningu na podstawie W' Balance"
+            )
+        
+        with col_r2:
+            st.info(f"**{zone_rec}**\n\n{zone_desc}")
+    else:
+        st.info("Oblicz W' Balance w zakładce Power, aby zobaczyć Recovery Score.")
     
     st.divider()
     
@@ -249,7 +347,7 @@ def render_pdc_tab(
         )
         st.plotly_chart(fig_fri, use_container_width=True)
     else:
-        st.warning("Potrzeba danych \u22655 minut i \u226520 minut dla obliczenia FRI.")
+        st.warning("Potrzeba danych ≥5 minut i ≥20 minut dla obliczenia FRI.")
     
     st.divider()
     

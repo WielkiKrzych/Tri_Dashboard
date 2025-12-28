@@ -299,3 +299,201 @@ def get_fri_interpretation(fri: float) -> str:
     else:
         return "🔴 Profil sprinterski (niska wytrzymałość)"
 
+
+# ============================================================
+# NEW: Time to Exhaustion (TTE) - WKO5 Duration Model
+# ============================================================
+
+def estimate_tte(target_power: float, cp: float, w_prime: float) -> float:
+    """Estimate Time to Exhaustion at given power.
+    
+    Based on the critical power model: TTE = W' / (P - CP)
+    
+    Args:
+        target_power: Target power in watts
+        cp: Critical Power in watts
+        w_prime: W' capacity in Joules
+        
+    Returns:
+        Time to exhaustion in seconds (inf if power <= CP)
+        
+    Example:
+        >>> estimate_tte(350, 280, 20000)
+        285.7  # ~4.8 minutes at 350W with CP=280W, W'=20kJ
+    """
+    if target_power <= cp:
+        return float('inf')  # Sustainable forever (theoretically)
+    
+    if w_prime <= 0:
+        return 0.0
+    
+    return w_prime / (target_power - cp)
+
+
+def estimate_tte_range(
+    pdc: dict, 
+    cp: float, 
+    w_prime: float
+) -> dict:
+    """Estimate TTE for each power level in PDC.
+    
+    Args:
+        pdc: Power Duration Curve (duration -> power)
+        cp: Critical Power
+        w_prime: W' capacity
+        
+    Returns:
+        Dict mapping power to estimated TTE
+    """
+    results = {}
+    for duration, power in pdc.items():
+        if power is not None and power > 0:
+            tte = estimate_tte(power, cp, w_prime)
+            results[power] = tte
+    return results
+
+
+# ============================================================
+# NEW: Phenotype Classification - WKO5 Power Profile
+# ============================================================
+
+def classify_phenotype(pdc: dict, weight: float) -> str:
+    """Classify rider phenotype based on Power Duration Curve.
+    
+    Uses WKO5-style power profile analysis to determine
+    whether rider is a Sprinter, Pursuiter, All-Rounder, TT, or Climber.
+    
+    Classification based on relative strengths:
+    - Sprinter: Exceptional 5s-30s power
+    - Pursuiter: Strong 1-5min power
+    - All-Rounder: Balanced profile
+    - Time Trialist: Strong 20min+ power, good FRI
+    - Climber: High W/kg at threshold, lower absolute
+    
+    Args:
+        pdc: Power Duration Curve (duration seconds -> watts)
+        weight: Rider weight in kg
+        
+    Returns:
+        Phenotype string identifier
+    """
+    if not pdc or weight <= 0:
+        return "unknown"
+    
+    # Get key power values
+    p5s = pdc.get(5)
+    p1min = pdc.get(60)
+    p5min = pdc.get(300)
+    p20min = pdc.get(1200)
+    
+    # Need at least some data
+    if not any([p5s, p1min, p5min, p20min]):
+        return "unknown"
+    
+    # Calculate W/kg values
+    p5s_kg = p5s / weight if p5s else 0
+    p1min_kg = p1min / weight if p1min else 0
+    p5min_kg = p5min / weight if p5min else 0
+    p20min_kg = p20min / weight if p20min else 0
+    
+    # Phenotype scoring
+    scores = {
+        'sprinter': 0,
+        'pursuiter': 0,
+        'all_rounder': 0,
+        'time_trialist': 0,
+        'climber': 0
+    }
+    
+    # Sprinter: High 5s power (>16 W/kg typical for elite)
+    if p5s_kg >= 18:
+        scores['sprinter'] += 3
+    elif p5s_kg >= 15:
+        scores['sprinter'] += 2
+    elif p5s_kg >= 12:
+        scores['sprinter'] += 1
+    
+    # Pursuiter: High 1-5min power ratio
+    if p1min_kg >= 8:
+        scores['pursuiter'] += 2
+    if p5min_kg >= 6:
+        scores['pursuiter'] += 2
+    
+    # Time Trialist: High sustained power, good FRI
+    if p20min_kg >= 5:
+        scores['time_trialist'] += 2
+    if p5min and p20min and (p20min / p5min) >= 0.90:
+        scores['time_trialist'] += 2
+    
+    # Climber: High W/kg across board but especially threshold
+    if p20min_kg >= 5.5 and weight < 70:
+        scores['climber'] += 3
+    elif p20min_kg >= 5 and weight < 75:
+        scores['climber'] += 2
+    
+    # All-rounder: Balanced scores (no extreme peaks)
+    if p5s_kg >= 12 and p5min_kg >= 5 and p20min_kg >= 4:
+        variance = np.std([
+            p5s_kg / 20,    # Normalize to similar scale
+            p1min_kg / 10,
+            p5min_kg / 7,
+            p20min_kg / 5.5
+        ])
+        if variance < 0.15:  # Low variance = balanced
+            scores['all_rounder'] += 3
+    
+    # Find highest scoring phenotype
+    phenotype = max(scores, key=scores.get)
+    
+    # If no clear winner, default to all-rounder
+    if scores[phenotype] == 0:
+        return "all_rounder"
+    
+    return phenotype
+
+
+def get_phenotype_description(phenotype: str) -> tuple:
+    """Get phenotype emoji, name, and description.
+    
+    Args:
+        phenotype: Phenotype identifier from classify_phenotype
+        
+    Returns:
+        Tuple of (emoji, name, description)
+    """
+    phenotypes = {
+        'sprinter': (
+            "⚡", 
+            "Sprinter",
+            "Eksplozywna moc krótkiego trwania. Świetny w sprintach i atakach."
+        ),
+        'pursuiter': (
+            "🎯", 
+            "Pursuiter / Puncheur",
+            "Silny w wysiłkach 1-5 min. Dominuje na krótkich podbiegach."
+        ),
+        'all_rounder': (
+            "🔄", 
+            "All-Rounder",
+            "Zbalansowany profil. Można dostosować do różnych ról w zespole."
+        ),
+        'time_trialist': (
+            "🚀", 
+            "Time Trialist",
+            "Wysoka moc progowa i FRI. Dominuje w jeździe na czas."
+        ),
+        'climber': (
+            "⛰️", 
+            "Climber",
+            "Wysoka moc względna (W/kg). Błyszczy na długich podbiegach."
+        ),
+        'unknown': (
+            "❓", 
+            "Nieznany",
+            "Za mało danych do klasyfikacji."
+        )
+    }
+    
+    return phenotypes.get(phenotype, phenotypes['unknown'])
+
+

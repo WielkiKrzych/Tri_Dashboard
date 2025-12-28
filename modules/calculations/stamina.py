@@ -205,3 +205,80 @@ def calculate_aerobic_contribution(
         results[duration] = round(min(100, max(0, aerobic_pct)), 1)
     
     return results
+
+
+# ============================================================
+# NEW: Durability Index - INSCYD / WKO5 Stamina
+# ============================================================
+
+def calculate_durability_index(df, min_duration_min: int = 30) -> tuple:
+    """Calculate Durability Index - power sustainability over workout.
+    
+    Compares average power in first half vs second half of workout.
+    Shows how well athlete maintains performance as fatigue accumulates.
+    
+    DI = (Avg Power 2nd Half / Avg Power 1st Half) * 100
+    
+    Interpretation:
+    - 100%: Perfect maintenance (rare)
+    - 95-100%: Excellent durability
+    - 90-95%: Good durability
+    - 85-90%: Average
+    - <85%: Poor durability (needs work)
+    
+    Args:
+        df: DataFrame with 'watts' column
+        min_duration_min: Minimum workout duration in minutes
+        
+    Returns:
+        Tuple of (durability_index, first_half_avg, second_half_avg)
+        Returns (None, None, None) if insufficient data
+    """
+    import pandas as pd
+    
+    if df is None or 'watts' not in df.columns:
+        return None, None, None
+    
+    # Need minimum duration
+    if len(df) < min_duration_min * 60:
+        return None, None, None
+    
+    # Split in half
+    midpoint = len(df) // 2
+    
+    first_half = df.iloc[:midpoint]
+    second_half = df.iloc[midpoint:]
+    
+    avg_first = first_half['watts'].mean()
+    avg_second = second_half['watts'].mean()
+    
+    if avg_first <= 0:
+        return None, None, None
+    
+    durability = (avg_second / avg_first) * 100
+    
+    return round(durability, 1), round(avg_first, 0), round(avg_second, 0)
+
+
+def get_durability_interpretation(di: float) -> str:
+    """Get interpretation of Durability Index.
+    
+    Args:
+        di: Durability Index (percentage)
+        
+    Returns:
+        Polish interpretation string
+    """
+    if di is None:
+        return "❓ Brak danych"
+    elif di >= 98:
+        return "🟢 Fenomenalna wytrzymałość"
+    elif di >= 95:
+        return "🟢 Bardzo dobra wytrzymałość"
+    elif di >= 90:
+        return "🟡 Dobra wytrzymałość"
+    elif di >= 85:
+        return "🟠 Przeciętna - do poprawy"
+    else:
+        return "🔴 Słaba wytrzymałość - priorytet treningowy"
+

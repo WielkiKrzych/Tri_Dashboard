@@ -113,8 +113,32 @@ def render_model_tab(*args, **kwargs):
     from modules.ui.model import render_model_tab as _render
     return _render(*args, **kwargs)
 
+# ===== NEW FEATURE TABS (9 nowych funkcji) =====
+def render_training_load_tab(*args, **kwargs):
+    from modules.ui.training_load_ui import render_training_load_tab as _render
+    return _render(*args, **kwargs)
+
+def render_trends_history_tab(*args, **kwargs):
+    from modules.ui.trends_history import render_trends_history_tab as _render
+    return _render(*args, **kwargs)
+
+def render_community_tab(*args, **kwargs):
+    from modules.ui.community import render_community_tab as _render
+    return _render(*args, **kwargs)
+
+def render_genetics_tab(*args, **kwargs):
+    from modules.ui.genetics_ui import render_genetics_tab as _render
+    return _render(*args, **kwargs)
+
+def render_environment_tab(*args, **kwargs):
+    from modules.ui.environment_ui import render_environment_tab as _render
+    return _render(*args, **kwargs)
+
 from modules.comparison import render_compare_dashboard
 from modules.settings import SettingsManager
+from modules.health_alerts import HealthMonitor
+from modules.db import SessionStore, SessionRecord
+from modules.ai.interval_detector import IntervalDetector
 
 
 def cleanup_session_state() -> None:
@@ -374,6 +398,40 @@ if uploaded_file is not None:
         # --- HEADER METRICS (P2 FIX: Używamy wydzielonej funkcji zamiast duplikacji) ---
         np_header, if_header, tss_header = calculate_header_metrics(df_plot, cp_input)
 
+        # ===== AUTO-SAVE SESSION TO DATABASE =====
+        try:
+            from datetime import date
+            session_record = SessionRecord(
+                date=date.today().isoformat(),
+                filename=uploaded_file.name,
+                duration_sec=len(df_plot),
+                tss=tss_header,
+                np=np_header,
+                if_factor=if_header,
+                avg_watts=metrics.get('avg_watts', 0),
+                avg_hr=metrics.get('avg_hr', 0),
+                max_hr=df_plot['heartrate'].max() if 'heartrate' in df_plot.columns else 0,
+                work_kj=metrics.get('work_kj', 0),
+                avg_cadence=metrics.get('avg_cadence', 0),
+                avg_rmssd=metrics.get('avg_rmssd'),
+            )
+            SessionStore().add_session(session_record)
+        except Exception as e:
+            pass  # Silent fail for session save
+
+        # ===== HEALTH ALERTS =====
+        health_monitor = HealthMonitor()
+        alerts = health_monitor.analyze_session(df_plot, metrics)
+        
+        if alerts:
+            for alert in alerts[:3]:  # Show max 3 alerts
+                if alert.severity == "critical":
+                    st.error(f"{alert.icon} **{alert.message}**\n\n{alert.recommendation}")
+                elif alert.severity == "warning":
+                    st.warning(f"{alert.icon} **{alert.message}**\n\n{alert.recommendation}")
+                else:
+                    st.info(f"{alert.icon} {alert.message}")
+
         # ===== STICKY HEADER - styles are in style.css =====
 
         # Oblicz metryki dla sticky panelu
@@ -443,15 +501,15 @@ if uploaded_file is not None:
                 </div>
                 ''', unsafe_allow_html=True)
         
-        tab_overview, tab_performance, tab_physiology, tab_intelligence = st.tabs([
-            "📊 Overview", "⚡ Performance", "🫀 Physiology", "🧠 Intelligence"
+        tab_overview, tab_performance, tab_physiology, tab_intelligence, tab_analytics = st.tabs([
+            "📊 Overview", "⚡ Performance", "🫀 Physiology", "🧠 Intelligence", "📈 Analytics"
         ])
 
         # ===== 📊 OVERVIEW =====
         with tab_overview:
             show_breadcrumb("📊 Overview")
-            sub_raport, sub_kpi, sub_trends = st.tabs([
-                "📋 Raport", "📈 KPI", "📉 Trends"
+            sub_raport, sub_kpi, sub_trends, sub_training_load = st.tabs([
+                "📋 Raport", "📈 KPI", "📉 Trends", "💪 Training Load"
             ])
             with sub_raport:
                 render_report_tab(df_plot, rider_weight, cp_input)
@@ -459,6 +517,8 @@ if uploaded_file is not None:
                 render_kpi_tab(df_plot, df_plot_resampled, metrics, rider_weight, decoupling_percent, drift_z2, vt1_vent, vt2_vent)
             with sub_trends:
                 render_trends_tab(df_plot)
+            with sub_training_load:
+                render_training_load_tab()
 
         # ===== ⚡ PERFORMANCE =====
         with tab_performance:
@@ -495,8 +555,8 @@ if uploaded_file is not None:
         # ===== 🧠 INTELLIGENCE =====
         with tab_intelligence:
             show_breadcrumb("🧠 Intelligence")
-            sub_nutrition, sub_limiters, sub_ai = st.tabs([
-                "🍎 Nutrition", "🚧 Limiters", "🤖 AI Coach"
+            sub_nutrition, sub_limiters, sub_ai, sub_genetics = st.tabs([
+                "🍎 Nutrition", "🚧 Limiters", "🤖 AI Coach", "🧬 Genetics"
             ])
             with sub_nutrition:
                 render_nutrition_tab(df_plot, cp_input, vt1_watts, vt2_watts)
@@ -504,6 +564,23 @@ if uploaded_file is not None:
                 render_limiters_tab(df_plot, cp_input, vt2_vent)
             with sub_ai:
                 render_ai_coach_tab(df_plot_resampled)
+            with sub_genetics:
+                render_genetics_tab()
+
+        # ===== 📈 ANALYTICS (NOWA GRUPA) =====
+        with tab_analytics:
+            show_breadcrumb("📈 Analytics")
+            sub_history, sub_environment, sub_community = st.tabs([
+                "📊 History", "🌡️ Environment", "👥 Community"
+            ])
+            with sub_history:
+                render_trends_history_tab()
+            with sub_environment:
+                tss_val = metrics.get('tss', 0) if 'metrics' in dir() else 0
+                render_environment_tab(tss_val)
+            with sub_community:
+                vo2max_val = metrics.get('vo2_max_est', 0) if 'metrics' in dir() else 0
+                render_community_tab(cp_input, rider_weight, vo2max_val, rider_age, 'M' if is_male else 'F')
 
 # ===== DOCX EXPORT BUTTON =====
 st.sidebar.markdown("---")

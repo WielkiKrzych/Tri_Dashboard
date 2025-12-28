@@ -13,6 +13,19 @@ from pathlib import Path
 import os
 import zipfile
 import json
+from typing import Dict, Any, Optional, Tuple
+
+# ============================================================
+# CONSTANTS - Magic numbers extracted for maintainability
+# ============================================================
+ROLLING_WINDOW_5MIN = 300  # 5 minutes in seconds
+ROLLING_WINDOW_30S = 30    # 30 seconds
+ROLLING_WINDOW_60S = 60    # 60 seconds for SmO2 smoothing
+RESAMPLE_THRESHOLD = 10000  # Resample if more than this many rows
+RESAMPLE_STEP = 5          # Take every Nth row
+MIN_WATTS_ACTIVE = 10      # Minimum watts for "active" data
+MIN_HR_ACTIVE = 40         # Minimum HR for "active" data
+MIN_RECORDS_FOR_ROLLING = 30  # Minimum records for rolling calculations
 
 # --- MODULE IMPORTS ---
 from modules.config import Config
@@ -104,12 +117,69 @@ from modules.comparison import render_compare_dashboard
 from modules.settings import SettingsManager
 
 
-def cleanup_session_state():
+def cleanup_session_state() -> None:
     """Clean up old DataFrames from session state to free memory."""
-    keys_to_check = ['_prev_df_plot', '_prev_df_resampled', '_prev_file_name']
+    keys_to_check = ['_prev_df_plot', '_prev_df_resampled', '_prev_file_name', 'data_loaded']
     for key in keys_to_check:
         if key in st.session_state:
             del st.session_state[key]
+
+
+def calculate_header_metrics(df: pd.DataFrame, cp: float) -> Tuple[float, float, float]:
+    """Calculate NP, IF, and TSS for the header display.
+    
+    Centralizes the calculation to avoid duplication.
+    
+    Args:
+        df: DataFrame with 'watts' column
+        cp: Critical Power in watts
+    
+    Returns:
+        Tuple of (NP, IF, TSS)
+    """
+    if 'watts' not in df.columns or len(df) < MIN_RECORDS_FOR_ROLLING:
+        return 0.0, 0.0, 0.0
+    
+    rolling_30s = df['watts'].rolling(window=ROLLING_WINDOW_30S, min_periods=1).mean()
+    np_val = np.power(np.mean(np.power(rolling_30s, 4)), 0.25)
+    
+    if pd.isna(np_val):
+        np_val = df['watts'].mean()
+    
+    if cp > 0:
+        if_val = np_val / cp
+        duration_sec = len(df)
+        tss_val = (duration_sec * np_val * if_val) / (cp * 3600) * 100
+    else:
+        if_val = 0.0
+        tss_val = 0.0
+    
+    return float(np_val), float(if_val), float(tss_val)
+
+
+def validate_dataframe(df: pd.DataFrame) -> Tuple[bool, str]:
+    """Validate that DataFrame has minimum required structure.
+    
+    Args:
+        df: DataFrame to validate
+    
+    Returns:
+        Tuple of (is_valid, error_message)
+    """
+    if df is None or df.empty:
+        return False, "Plik jest pusty lub nie udało się go wczytać."
+    
+    # Check for at least one data column
+    data_cols = ['watts', 'heartrate', 'cadence', 'smo2', 'power']
+    has_data = any(col in df.columns for col in data_cols)
+    
+    if not has_data:
+        return False, f"Brak wymaganych kolumn danych. Oczekiwane: {data_cols}"
+    
+    if len(df) < 10:
+        return False, f"Za mało danych ({len(df)} rekordów). Minimum: 10."
+    
+    return True, ""
 
 
 
@@ -211,23 +281,30 @@ if uploaded_file is not None:
     with st.spinner('Przetwarzanie danych...'):
         try:
             df_raw = load_data(uploaded_file)
+            
+            # P0 FIX: Walidacja danych po wczytaniu
+            is_valid, error_msg = validate_dataframe(df_raw)
+            if not is_valid:
+                st.error(f"Błąd walidacji danych: {error_msg}")
+                st.stop()
+            
             df_clean_pl = process_data(df_raw)
             metrics = calculate_metrics(df_clean_pl, cp_input)
             df_w_prime = calculate_w_prime_balance(df_clean_pl, cp_input, w_prime_input)
             decoupling_percent, ef_factor = calculate_advanced_kpi(df_clean_pl)
             drift_z2 = calculate_z2_drift(df_clean_pl, cp_input)
             df_with_hsi = calculate_heat_strain_index(df_w_prime)
-            df_plot = df_with_hsi.copy()
+            df_plot = df_with_hsi  # Removed unnecessary .copy()
 
             # --- EXTENDED METRICS CALCULATION (Centralization) ---
             if 'watts' in df_plot.columns:
-                metrics['np'] = calculate_normalized_power(df_plot) # FIX: Pass DataFrame, not Series
+                metrics['np'] = calculate_normalized_power(df_plot)
                 metrics['work_kj'] = df_plot['watts'].sum() / 1000
                 metrics['carbs_total'] = estimate_carbs_burned(df_plot, vt1_watts, vt2_watts)
                 
-                # VO2max Est
-                mmp_5m = df_plot['watts'].rolling(300).mean().max()
-                if not pd.isna(mmp_5m):
+                # VO2max Est - P0 FIX: Zabezpieczenie przed ZeroDivisionError
+                mmp_5m = df_plot['watts'].rolling(ROLLING_WINDOW_5MIN).mean().max()
+                if not pd.isna(mmp_5m) and rider_weight > 0:
                     metrics['vo2_max_est'] = (10.8 * mmp_5m / rider_weight) + 7
                 else:
                     metrics['vo2_max_est'] = 0
@@ -244,18 +321,34 @@ if uploaded_file is not None:
             elif 'hrv' in df_plot.columns:
                  metrics['avg_rmssd'] = df_plot['hrv'].mean()
             
-            # Avg Pulse Power & EF
+            # Avg Pulse Power & EF - P0 FIX: używamy stałych zamiast magic numbers
             metrics['ef_factor'] = ef_factor 
             metrics['avg_pp'] = 0
             if 'watts' in df_plot.columns and 'heartrate' in df_plot.columns:
-                mask = (df_plot['watts'] > 10) & (df_plot['heartrate'] > 40)
+                mask = (df_plot['watts'] > MIN_WATTS_ACTIVE) & (df_plot['heartrate'] > MIN_HR_ACTIVE)
                 if mask.sum() > 0:
-                    metrics['avg_pp'] = (df_plot.loc[mask, 'watts'] / df_plot.loc[mask, 'heartrate']).mean()
+                    # P0 FIX: Zabezpieczenie przed dzieleniem przez zero
+                    hr_values = df_plot.loc[mask, 'heartrate']
+                    watts_values = df_plot.loc[mask, 'watts']
+                    safe_mask = hr_values > 0
+                    if safe_mask.sum() > 0:
+                        metrics['avg_pp'] = (watts_values[safe_mask] / hr_values[safe_mask]).mean()
             # -----------------------------------------------------
             
             if 'smo2' in df_plot.columns:
-                 df_plot['smo2_smooth_ultra'] = df_plot['smo2'].rolling(window=60, center=True, min_periods=1).mean()
-            df_plot_resampled = df_plot.iloc[::5, :] if len(df_plot) > 10000 else df_plot
+                 df_plot['smo2_smooth_ultra'] = df_plot['smo2'].rolling(
+                     window=ROLLING_WINDOW_60S, center=True, min_periods=1
+                 ).mean()
+            
+            # P2 FIX: Używamy stałych zamiast magic numbers
+            df_plot_resampled = (
+                df_plot.iloc[::RESAMPLE_STEP, :].copy() 
+                if len(df_plot) > RESAMPLE_THRESHOLD 
+                else df_plot
+            )
+            
+            # P0 FIX: Ustawiamy flagę zamiast używać locals()
+            st.session_state['data_loaded'] = True
             
             # --- SEKCJA AI / MLX ---
             if MLX_AVAILABLE and os.path.exists(MODEL_FILE):
@@ -278,20 +371,8 @@ if uploaded_file is not None:
             st.error(f"Błąd wczytywania pliku: {e}")
             st.stop()
 
-        # --- HEADER METRICS ---
-        if 'watts' in df_plot.columns:
-            rolling_30s_header = df_plot['watts'].rolling(window=30, min_periods=1).mean()
-            np_header = np.power(np.mean(np.power(rolling_30s_header, 4)), 0.25)
-            if pd.isna(np_header): np_header = metrics['avg_watts']
-        else:
-            np_header = 0
-
-        if cp_input > 0:
-            if_header = np_header / cp_input
-            duration_sec = len(df_plot)
-            tss_header = (duration_sec * np_header * if_header) / (cp_input * 3600) * 100
-        else:
-            tss_header = 0; if_header = 0
+        # --- HEADER METRICS (P2 FIX: Używamy wydzielonej funkcji zamiast duplikacji) ---
+        np_header, if_header, tss_header = calculate_header_metrics(df_plot, cp_input)
 
         # ===== STICKY HEADER - styles are in style.css =====
 
@@ -428,7 +509,8 @@ if uploaded_file is not None:
 st.sidebar.markdown("---")
 st.sidebar.header("📄 Export Raportu")
 
-if 'df_plot' in locals() and uploaded_file is not None:
+# P0 FIX: Zamiana locals() na session_state - bezpieczniejsze i bardziej przewidywalne
+if st.session_state.get('data_loaded', False) and uploaded_file is not None:
     # Kolumny dla przycisków
     col_docx, col_png = st.sidebar.columns(2)
     

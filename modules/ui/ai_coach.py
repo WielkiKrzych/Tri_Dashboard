@@ -5,6 +5,7 @@ import json
 import os
 import time
 from modules.ml_logic import MLX_AVAILABLE, train_cycling_brain, HISTORY_FILE
+from modules.ui.callbacks import StreamlitCallback
 
 def render_ai_coach_tab(df_plot_resampled):
     st.header("🧠 AI Neural Coach (Powered by Apple MLX)")
@@ -18,8 +19,13 @@ def render_ai_coach_tab(df_plot_resampled):
             if st.button("🚀 Trenuj Mózg (Aktualizuj)", type="primary"):
                 with st.spinner("Trening sieci neuronowej (200 epok)..."):
                     try:
-                        # Trenujemy na resamplowanych danych (1 sekunda)
-                        y_p, b_val, t_val, was_loaded, history = train_cycling_brain(df_plot_resampled, epochs=200)
+                        # SOLID (DIP): Używamy StreamlitCallback zamiast hardkodowanych st.*
+                        callback = StreamlitCallback()
+                        y_p, b_val, t_val, was_loaded, history = train_cycling_brain(
+                            df_plot_resampled, 
+                            epochs=200,
+                            callback=callback
+                        )
                         
                         st.success(f"✅ Trening Zakończony! Baza: {b_val:.1f}, Próg: {t_val:.1f}")
                         time.sleep(1)

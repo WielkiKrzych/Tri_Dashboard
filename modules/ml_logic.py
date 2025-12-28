@@ -2,7 +2,56 @@ import os
 import json
 import time
 import numpy as np
-import streamlit as st
+from abc import ABC, abstractmethod
+from typing import Optional, Tuple, List, Any
+
+# ============================================================
+# SOLID: Dependency Inversion Principle (DIP)
+# Abstrakcja dla callbacków UI - logika ML nie zależy od Streamlit
+# ============================================================
+
+class TrainingCallback(ABC):
+    """Abstrakcja dla raportowania postępu treningu ML.
+    
+    Pozwala na oddzielenie logiki ML od konkretnej implementacji UI.
+    """
+    
+    @abstractmethod
+    def on_status(self, message: str) -> None:
+        """Wyświetla wiadomość statusu."""
+        pass
+    
+    @abstractmethod
+    def on_progress(self, current: int, total: int) -> None:
+        """Aktualizuje pasek postępu."""
+        pass
+    
+    @abstractmethod
+    def on_error(self, error: Exception) -> None:
+        """Obsługuje błąd."""
+        pass
+    
+    @abstractmethod
+    def on_complete(self) -> None:
+        """Wywołane po zakończeniu treningu - czyszczenie UI."""
+        pass
+
+
+class SilentCallback(TrainingCallback):
+    """Domyślny callback - nie robi nic (dla testów i predykcji)."""
+    
+    def on_status(self, message: str) -> None:
+        pass
+    
+    def on_progress(self, current: int, total: int) -> None:
+        pass
+    
+    def on_error(self, error: Exception) -> None:
+        print(f"ML Error: {error}")
+    
+    def on_complete(self) -> None:
+        pass
+
 
 MLX_AVAILABLE = False
 try:
@@ -30,7 +79,8 @@ if MLX_AVAILABLE:
             x = nn.relu(self.l2(x))
             return self.l3(x)
 
-    def save_model(model, filepath):
+    def save_model(model, filepath: str) -> None:
+        """Zapisuje wagi modelu do pliku."""
         flattened_params = {}
         for k, v in model.parameters().items():
             if isinstance(v, dict):
@@ -40,7 +90,17 @@ if MLX_AVAILABLE:
                 flattened_params[k] = v
         mx.savez(filepath, **dict(mlx.utils.tree_flatten(model.parameters())))
 
-    def load_model(model, filepath):
+    def load_model(model, filepath: str, callback: Optional[TrainingCallback] = None) -> bool:
+        """Ładuje wagi modelu z pliku.
+        
+        Args:
+            model: Instancja PhysioNet
+            filepath: Ścieżka do pliku z wagami
+            callback: Opcjonalny callback do raportowania błędów
+        
+        Returns:
+            True jeśli wagi zostały załadowane, False w przeciwnym razie
+        """
         if os.path.exists(filepath):
             try:
                 weights = mx.load(filepath)
@@ -62,13 +122,14 @@ if MLX_AVAILABLE:
                 
                 return True
             except Exception as e:
-                st.sidebar.error(f"⚠️ Błąd AI: {e}")
+                if callback:
+                    callback.on_error(e)
                 print(f"DEBUG ERROR: {e}")
                 return False
         return False
 
-    def update_history(hr_base, hr_thresh):
-        """Zapisuje historię Baza/Próg do JSON z obsługą None"""
+    def update_history(hr_base: Optional[float], hr_thresh: Optional[float]) -> List[dict]:
+        """Zapisuje historię Baza/Próg do JSON z obsługą None."""
         history = []
         if os.path.exists(HISTORY_FILE):
             try:
@@ -88,8 +149,16 @@ if MLX_AVAILABLE:
             json.dump(history, f)
         return history
 
-    def predict_only(df):
-        """Tylko predykcja (bez treningu) - dla automatycznego wykresu"""
+    def predict_only(df, callback: Optional[TrainingCallback] = None) -> Optional[np.ndarray]:
+        """Tylko predykcja (bez treningu) - dla automatycznego wykresu.
+        
+        Args:
+            df: DataFrame z danymi treningowymi
+            callback: Opcjonalny callback do raportowania błędów
+        
+        Returns:
+            Tablica numpy z predykcjami HR lub None
+        """
         if not os.path.exists(MODEL_FILE):
             return None
             
@@ -103,12 +172,14 @@ if MLX_AVAILABLE:
         X = mx.array(X_np)
         
         model = PhysioNet()
-        if load_model(model, MODEL_FILE):
+        if load_model(model, MODEL_FILE, callback):
             y_pred_scaled = model(X)
             return np.array(y_pred_scaled).flatten() * 200.0
         return None
     
-    def filter_and_prepare(df, target_watts, tolerance=15, min_samples=30):
+    def filter_and_prepare(df, target_watts: int, tolerance: int = 15, 
+                           min_samples: int = 30) -> Tuple[Optional[Any], Optional[Any]]:
+        """Filtruje dane do określonej strefy mocy i przygotowuje do treningu."""
         mask = (df['watts_smooth'] >= target_watts - tolerance) & \
             (df['watts_smooth'] <= target_watts + tolerance)
         
@@ -131,11 +202,32 @@ if MLX_AVAILABLE:
         Y = mx.array(y_np)
         return X, Y
 
-    def train_cycling_brain(df, epochs=200):
+    def train_cycling_brain(df, epochs: int = 200, 
+                            callback: Optional[TrainingCallback] = None,
+                            training_zones: Optional[List[Tuple[str, int]]] = None):
+        """Trenuje model predykcji HR na podstawie mocy i kadencji.
+        
+        Args:
+            df: DataFrame z danymi treningowymi
+            epochs: Liczba epok treningu dla każdej strefy
+            callback: Opcjonalny callback do raportowania postępu (DIP)
+            training_zones: Lista stref do kalibracji [(nazwa, moc_w)], domyślnie base/thresh
+        
+        Returns:
+            Tuple: (predykcje, hr_base, hr_thresh, czy_załadowano_model, historia)
+        """
+        # Użyj domyślnego callbacka jeśli nie podano
+        if callback is None:
+            callback = SilentCallback()
+        
+        # Domyślne strefy treningowe (OCP - można rozszerzyć bez modyfikacji)
+        if training_zones is None:
+            training_zones = [("base", 280), ("thresh", 360)]
+        
         model = PhysioNet()
         mx.eval(model.parameters())
         
-        loaded = load_model(model, MODEL_FILE)
+        loaded = load_model(model, MODEL_FILE, callback)
         
         def mse_loss(pred, target): return mx.mean((pred - target) ** 2)
         optimizer = optim.Adam(learning_rate=0.02)
@@ -144,13 +236,9 @@ if MLX_AVAILABLE:
             return loss
         loss_and_grad_fn = nn.value_and_grad(model, train_step)
 
-        status_container = st.empty()
-        bar = st.progress(0)
+        results = {zone[0]: None for zone in training_zones}
         
-        results = {"base": None, "thresh": None}
-        targets = [("base", 280), ("thresh", 360)]
-        
-        status_container.info("Trenowanie modelu ogólnego (cały plik)...")
+        callback.on_status("Trenowanie modelu ogólnego (cały plik)...")
         w_all = df['watts_smooth'].values / 500.0
         c_all = df['cadence_smooth'].values / 120.0 if 'cadence_smooth' in df else np.zeros_like(w_all)
         t_all = df['time_min'].values / df['time_min'].max()
@@ -174,13 +262,13 @@ if MLX_AVAILABLE:
         save_model(model, MODEL_FILE) 
         
         # Reset progress bar for next phase
-        bar.progress(0)
+        callback.on_progress(0, 1)
 
         step = 0
-        total_steps = len(targets) * epochs
+        total_steps = len(training_zones) * epochs
         
-        for name, watts in targets:
-            status_container.info(f"Kalibracja strefy: {watts}W...")
+        for name, watts in training_zones:
+            callback.on_status(f"Kalibracja strefy: {watts}W...")
             
             X_chunk, y_chunk = filter_and_prepare(df, watts)
             
@@ -191,7 +279,7 @@ if MLX_AVAILABLE:
                     mx.eval(model.parameters(), optimizer.state)
                     if i % 10 == 0: 
                         step += 10
-                        bar.progress(min(step / total_steps, 1.0))
+                        callback.on_progress(step, total_steps)
                 
                 in_vec = mx.array([[watts/500.0, 80.0/120.0, 0.5]]) 
                 pred = float(model(in_vec)[0][0]) * 200.0
@@ -200,13 +288,23 @@ if MLX_AVAILABLE:
                 results[name] = None
                 step += epochs
                 
-        bar.empty(); status_container.empty()
+        callback.on_complete()
 
-        history = update_history(results["base"], results["thresh"])
+        history = update_history(results.get("base"), results.get("thresh"))
 
-        return y_pred_full, results["base"], results["thresh"], loaded, history
+        return y_pred_full, results.get("base"), results.get("thresh"), loaded, history
 
 else:
+    # Fallback gdy MLX nie jest dostępny
+    
+    class TrainingCallback(ABC):
+        """Pusta definicja dla kompatybilności."""
+        pass
+    
+    class SilentCallback:
+        """Pusta definicja dla kompatybilności."""
+        pass
+    
     def train_cycling_brain(*args, **kwargs): return None, None, None, None, None
     def predict_only(*args, **kwargs): return None
     def update_history(*args, **kwargs): return []

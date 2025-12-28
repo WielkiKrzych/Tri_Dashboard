@@ -86,17 +86,20 @@ def _calculate_w_prime_balance_cached(df_bytes: bytes, cp: float, w_prime: float
         return df_pd
 
     except Exception as e:
-        print(f"Błąd obliczeń W': {e}")
+        import logging
+        logging.getLogger(__name__).warning(f"W' calculation failed: {e}")
+        # Try to return DataFrame with zero W' balance
         try:
             bio = io.BytesIO(df_bytes)
             try:
                 df_pd = pd.read_parquet(bio)
-            except:
+            except (ImportError, ValueError):
                 bio.seek(0)
                 df_pd = pd.read_csv(bio)
             df_pd['w_prime_balance'] = 0.0
             return df_pd
-        except:
+        except (pd.errors.ParserError, ValueError, KeyError) as recovery_error:
+            logging.getLogger(__name__).error(f"W' recovery failed: {recovery_error}")
             return pd.DataFrame({'w_prime_balance': []})
 
 

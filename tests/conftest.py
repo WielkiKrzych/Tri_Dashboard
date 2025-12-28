@@ -57,3 +57,66 @@ def cp_value():
 def w_prime_value():
     """Standard W' value for testing."""
     return 20000  # Joules
+
+
+@pytest.fixture
+def sample_long_ride_df():
+    """Sample long ride data (30 minutes) for PDC testing."""
+    np.random.seed(42)
+    n = 1800  # 30 minutes of data
+    
+    # Simulate a ride with intervals
+    watts = np.zeros(n)
+    # Warmup (5 min at 150W)
+    watts[:300] = np.random.normal(150, 10, 300)
+    # Main set (20 min with intervals)
+    for i in range(4):
+        start = 300 + i * 300
+        # 2min hard
+        watts[start:start+120] = np.random.normal(300, 20, 120)
+        # 3min recovery
+        watts[start+120:start+300] = np.random.normal(150, 10, 180)
+    # Cooldown (5 min at 120W)
+    watts[1500:] = np.random.normal(120, 10, 300)
+    
+    return pd.DataFrame({
+        'time': np.arange(n, dtype=float),
+        'watts': watts.clip(0, 500),
+        'heartrate': np.random.normal(140, 15, n).clip(60, 200),
+        'cadence': np.random.normal(90, 5, n).clip(60, 120),
+    })
+
+
+@pytest.fixture
+def sample_w_balance_array(w_prime_value):
+    """Sample W' balance array with some deep dips."""
+    n = 600
+    w_bal = np.ones(n) * w_prime_value
+    
+    # Simulate 3 hard efforts that deplete W'
+    # First effort: dips to 40%
+    w_bal[100:150] = np.linspace(w_prime_value, w_prime_value * 0.4, 50)
+    w_bal[150:200] = np.linspace(w_prime_value * 0.4, w_prime_value * 0.8, 50)
+    
+    # Second effort: dips to 20% (match burn!)
+    w_bal[250:300] = np.linspace(w_prime_value * 0.8, w_prime_value * 0.2, 50)
+    w_bal[300:380] = np.linspace(w_prime_value * 0.2, w_prime_value * 0.9, 80)
+    
+    # Third effort: dips to 25% (match burn!)
+    w_bal[450:500] = np.linspace(w_prime_value * 0.9, w_prime_value * 0.25, 50)
+    w_bal[500:] = np.linspace(w_prime_value * 0.25, w_prime_value * 0.7, 100)
+    
+    return w_bal
+
+
+@pytest.fixture
+def rider_params():
+    """Standard rider parameters for testing."""
+    return {
+        'weight': 75.0,
+        'age': 35,
+        'vo2max': 55.0,
+        'cp': 280,
+        'w_prime': 20000
+    }
+

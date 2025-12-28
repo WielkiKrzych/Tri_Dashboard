@@ -172,7 +172,7 @@ class TrainingLoadManager:
             return 0.0
         
         ctl_today = history[-1].ctl
-        ctl_week_ago = history[-8].ctl  # 7 days ago
+        ctl_week_ago = history[-7].ctl  # 7 days ago (index -7 = 6 positions back)
         
         if ctl_week_ago == 0:
             return 0.0

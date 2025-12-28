@@ -160,5 +160,5 @@ def calculate_trend(x, y):
         z = np.polyfit(x[idx], y[idx], 1)
         p = np.poly1d(z)
         return p(x)
-    except: 
+    except (ValueError, TypeError, np.linalg.LinAlgError): 
         return None

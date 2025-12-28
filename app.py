@@ -125,13 +125,8 @@ def render_trends_history_tab(*args, **kwargs):
 def render_community_tab(*args, **kwargs):
     from modules.ui.community import render_community_tab as _render
     return _render(*args, **kwargs)
-
-def render_genetics_tab(*args, **kwargs):
-    from modules.ui.genetics_ui import render_genetics_tab as _render
-    return _render(*args, **kwargs)
-
-def render_environment_tab(*args, **kwargs):
-    from modules.ui.environment_ui import render_environment_tab as _render
+def render_pdc_tab(*args, **kwargs):
+    from modules.ui.pdc_ui import render_pdc_tab as _render
     return _render(*args, **kwargs)
 
 def render_history_import_tab(*args, **kwargs):
@@ -527,11 +522,14 @@ if uploaded_file is not None:
         # ===== ⚡ PERFORMANCE =====
         with tab_performance:
             show_breadcrumb("⚡ Performance")
-            sub_power, sub_intervals, sub_biomech, sub_model = st.tabs([
-                "🔋 Power", "⏱️ Intervals", "🦵 Biomech", "📐 Model"
+            sub_power, sub_pdc, sub_intervals, sub_biomech, sub_model = st.tabs([
+                "🔋 Power", "📊 PDC", "⏱️ Intervals", "🦵 Biomech", "📐 Model"
             ])
             with sub_power:
                 render_power_tab(df_plot, df_plot_resampled, cp_input, w_prime_input)
+            with sub_pdc:
+                vo2max_val = metrics.get('vo2_max_est', 0)
+                render_pdc_tab(df_plot, cp_input, w_prime_input, rider_weight, vo2max_val)
             with sub_intervals:
                 render_intervals_tab(df_plot, df_plot_resampled, cp_input, rider_weight, rider_age, is_male)
             with sub_biomech:
@@ -559,8 +557,8 @@ if uploaded_file is not None:
         # ===== 🧠 INTELLIGENCE =====
         with tab_intelligence:
             show_breadcrumb("🧠 Intelligence")
-            sub_nutrition, sub_limiters, sub_ai, sub_genetics = st.tabs([
-                "🍎 Nutrition", "🚧 Limiters", "🤖 AI Coach", "🧬 Genetics"
+            sub_nutrition, sub_limiters, sub_ai = st.tabs([
+                "🍎 Nutrition", "🚧 Limiters", "🤖 AI Coach"
             ])
             with sub_nutrition:
                 render_nutrition_tab(df_plot, cp_input, vt1_watts, vt2_watts)
@@ -568,20 +566,15 @@ if uploaded_file is not None:
                 render_limiters_tab(df_plot, cp_input, vt2_vent)
             with sub_ai:
                 render_ai_coach_tab(df_plot_resampled)
-            with sub_genetics:
-                render_genetics_tab()
 
         # ===== 📈 ANALYTICS (NOWA GRUPA) =====
         with tab_analytics:
             show_breadcrumb("📈 Analytics")
-            sub_history, sub_environment, sub_community, sub_import = st.tabs([
-                "📊 History", "🌡️ Environment", "👥 Community", "📂 Import"
+            sub_history, sub_community, sub_import = st.tabs([
+                "📊 History", "👥 Community", "📂 Import"
             ])
             with sub_history:
                 render_trends_history_tab()
-            with sub_environment:
-                tss_val = metrics.get('tss', 0) if 'metrics' in dir() else 0
-                render_environment_tab(tss_val)
             with sub_community:
                 vo2max_val = metrics.get('vo2_max_est', 0) if 'metrics' in dir() else 0
                 render_community_tab(cp_input, rider_weight, vo2max_val, rider_age, 'M' if is_male else 'F')

@@ -49,7 +49,7 @@ def process_data(df: Union[pd.DataFrame, Any]) -> pd.DataFrame:
 
     try:
         df_numeric = df_pd.select_dtypes(include=[np.number])
-        df_resampled = df_numeric.resample('1S').mean()
+        df_resampled = df_numeric.resample('1s').mean()
         df_resampled = df_resampled.interpolate(method='linear').ffill().bfill()
     except Exception:
         df_resampled = df_pd

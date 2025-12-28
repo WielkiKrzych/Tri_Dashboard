@@ -1,9 +1,12 @@
 import os
 import json
 import time
+import logging
 import numpy as np
 from abc import ABC, abstractmethod
 from typing import Optional, Tuple, List, Any
+
+logger = logging.getLogger(__name__)
 
 # ============================================================
 # SOLID: Dependency Inversion Principle (DIP)
@@ -47,7 +50,7 @@ class SilentCallback(TrainingCallback):
         pass
     
     def on_error(self, error: Exception) -> None:
-        print(f"ML Error: {error}")
+        logger.warning(f"ML Error: {error}")
     
     def on_complete(self) -> None:
         pass
@@ -124,7 +127,7 @@ if MLX_AVAILABLE:
             except Exception as e:
                 if callback:
                     callback.on_error(e)
-                print(f"DEBUG ERROR: {e}")
+                logger.warning(f"Model loading error: {e}")
                 return False
         return False
 
@@ -135,7 +138,8 @@ if MLX_AVAILABLE:
             try:
                 with open(HISTORY_FILE, 'r') as f:
                     history = json.load(f)
-            except: pass
+            except (json.JSONDecodeError, IOError) as e:
+                logger.debug(f"Could not load history: {e}")
         
         entry = {
             "timestamp": time.time(),

@@ -113,11 +113,7 @@ def render_model_tab(*args, **kwargs):
     from modules.ui.model import render_model_tab as _render
     return _render(*args, **kwargs)
 
-# ===== NEW FEATURE TABS (9 nowych funkcji) =====
-def render_training_load_tab(*args, **kwargs):
-    from modules.ui.training_load_ui import render_training_load_tab as _render
-    return _render(*args, **kwargs)
-
+# ===== NEW FEATURE TABS =====
 def render_trends_history_tab(*args, **kwargs):
     from modules.ui.trends_history import render_trends_history_tab as _render
     return _render(*args, **kwargs)
@@ -507,8 +503,8 @@ if uploaded_file is not None:
         # ===== 📊 OVERVIEW =====
         with tab_overview:
             show_breadcrumb("📊 Overview")
-            sub_raport, sub_kpi, sub_trends, sub_training_load = st.tabs([
-                "📋 Raport", "📈 KPI", "📉 Trends", "💪 Training Load"
+            sub_raport, sub_kpi, sub_trends = st.tabs([
+                "📋 Raport", "📈 KPI", "📉 Trends"
             ])
             with sub_raport:
                 render_report_tab(df_plot, rider_weight, cp_input)
@@ -516,8 +512,6 @@ if uploaded_file is not None:
                 render_kpi_tab(df_plot, df_plot_resampled, metrics, rider_weight, decoupling_percent, drift_z2, vt1_vent, vt2_vent)
             with sub_trends:
                 render_trends_tab(df_plot)
-            with sub_training_load:
-                render_training_load_tab()
 
         # ===== ⚡ PERFORMANCE =====
         with tab_performance:

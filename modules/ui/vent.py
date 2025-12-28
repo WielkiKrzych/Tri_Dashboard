@@ -83,7 +83,7 @@ def render_vent_tab(target_df, training_notes, uploaded_file_name):
             if len(parts) == 3: return parts[0]*3600 + parts[1]*60 + parts[2]
             if len(parts) == 2: return parts[0]*60 + parts[1]
             if len(parts) == 1: return parts[0]
-        except:
+        except (ValueError, AttributeError):
             return None
         return None
 
@@ -153,7 +153,7 @@ def render_vent_tab(target_df, training_notes, uploaded_file_name):
                         return f"{h:02d}:{m:02d}:{s:02d}"
                     else:
                         return f"{m:02d}:{s:02d}"
-                except:
+                except (ValueError, TypeError):
                     return "-"
             start_time_v = fmt_time_v(startsec)
             end_time_v = fmt_time_v(endsec)

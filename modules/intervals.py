@@ -62,7 +62,7 @@ def detect_intervals(df, cp, min_duration=30, min_power_pct=0.9, recovery_time_l
         try:
             idx_s = df.index.get_loc(s)
             idx_e = df.index.get_loc(e)
-        except:
+        except KeyError:
             # Fallback jeśli indeksy są unikalne
             idx_s = s
             idx_e = e

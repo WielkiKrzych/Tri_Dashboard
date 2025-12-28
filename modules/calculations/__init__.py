@@ -5,11 +5,14 @@ Ten pakiet grupuje funkcje obliczeniowe według odpowiedzialności:
 - w_prime.py: Obliczenia W' Balance
 - hrv.py: Analiza HRV / DFA
 - thermal.py: Indeks ciepła HSI
-- power.py: NP, strefy mocy, PDC, FRI, Match Burns
+- power.py: NP, strefy mocy, PDC, FRI, Match Burns, TTE, Phenotype
 - nutrition.py: Spalanie węglowodanów
 - metrics.py: Podstawowe metryki treningowe
-- stamina.py: Stamina Score, VLamax estimation
+- stamina.py: Stamina Score, VLamax estimation, Durability
+- kinetics.py: VO2/SmO2 kinetics analysis
 - data_processing.py: Przetwarzanie danych
+- async_runner.py: Async calculation wrappers
+- polars_adapter.py: Polars/Pandas interoperability
 
 Dla wstecznej kompatybilności, wszystkie funkcje są re-eksportowane z tego modułu.
 """
@@ -131,10 +134,10 @@ __all__ = [
     'get_stamina_interpretation',
     'get_vlamax_interpretation',
     'calculate_aerobic_contribution',
-    # Durability (NEW)
+    # Durability
     'calculate_durability_index',
     'get_durability_interpretation',
-    # Kinetics (NEW)
+    # Kinetics
     'fit_smo2_kinetics',
     'get_tau_interpretation',
     'calculate_o2_deficit',
@@ -142,4 +145,41 @@ __all__ = [
     # Data Processing
     'process_data',
     'ensure_pandas',
+    # Async Runner
+    'run_in_thread',
+    'run_async',
+    'async_wrapper',
+    'AsyncCalculationManager',
+    # Polars Adapter
+    'is_polars_available',
+    'to_polars',
+    'to_pandas',
+    'fast_rolling_mean',
+    'fast_normalized_power',
+    'fast_power_duration_curve',
 ]
+
+# Async runner exports
+from .async_runner import (
+    run_in_thread,
+    run_async,
+    async_wrapper,
+    AsyncCalculationManager,
+    submit_task,
+    get_executor,
+)
+
+# Polars adapter exports
+from .polars_adapter import (
+    is_polars_available,
+    to_polars,
+    to_pandas,
+    ensure_polars,
+    fast_rolling_mean,
+    fast_groupby_agg,
+    fast_filter,
+    fast_read_csv,
+    fast_normalized_power,
+    fast_power_duration_curve,
+)
+

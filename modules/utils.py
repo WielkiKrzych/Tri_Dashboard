@@ -97,20 +97,40 @@ def _clean_hrv_value(val: str) -> float:
 def load_data(file) -> pd.DataFrame:
     """Load CSV/TXT file into DataFrame with column normalization.
     
+    Uses Polars for faster reading if available, falls back to Pandas.
+    
     Args:
         file: Uploaded file object
         
     Returns:
         Processed DataFrame with normalized columns
     """
-    # Try comma separator first, then semicolon
+    # Try Polars first for speed
     try:
+        import polars as pl
         file.seek(0)
-        df_pd = pd.read_csv(file, low_memory=False) 
-    except (pd.errors.ParserError, UnicodeDecodeError) as e:
-        logger.info(f"Standard CSV parse failed, trying semicolon separator: {e}")
+        content = file.read()
         file.seek(0)
-        df_pd = pd.read_csv(file, sep=';', low_memory=False)
+        
+        # Try comma separator
+        try:
+            pl_df = pl.read_csv(io.BytesIO(content))
+        except Exception:
+            # Try semicolon
+            pl_df = pl.read_csv(io.BytesIO(content), separator=';')
+        
+        df_pd = pl_df.to_pandas()
+        logger.debug("Loaded data with Polars (fast mode)")
+    except Exception as e:
+        logger.debug(f"Polars load failed, using Pandas: {e}")
+        # Pandas fallback
+        try:
+            file.seek(0)
+            df_pd = pd.read_csv(file, low_memory=False) 
+        except (pd.errors.ParserError, UnicodeDecodeError) as e:
+            logger.info(f"Standard CSV parse failed, trying semicolon separator: {e}")
+            file.seek(0)
+            df_pd = pd.read_csv(file, sep=';', low_memory=False)
 
     # Normalize columns (DRY - use shared function)
     df_pd = normalize_columns_pandas(df_pd)
@@ -138,3 +158,4 @@ def load_data(file) -> pd.DataFrame:
             df_pd[col] = pd.to_numeric(df_pd[col], errors='coerce')
 
     return df_pd
+

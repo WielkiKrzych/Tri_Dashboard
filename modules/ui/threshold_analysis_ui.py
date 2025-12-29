@@ -267,11 +267,17 @@ def render_threshold_analysis_tab(target_df, training_notes, uploaded_file_name,
 
 def _analyze_step_test_internal(df: pd.DataFrame, step_duration_sec: int, 
                                  has_ve: bool, has_smo2: bool, has_hr: bool) -> dict:
-    """Analyze step test and detect thresholds."""
-    from scipy import stats
+    """
+    Analyze step test and detect thresholds using step averages and delta ratios.
     
+    Algorithm:
+    1. Calculate average VE/SmO2 for each step (last 60s)
+    2. Compute delta (change) between consecutive steps
+    3. Detect VT1/VT2 when delta ratio > threshold
+    4. Detect LT1/LT2 when SmO2 delta changes sign or drops significantly
+    """
     result = {'vt1_watts': None, 'vt2_watts': None, 'lt1_watts': None, 'lt2_watts': None,
-              'vt1_hr': None, 'vt2_hr': None, 'notes': []}
+              'vt1_hr': None, 'vt2_hr': None, 'notes': [], 'steps': []}
     
     df.columns = df.columns.str.lower().str.strip()
     
@@ -279,7 +285,6 @@ def _analyze_step_test_internal(df: pd.DataFrame, step_duration_sec: int,
         result['notes'].append("Brak kolumny czasu")
         return result
     
-    # Reset time to start from 0
     df = df.copy()
     df['time'] = df['time'] - df['time'].min()
     
@@ -292,13 +297,13 @@ def _analyze_step_test_internal(df: pd.DataFrame, step_duration_sec: int,
     
     result['notes'].append(f"Wykryto {num_steps} stopni po {step_duration_sec//60} min")
     
-    step_data = []
+    steps = []
     hr_col = 'hr' if 'hr' in df.columns else ('heartrate' if 'heartrate' in df.columns else None)
     
     for step in range(num_steps):
         step_start = step * step_duration_sec
         step_end = step_start + step_duration_sec
-        stable_start = step_end - 60  # Last 60s of step
+        stable_start = step_end - 60
         
         mask = (df['time'] >= stable_start) & (df['time'] < step_end)
         step_df = df[mask]
@@ -306,69 +311,87 @@ def _analyze_step_test_internal(df: pd.DataFrame, step_duration_sec: int,
         if len(step_df) < 10:
             continue
         
-        info = {'step': step + 1}
-        
-        if 'watts' in step_df.columns:
-            info['power'] = step_df['watts'].mean()
-        
-        if hr_col and hr_col in step_df.columns:
-            info['hr'] = step_df[hr_col].mean()
-        
-        if has_ve and 'tymeventilation' in step_df.columns and len(step_df) > 1:
-            slope, _, _, _, _ = stats.linregress(step_df['time'], step_df['tymeventilation'])
-            info['ve_slope'] = slope
-        
-        if has_smo2 and 'smo2' in step_df.columns and len(step_df) > 1:
-            slope, _, _, _, _ = stats.linregress(step_df['time'], step_df['smo2'])
-            info['smo2_slope'] = slope
-        
-        step_data.append(info)
+        step_info = {
+            'step_num': step + 1,
+            'power': step_df['watts'].mean() if 'watts' in step_df.columns else None,
+            'hr': step_df[hr_col].mean() if hr_col and hr_col in step_df.columns else None,
+            've_avg': step_df['tymeventilation'].mean() if has_ve and 'tymeventilation' in step_df.columns else None,
+            'smo2_avg': step_df['smo2'].mean() if has_smo2 and 'smo2' in step_df.columns else None,
+        }
+        steps.append(step_info)
     
-    result['notes'].append(f"Przeanalizowano {len(step_data)} stopni")
+    if len(steps) < 3:
+        result['notes'].append(f"Za mało ważnych stopni ({len(steps)})")
+        return result
     
-    # Log step powers for debugging
-    if step_data:
-        powers = [f"{s.get('power', 0):.0f}W" for s in step_data if s.get('power')]
-        if powers:
-            result['notes'].append(f"Moce stopni: {', '.join(powers)}")
+    result['notes'].append(f"Przeanalizowano {len(steps)} stopni")
+    result['steps'] = steps
     
-    # Detect VT1/VT2 from VE slopes
+    powers = [f"{s['power']:.0f}W" for s in steps if s['power']]
+    if powers:
+        result['notes'].append(f"Moce: {', '.join(powers)}")
+    
+    # Compute deltas
+    for i in range(1, len(steps)):
+        if steps[i]['ve_avg'] and steps[i-1]['ve_avg']:
+            steps[i]['ve_delta'] = steps[i]['ve_avg'] - steps[i-1]['ve_avg']
+        else:
+            steps[i]['ve_delta'] = None
+        
+        if steps[i]['smo2_avg'] and steps[i-1]['smo2_avg']:
+            steps[i]['smo2_delta'] = steps[i]['smo2_avg'] - steps[i-1]['smo2_avg']
+        else:
+            steps[i]['smo2_delta'] = None
+    
+    # Detect VT1/VT2 from VE delta ratios
     if has_ve:
-        ve_steps = [s for s in step_data if 've_slope' in s]
-        for i, s in enumerate(ve_steps):
-            slope = s['ve_slope']
-            if result['vt1_watts'] is None and slope > 0.05:
-                prev = ve_steps[max(0, i-1)]
-                result['vt1_watts'] = prev.get('power')
-                result['vt1_hr'] = prev.get('hr')
-            if result['vt2_watts'] is None and slope > 0.15:
-                prev = ve_steps[max(0, i-1)]
-                result['vt2_watts'] = prev.get('power')
-                result['vt2_hr'] = prev.get('hr')
+        ve_steps = [s for s in steps if s.get('ve_delta') is not None]
+        for i in range(1, len(ve_steps)):
+            curr_delta = ve_steps[i]['ve_delta']
+            prev_delta = ve_steps[i-1].get('ve_delta')
+            
+            if prev_delta and prev_delta > 0:
+                delta_ratio = curr_delta / prev_delta
+                
+                if result['vt1_watts'] is None and delta_ratio > 1.5:
+                    result['vt1_watts'] = ve_steps[i-1]['power']
+                    result['vt1_hr'] = ve_steps[i-1]['hr']
+                    result['notes'].append(f"VT1: delta ratio = {delta_ratio:.2f}")
+                
+                if result['vt2_watts'] is None and delta_ratio > 2.0:
+                    result['vt2_watts'] = ve_steps[i-1]['power']
+                    result['vt2_hr'] = ve_steps[i-1]['hr']
+                    result['notes'].append(f"VT2: delta ratio = {delta_ratio:.2f}")
     
-    # Detect LT1/LT2 from SmO2 slopes
+    # Detect LT1/LT2 from SmO2 delta
     if has_smo2:
-        smo2_steps = [s for s in step_data if 'smo2_slope' in s]
+        smo2_steps = [s for s in steps if s.get('smo2_delta') is not None]
         for i, s in enumerate(smo2_steps):
-            slope = s['smo2_slope']
-            if result['lt1_watts'] is None and slope <= 0.005:
+            delta = s['smo2_delta']
+            
+            if result['lt1_watts'] is None and delta <= 0:
                 prev = smo2_steps[max(0, i-1)]
-                result['lt1_watts'] = prev.get('power')
-            if result['lt2_watts'] is None and slope < -0.01:
+                result['lt1_watts'] = prev['power']
+                result['notes'].append(f"LT1: SmO2 delta = {delta:.2f}%")
+            
+            if result['lt2_watts'] is None and delta < -2.0:
                 prev = smo2_steps[max(0, i-1)]
-                result['lt2_watts'] = prev.get('power')
+                result['lt2_watts'] = prev['power']
+                result['notes'].append(f"LT2: SmO2 delta = {delta:.2f}%")
     
-    # Add detection notes
     if result['vt1_watts']:
-        result['notes'].append(f"VT1 z wentylacji: {result['vt1_watts']:.0f}W")
+        result['notes'].append(f"✓ VT1: {result['vt1_watts']:.0f}W")
     if result['vt2_watts']:
-        result['notes'].append(f"VT2 z wentylacji: {result['vt2_watts']:.0f}W")
+        result['notes'].append(f"✓ VT2: {result['vt2_watts']:.0f}W")
     if result['lt1_watts']:
-        result['notes'].append(f"LT1 z SmO2: {result['lt1_watts']:.0f}W")
+        result['notes'].append(f"✓ LT1: {result['lt1_watts']:.0f}W")
     if result['lt2_watts']:
-        result['notes'].append(f"LT2 z SmO2: {result['lt2_watts']:.0f}W")
+        result['notes'].append(f"✓ LT2: {result['lt2_watts']:.0f}W")
     
     return result
+
+
+
 
 
 def _calculate_zones(vt1: int, vt2: int, cp: int, max_hr: int) -> dict:

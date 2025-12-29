@@ -376,27 +376,14 @@ def _detect_smo2_thresholds(step_data: List[dict]) -> Optional[dict]:
 def calculate_training_zones_from_thresholds(
     vt1_watts: int,
     vt2_watts: int,
-    cp: Optional[int] = None,
+    cp=None,
     max_hr: int = 185
 ) -> dict:
-    """
-    Calculate personalized training zones based on detected thresholds.
-    
-    Uses VT1/VT2 from step test to create 6-zone power model.
-    
-    Args:
-        vt1_watts: Ventilatory Threshold 1 (aerobic threshold) in watts
-        vt2_watts: Ventilatory Threshold 2 (anaerobic threshold) in watts
-        cp: Critical Power in watts (defaults to VT2 if not provided)
-        max_hr: Maximum heart rate
-    
-    Returns:
-        Dictionary with power and HR zones
-    """
+    """Calculate training zones based on detected thresholds."""
     if cp is None:
         cp = vt2_watts
     
-    zones = {
+    return {
         "power_zones": {
             "Z1_Recovery": (0, int(vt1_watts * 0.75)),
             "Z2_Endurance": (int(vt1_watts * 0.75), vt1_watts),
@@ -409,3 +396,15 @@ def calculate_training_zones_from_thresholds(
             "Z1_Recovery": (0, int(max_hr * 0.6)),
             "Z2_Endurance": (int(max_hr * 0.6), int(max_hr * 0.7)),
             "Z3_Tempo": (int(max_hr * 0.7), int(max_hr * 0.8)),
+            "Z4_Threshold": (int(max_hr * 0.8), int(max_hr * 0.9)),
+            "Z5_VO2max": (int(max_hr * 0.9), max_hr)
+        },
+        "zone_descriptions": {
+            "Z1_Recovery": "Regeneracja",
+            "Z2_Endurance": "Baza tlenowa",
+            "Z3_Tempo": "Sweet spot",
+            "Z4_Threshold": "Próg FTP",
+            "Z5_VO2max": "VO2max",
+            "Z6_Anaerobic": "Beztlenowa"
+        }
+    }

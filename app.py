@@ -129,6 +129,10 @@ def render_history_import_tab(*args, **kwargs):
     from modules.ui.history_import_ui import render_history_import_tab as _render
     return _render(*args, **kwargs)
 
+def render_threshold_analysis_tab(*args, **kwargs):
+    from modules.ui.threshold_analysis_ui import render_threshold_analysis_tab as _render
+    return _render(*args, **kwargs)
+
 from modules.comparison import render_compare_dashboard
 from modules.settings import SettingsManager
 from modules.health_alerts import HealthMonitor
@@ -551,8 +555,8 @@ if uploaded_file is not None:
         # ===== 🧠 INTELLIGENCE =====
         with tab_intelligence:
             show_breadcrumb("🧠 Intelligence")
-            sub_nutrition, sub_limiters, sub_ai = st.tabs([
-                "🍎 Nutrition", "🚧 Limiters", "🤖 AI Coach"
+            sub_nutrition, sub_limiters, sub_ai, sub_thresholds = st.tabs([
+                "🍎 Nutrition", "🚧 Limiters", "🤖 AI Coach", "🎯 Progi & Plan"
             ])
             with sub_nutrition:
                 render_nutrition_tab(df_plot, cp_input, vt1_watts, vt2_watts)
@@ -560,6 +564,9 @@ if uploaded_file is not None:
                 render_limiters_tab(df_plot, cp_input, vt2_vent)
             with sub_ai:
                 render_ai_coach_tab(df_plot_resampled)
+            with sub_thresholds:
+                max_hr = int(208 - 0.7 * rider_age) if rider_age else 185
+                render_threshold_analysis_tab(df_plot, training_notes, uploaded_file.name, cp_input, cp_input, max_hr)
 
         # ===== 📈 ANALYTICS (NOWA GRUPA) =====
         with tab_analytics:

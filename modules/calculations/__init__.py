@@ -10,6 +10,7 @@ Ten pakiet grupuje funkcje obliczeniowe według odpowiedzialności:
 - metrics.py: Podstawowe metryki treningowe
 - stamina.py: Stamina Score, VLamax estimation, Durability
 - kinetics.py: VO2/SmO2 kinetics analysis
+- thresholds.py: VT1/VT2, LT1/LT2 threshold detection
 - data_processing.py: Przetwarzanie danych
 - async_runner.py: Async calculation wrappers
 - polars_adapter.py: Polars/Pandas interoperability
@@ -80,7 +81,6 @@ from .stamina import (
     get_stamina_interpretation,
     get_vlamax_interpretation,
     calculate_aerobic_contribution,
-    # NEW
     calculate_durability_index,
     get_durability_interpretation,
 )
@@ -90,6 +90,40 @@ from .kinetics import (
     get_tau_interpretation,
     calculate_o2_deficit,
     detect_smo2_breakpoints,
+)
+
+# Threshold detection (MCP Server)
+from .thresholds import (
+    detect_vent_zone,
+    detect_smo2_zone,
+    analyze_step_test,
+    calculate_training_zones_from_thresholds,
+    ThresholdResult,
+    StepTestResult,
+)
+
+# Async runner exports
+from .async_runner import (
+    run_in_thread,
+    run_async,
+    async_wrapper,
+    AsyncCalculationManager,
+    submit_task,
+    get_executor,
+)
+
+# Polars adapter exports
+from .polars_adapter import (
+    is_polars_available,
+    to_polars,
+    to_pandas,
+    ensure_polars,
+    fast_rolling_mean,
+    fast_groupby_agg,
+    fast_filter,
+    fast_read_csv,
+    fast_normalized_power,
+    fast_power_duration_curve,
 )
 
 # Eksport wszystkich symboli dla import *
@@ -142,6 +176,13 @@ __all__ = [
     'get_tau_interpretation',
     'calculate_o2_deficit',
     'detect_smo2_breakpoints',
+    # Thresholds (MCP)
+    'detect_vent_zone',
+    'detect_smo2_zone',
+    'analyze_step_test',
+    'calculate_training_zones_from_thresholds',
+    'ThresholdResult',
+    'StepTestResult',
     # Data Processing
     'process_data',
     'ensure_pandas',
@@ -158,28 +199,3 @@ __all__ = [
     'fast_normalized_power',
     'fast_power_duration_curve',
 ]
-
-# Async runner exports
-from .async_runner import (
-    run_in_thread,
-    run_async,
-    async_wrapper,
-    AsyncCalculationManager,
-    submit_task,
-    get_executor,
-)
-
-# Polars adapter exports
-from .polars_adapter import (
-    is_polars_available,
-    to_polars,
-    to_pandas,
-    ensure_polars,
-    fast_rolling_mean,
-    fast_groupby_agg,
-    fast_filter,
-    fast_read_csv,
-    fast_normalized_power,
-    fast_power_duration_curve,
-)
-

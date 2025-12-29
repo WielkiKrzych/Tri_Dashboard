@@ -263,10 +263,10 @@ with st.sidebar.expander("⚙️ Parametry Fizyczne", expanded=True):
     is_male = st.checkbox("Mężczyzna?", key="gender_m", on_change=save_settings_callback)
     
     st.markdown("---")
-    vt1_watts = st.number_input("VT1 (Próg Tlenowy) [W]", min_value=0, key="vt1_w", on_change=save_settings_callback)
-    vt2_watts = st.number_input("VT2 (Próg Beztlenowy/FTP) [W]", min_value=0, key="vt2_w", on_change=save_settings_callback)
-    
+    vt1_watts = st.number_input("VT1 (Próg Tlenowy) [W]", min_value=0, value=0, key="vt1_w", on_change=save_settings_callback)
+    vt2_watts = st.number_input("VT2 (Próg Beztlenowy/FTP) [W]", min_value=0, value=0, key="vt2_w", on_change=save_settings_callback)
     st.divider()
+
     st.markdown("### 🫁 Wentylacja [L/min]")
     vt1_vent = st.number_input("VT1 (Próg Tlenowy) [L/min]", min_value=0.0, key="vt1_v", on_change=save_settings_callback)
     vt2_vent = st.number_input("VT2 (Próg Beztlenowy) [L/min]", min_value=0.0, key="vt2_v", on_change=save_settings_callback)

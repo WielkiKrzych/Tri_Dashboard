@@ -8,7 +8,7 @@ def render_nutrition_tab(df_plot, cp_input, vt1_watts, vt2_watts):
     
     # Interaktywne suwaki
     c1, c2, c3 = st.columns(3)
-    carb_intake = c1.number_input("Spożycie Węglowodanów [g/h]", min_value=0, max_value=120, value=60, step=10)
+    carb_intake = c1.number_input("Spożycie Węglowodanów [g/h]", min_value=0, max_value=200, value=60, step=10)
     initial_glycogen = c2.number_input("Początkowy Zapas Glikogenu [g]", min_value=200, max_value=800, value=450, step=50, help="Standardowo: 400-500g dla wytrenowanego sportowca.")
     efficiency_input = c3.number_input("Sprawność Mechaniczna [%]", min_value=18.0, max_value=26.0, value=22.0, step=0.5, help="Amator: 18-21%, Pro: 23%+")
     
@@ -78,7 +78,6 @@ def render_nutrition_tab(df_plot, cp_input, vt1_watts, vt2_watts):
             title=f"Symulacja Baku Paliwa (Start: {initial_glycogen}g, Intake: {carb_intake}g/h)",
             hovermode="x unified",
             yaxis=dict(title="Glikogen [g]"),
-            # ZMIANA TUTAJ: tickformat=".0f" wymusza liczby całkowite
             xaxis=dict(title="Czas [min]", tickformat=".0f"),
             margin=dict(l=10, r=10, t=40, b=10),
             height=400,

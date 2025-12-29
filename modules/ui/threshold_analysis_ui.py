@@ -259,40 +259,6 @@ def render_threshold_analysis_tab(target_df, training_notes, uploaded_file_name,
     st.dataframe(pd.DataFrame(zone_data), use_container_width=True, hide_index=True)
     _render_zones_bar(zones['power'])
     
-    st.divider()
-    
-    # =================================================================
-    # SECTION 5: Training Plan Generator
-    # =================================================================
-    st.subheader("📅 Generator Planu 4-Tygodniowego")
-    
-    col1, col2 = st.columns(2)
-    with col1:
-        goal = st.selectbox(
-            "Cel treningowy",
-            options=["general_fitness", "endurance", "threshold", "vo2max"],
-            format_func=lambda x: {"general_fitness": "🏃 Ogólna forma", "endurance": "🚴 Wytrzymałość",
-                                   "threshold": "⚡ Próg (FTP)", "vo2max": "🔥 VO2max"}.get(x, x)
-        )
-    with col2:
-        weekly_hours = st.slider("Dostępne godziny tygodniowo", 4.0, 20.0, 8.0, 0.5)
-    
-    if st.button("🚀 Generuj Plan Treningowy", type="primary"):
-        plan = _generate_plan(vt1_for_zones, vt2_for_zones, goal, weekly_hours)
-        st.session_state['training_plan'] = plan
-    
-    if 'training_plan' in st.session_state:
-        plan = st.session_state['training_plan']
-        st.success(f"**Plan wygenerowany!** Cel: {plan['goal_name']} | VT1={plan['vt1']}W, VT2={plan['vt2']}W")
-        
-        for week in plan['weeks']:
-            with st.expander(f"📆 Tydzień {week['week_number']} - {week['phase_name']} ({week['total_hours']}h)", 
-                            expanded=week['week_number'] == 1):
-                sessions_df = pd.DataFrame(week['sessions'])
-                sessions_df.columns = ["Dzień", "Typ", "Czas (min)", "Cel mocy", "RPE"]
-                st.dataframe(sessions_df, use_container_width=True, hide_index=True)
-        
-        st.info(f"**Struktura:** {plan['structure']}")
 
 
 # =================================================================
@@ -456,50 +422,3 @@ def _render_zones_bar(power_zones: dict):
     st.plotly_chart(fig, use_container_width=True)
 
 
-def _generate_plan(vt1: int, vt2: int, goal: str, weekly_hours: float) -> dict:
-    """Generate 4-week training microcycle."""
-    
-    def create_week(week_num: int, phase: str, hours: float) -> dict:
-        templates = {
-            "build": [
-                ["Pon", "Z2 Endurance", 60, f"< {vt1}W", 3],
-                ["Śr", "Tempo", 75, f"{vt1}-{(vt1+vt2)//2}W", 5],
-                ["Pt", "Sweet Spot", 60, f"2x15min @ {int(vt2*0.9)}W", 6],
-                ["Nd", "Long Z2", 120, f"< {vt1}W", 3]
-            ],
-            "peak": [
-                ["Pon", "Recovery", 45, f"< {int(vt1*0.8)}W", 2],
-                ["Śr", "VO2max", 60, f"5x4min @ {int(vt2*1.1)}W", 8],
-                ["Pt", "Threshold", 75, f"2x20min @ {vt2}W", 7],
-                ["Nd", "Long Tempo", 150, f"{vt1}-{(vt1+vt2)//2}W", 5]
-            ],
-            "recovery": [
-                ["Pon", "Rest", 0, "Off", 0],
-                ["Śr", "Easy Z1", 45, f"< {int(vt1*0.65)}W", 2],
-                ["Pt", "Light", 45, f"< {vt1}W", 4],
-                ["Nd", "Z2", 60, f"< {vt1}W", 3]
-            ]
-        }
-        
-        sessions = templates.get(phase, templates["build"])
-        total_min = sum(s[2] for s in sessions)
-        scale = (hours * 60) / total_min if total_min > 0 else 1
-        scaled = [[s[0], s[1], max(0, int(s[2] * scale)), s[3], s[4]] for s in sessions]
-        
-        return {"week_number": week_num, "phase": phase,
-                "phase_name": {"build": "Budowanie", "peak": "Szczyt", "recovery": "Regeneracja"}[phase],
-                "total_hours": round(hours, 1), "sessions": scaled}
-    
-    return {
-        "goal": goal,
-        "goal_name": {"general_fitness": "Ogólna forma", "endurance": "Wytrzymałość",
-                      "threshold": "Próg FTP", "vo2max": "VO2max"}.get(goal, goal),
-        "vt1": vt1, "vt2": vt2,
-        "structure": "Build → Build → Peak → Recovery",
-        "weeks": [
-            create_week(1, "build", weekly_hours * 0.9),
-            create_week(2, "build", weekly_hours * 1.0),
-            create_week(3, "peak", weekly_hours * 1.1),
-            create_week(4, "recovery", weekly_hours * 0.6)
-        ]
-    }

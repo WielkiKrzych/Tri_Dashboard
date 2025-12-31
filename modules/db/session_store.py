@@ -44,6 +44,10 @@ class SessionStore:
     
     def __init__(self, db_path: Optional[Path] = None):
         self.db_path = db_path or Config.DB_PATH
+        # Ensure directory exists
+        if self.db_path and not self.db_path.parent.exists():
+            self.db_path.parent.mkdir(parents=True, exist_ok=True)
+            
         self._init_db()
     
     def _init_db(self) -> None:

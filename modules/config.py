@@ -39,8 +39,9 @@ class Config:
     ML_LEARNING_RATE = float(os.getenv("ML_LEARNING_RATE", "0.02"))
 
     # --- Database ---
+    DATA_DIR = BASE_DIR / "data"
     DB_NAME = os.getenv("DB_NAME", "training_history.db")
-    DB_PATH = BASE_DIR / DB_NAME
+    DB_PATH = DATA_DIR / DB_NAME
 
     # --- UI Colors ---
     COLOR_POWER = os.getenv("COLOR_POWER", '#00cc96')

@@ -17,3 +17,9 @@ env/
 # --- VSCode ---
 # Ustawienia lokalne edytora (opcjonalnie, ale warto)
 .vscode/
+
+# --- Database ---
+*.db
+*.sqlite
+*.sqlite3
+data/

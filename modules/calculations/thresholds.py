@@ -560,18 +560,24 @@ class StepSmO2Result:
 
 def detect_smo2_from_steps(
     df: pd.DataFrame,
-    step_range: 'StepTestRange', # Forward ref or assumes defined above
+    step_range: 'StepTestRange', 
     smo2_column: str = 'smo2',
     power_column: str = 'watts',
     hr_column: str = 'hr',
     time_column: str = 'time',
-    smo2_t1_slope_threshold: float = -0.015,  # Slope threshold for T1 (start of drop)
-    smo2_t2_slope_threshold: float = -0.060   # Slope threshold for T2 (rapid drop)
+    smo2_t1_slope_threshold: float = 0.0,    # Not strictly used, logic hardcoded per request
+    smo2_t2_slope_threshold: float = -0.005  # Key threshold
 ) -> StepSmO2Result:
-    """Detect SmO2 thresholds by analyzing slope on each detected step (negative slope = desaturation)."""
+    """
+    Detect SmO2 thresholds with refined logic:
+    - Skip first step
+    - Split each subsequent step into 2 halves
+    - T1 (LT1): Slope between -0.005 and 0 (Slight drop/flat)
+    - T2 (LT2): Slope < -0.005 (Significant drop)
+    """
     result = StepSmO2Result()
     
-    if not step_range or not step_range.is_valid or len(step_range.steps) < 3:
+    if not step_range or not step_range.is_valid or len(step_range.steps) < 2:
         result.notes.append("Insufficient steps for SmO2 detection")
         return result
     
@@ -581,62 +587,80 @@ def detect_smo2_from_steps(
     
     has_hr = hr_column in df.columns
     
-    # Analyze each step (SKIP FIRST STEP - start from index 1)
     step_analysis = []
     t1_found = False
     
-    for step in step_range.steps[1:]:  # Skip first step
-        mask = (df[time_column] >= step.start_time) & (df[time_column] < step.end_time)
-        step_data = df[mask]
+    # Iterate steps starting from index 1 (Skip first step)
+    for step in step_range.steps[1:]:
+        step_mask = (df[time_column] >= step.start_time) & (df[time_column] < step.end_time)
+        full_step_data = df[step_mask]
         
-        if len(step_data) < 10:
+        if len(full_step_data) < 10:
             continue
+            
+        # Split into 2 halves
+        mid_time = step.start_time + (step.end_time - step.start_time) / 2
         
-        # Calculate SmO2 slope for this step
-        slope, intercept, std_err = calculate_slope(
-            step_data[time_column], 
-            step_data[smo2_column]
-        )
+        halves = [
+            (full_step_data[full_step_data[time_column] < mid_time], 1),
+            (full_step_data[full_step_data[time_column] >= mid_time], 2)
+        ]
         
-        avg_power = step_data[power_column].mean()
-        avg_hr = step_data[hr_column].mean() if has_hr else None
-        avg_smo2 = step_data[smo2_column].mean()
-        
-        step_info = {
-            'step_number': step.step_number,
-            'start_time': step.start_time,
-            'end_time': step.end_time,
-            'avg_power': round(avg_power, 0),
-            'avg_hr': round(avg_hr, 0) if avg_hr else None,
-            'avg_smo2': round(avg_smo2, 1),
-            'slope': round(slope, 4),
-            'is_t1': False,
-            'is_t2': False
-        }
-        
-        # Threshold Logic:
-        # T1: First step where slope drops below T1 threshold (e.g. < -0.015)
-        # T2: First step where slope drops below T2 threshold (e.g. < -0.060) AFTER T1
-        
-        if not t1_found:
-            if slope <= smo2_t1_slope_threshold:
-                t1_found = True
-                result.smo2_1_watts = round(avg_power, 0)
-                result.smo2_1_hr = round(avg_hr, 0) if avg_hr else None
-                result.smo2_1_step_number = step.step_number
-                result.smo2_1_slope = slope
-                step_info['is_t1'] = True
-        
-        # Search for T2 (AnT)
-        if not result.smo2_2_watts and t1_found and slope <= smo2_t2_slope_threshold:
-             if result.smo2_1_watts is None or avg_power > result.smo2_1_watts:
-                result.smo2_2_watts = round(avg_power, 0)
-                result.smo2_2_hr = round(avg_hr, 0) if avg_hr else None
-                result.smo2_2_step_number = step.step_number
-                result.smo2_2_slope = slope
-                step_info['is_t2'] = True
-        
-        step_analysis.append(step_info)
+        for part_data, part_num in halves:
+            if len(part_data) < 5: 
+                continue
+                
+            slope, intercept, std_err = calculate_slope(
+                part_data[time_column], 
+                part_data[smo2_column]
+            )
+            
+            avg_power = part_data[power_column].mean()
+            avg_hr = part_data[hr_column].mean() if has_hr else None
+            avg_smo2 = part_data[smo2_column].mean()
+            
+            step_info = {
+                'step_number': step.step_number,
+                'sub_step': part_num, # 1 or 2
+                'start_time': part_data[time_column].min(),
+                'end_time': part_data[time_column].max(),
+                'avg_power': round(avg_power, 0),
+                'avg_hr': round(avg_hr, 0) if avg_hr else None,
+                'avg_smo2': round(avg_smo2, 1),
+                'slope': round(slope, 5), # High precision needed
+                'is_t1': False,
+                'is_t2': False
+            }
+            
+            # Threshold Logic
+            # LT1: Trend > -0.005 AND Trend < 0 (Slight drop)
+            # LT2: Trend < -0.005 (Fast drop)
+            
+            is_lt2_zone = slope < -0.005
+            is_lt1_zone = (slope >= -0.005) and (slope < 0.0)
+            
+            if not t1_found:
+                if is_lt1_zone:
+                    t1_found = True
+                    result.smo2_1_watts = round(avg_power, 0)
+                    result.smo2_1_hr = round(avg_hr, 0) if avg_hr else None
+                    result.smo2_1_step_number = step.step_number
+                    result.smo2_1_slope = slope
+                    step_info['is_t1'] = True
+                    # Note: If we find T1, we assume we haven't reached T2 yet.
+            
+            # Check for T2
+            # Allow finding T2 even if T1 wasn't cleanly found (e.g. step skipped over it)
+            if not result.smo2_2_watts and is_lt2_zone:
+                # Logic: If we hit T2 zone, and we are at higher power than T1 (if T1 found)
+                if result.smo2_1_watts is None or avg_power > result.smo2_1_watts:
+                    result.smo2_2_watts = round(avg_power, 0)
+                    result.smo2_2_hr = round(avg_hr, 0) if avg_hr else None
+                    result.smo2_2_step_number = step.step_number
+                    result.smo2_2_slope = slope
+                    step_info['is_t2'] = True
+            
+            step_analysis.append(step_info)
         
     result.step_analysis = step_analysis
     return result

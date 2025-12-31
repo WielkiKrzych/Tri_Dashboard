@@ -100,9 +100,14 @@ def render_smo2_thresholds_tab(target_df, training_notes, uploaded_file_name, cp
                         axis=1
                     )
                 
+                # Combine Step + SubStep
+                if 'sub_step' in step_df.columns and 'step_number' in step_df.columns:
+                     step_df['Step'] = step_df.apply(lambda r: f"{r['step_number']}.{r['sub_step']}", axis=1)
+                else:
+                     step_df = step_df.rename(columns={'step_number': 'Step'})
+                
                 # Rename
                 step_df = step_df.rename(columns={
-                    'step_number': 'Step',
                     'avg_power': 'Power',
                     'avg_hr': 'HR',
                     'avg_smo2': 'SmO2',

@@ -110,6 +110,236 @@ def calculate_slope(time_series: pd.Series, value_series: pd.Series) -> Tuple[fl
     return slope, intercept, std_err
 
 
+@dataclass
+class DetectedStep:
+    """Represents a detected step in the step test."""
+    step_number: int
+    start_time: float
+    end_time: float
+    duration_sec: float
+    avg_power: float
+    power_diff_from_prev: float = 0.0
+
+
+@dataclass
+class StepTestRange:
+    """Detected range of a valid step test."""
+    start_time: float
+    end_time: float
+    steps: List[DetectedStep]
+    min_power: float
+    max_power: float
+    is_valid: bool = True
+    notes: List[str] = field(default_factory=list)
+
+
+def detect_step_test_range(
+    df: pd.DataFrame,
+    power_column: str = 'watts',
+    time_column: str = 'time',
+    min_step_duration: int = 120,  # 2 min
+    max_step_duration: int = 240,  # 4 min
+    min_power_increment: int = 15,  # W (lower tolerance for real data)
+    max_power_increment: int = 40,  # W (higher tolerance for real data)
+    min_steps: int = 4,
+    power_variation_threshold: float = 0.15,  # 15% CoV allowed within step
+    end_power_drop_threshold: float = 0.5  # 50% drop signals end
+) -> Optional[StepTestRange]:
+    """
+    Detect step test boundaries by finding consecutive steps with consistent duration and power increments.
+    
+    Algorithm (simplified for robustness):
+    1. Divide data into fixed-duration segments (30s)
+    2. Calculate average power per segment
+    3. Group consecutive segments with similar power into steps
+    4. Find sequence of 4+ steps with 20-30W increments
+    5. End detection: look for sudden power drop (>50% from max)
+    
+    Returns:
+        StepTestRange with detected steps, or None if no valid step test found
+    """
+    if df.empty or power_column not in df.columns or time_column not in df.columns:
+        return None
+    
+    df = df.sort_values(time_column).reset_index(drop=True)
+    
+    min_time = df[time_column].min()
+    max_time = df[time_column].max()
+    total_duration = max_time - min_time
+    
+    if total_duration < min_step_duration * min_steps:
+        return StepTestRange(
+            start_time=min_time, end_time=max_time,
+            steps=[], min_power=0, max_power=0,
+            is_valid=False,
+            notes=[f"Data too short ({total_duration:.0f}s) for {min_steps} steps"]
+        )
+    
+    # Step 1: Divide into 30-second segments and calculate averages
+    segment_duration = 30  # seconds
+    segments = []
+    
+    for t in range(int(min_time), int(max_time) - segment_duration + 1, segment_duration):
+        mask = (df[time_column] >= t) & (df[time_column] < t + segment_duration)
+        segment_data = df[mask]
+        
+        if len(segment_data) >= 5:
+            avg_power = segment_data[power_column].mean()
+            std_power = segment_data[power_column].std()
+            segments.append({
+                'start': t,
+                'end': t + segment_duration,
+                'avg_power': avg_power,
+                'std_power': std_power
+            })
+    
+    if len(segments) < min_steps * 4:  # Need at least 4 segments per step (2min / 30s)
+        return StepTestRange(
+            start_time=min_time, end_time=max_time,
+            steps=[], min_power=0, max_power=0,
+            is_valid=False,
+            notes=[f"Only {len(segments)} segments found, need more data"]
+        )
+    
+    # Step 2: Group consecutive segments with similar power into steps
+    power_tolerance = 10  # W - segments within this range are same step
+    
+    steps_raw = []
+    current_step_segments = [segments[0]]
+    
+    for i in range(1, len(segments)):
+        prev_avg = np.mean([s['avg_power'] for s in current_step_segments])
+        curr_avg = segments[i]['avg_power']
+        
+        if abs(curr_avg - prev_avg) <= power_tolerance:
+            # Same step
+            current_step_segments.append(segments[i])
+        else:
+            # New step - save previous
+            step_duration = current_step_segments[-1]['end'] - current_step_segments[0]['start']
+            step_power = np.mean([s['avg_power'] for s in current_step_segments])
+            
+            steps_raw.append({
+                'start': current_step_segments[0]['start'],
+                'end': current_step_segments[-1]['end'],
+                'duration': step_duration,
+                'avg_power': step_power,
+                'segment_count': len(current_step_segments)
+            })
+            
+            current_step_segments = [segments[i]]
+    
+    # Don't forget last step
+    if current_step_segments:
+        step_duration = current_step_segments[-1]['end'] - current_step_segments[0]['start']
+        step_power = np.mean([s['avg_power'] for s in current_step_segments])
+        steps_raw.append({
+            'start': current_step_segments[0]['start'],
+            'end': current_step_segments[-1]['end'],
+            'duration': step_duration,
+            'avg_power': step_power,
+            'segment_count': len(current_step_segments)
+        })
+    
+    # Step 3: Filter steps by duration (keep only valid 2-4 min steps)
+    valid_steps = [s for s in steps_raw if min_step_duration <= s['duration'] <= max_step_duration + 60]
+    
+    if len(valid_steps) < min_steps:
+        return StepTestRange(
+            start_time=min_time, end_time=max_time,
+            steps=[], min_power=0, max_power=0,
+            is_valid=False,
+            notes=[f"Only {len(valid_steps)} valid duration steps (need {min_steps}). Raw steps: {len(steps_raw)}"]
+        )
+    
+    # Step 4: Find sequence of steps with consistent power increments
+    best_sequence = []
+    
+    for start_idx in range(len(valid_steps)):
+        sequence = [valid_steps[start_idx]]
+        
+        for i in range(start_idx + 1, len(valid_steps)):
+            prev_power = sequence[-1]['avg_power']
+            curr_power = valid_steps[i]['avg_power']
+            power_diff = curr_power - prev_power
+            
+            # Check if power increment is within range (increasing)
+            if min_power_increment <= power_diff <= max_power_increment:
+                sequence.append(valid_steps[i])
+            elif power_diff < -20:
+                # Significant power decrease - end of test
+                break
+            # Skip steps with too large increments (might be a gap/warmup)
+        
+        if len(sequence) > len(best_sequence):
+            best_sequence = sequence
+    
+    if len(best_sequence) < min_steps:
+        increments = []
+        for i in range(1, len(valid_steps)):
+            increments.append(valid_steps[i]['avg_power'] - valid_steps[i-1]['avg_power'])
+        
+        # Build debug info strings
+        powers_str = ", ".join([f"{s['avg_power']:.0f}W" for s in valid_steps])
+        inc_str = ", ".join([f"{inc:+.0f}W" for inc in increments]) if increments else "No increments"
+        
+        return StepTestRange(
+            start_time=min_time, end_time=max_time,
+            steps=[], min_power=0, max_power=0,
+            is_valid=False,
+            notes=[
+                f"Best sequence has {len(best_sequence)} steps (need {min_steps})",
+                f"Valid steps powers: [{powers_str}]",
+                f"Power increments: [{inc_str}]"
+            ]
+        )
+    
+    # Step 5: Detect end of test (power drop after last step)
+    last_step_end = best_sequence[-1]['end']
+    max_power_in_test = best_sequence[-1]['avg_power']
+    
+    # Look for power drop after last step
+    mask_after = df[time_column] > last_step_end
+    if mask_after.any():
+        power_after = df.loc[mask_after, power_column].rolling(window=10, min_periods=3).mean()
+        
+        test_end_time = df[time_column].max()
+        for idx in power_after.dropna().index:
+            if power_after[idx] < max_power_in_test * end_power_drop_threshold:
+                test_end_time = df.loc[idx, time_column]
+                break
+    else:
+        test_end_time = last_step_end
+    
+    # Build result
+    detected_steps = []
+    for i, p in enumerate(best_sequence):
+        power_diff = 0 if i == 0 else p['avg_power'] - best_sequence[i-1]['avg_power']
+        detected_steps.append(DetectedStep(
+            step_number=i + 1,
+            start_time=p['start'],
+            end_time=p['end'],
+            duration_sec=p['duration'],
+            avg_power=p['avg_power'],
+            power_diff_from_prev=power_diff
+        ))
+    
+    return StepTestRange(
+        start_time=best_sequence[0]['start'],
+        end_time=test_end_time,
+        steps=detected_steps,
+        min_power=best_sequence[0]['avg_power'],
+        max_power=best_sequence[-1]['avg_power'],
+        is_valid=True,
+        notes=[
+            f"Detected {len(detected_steps)} steps",
+            f"Power range: {best_sequence[0]['avg_power']:.0f}W - {best_sequence[-1]['avg_power']:.0f}W",
+            f"Avg step duration: {np.mean([s['duration'] for s in best_sequence]):.0f}s",
+            f"Avg increment: {np.mean([s.power_diff_from_prev for s in detected_steps[1:]]):.0f}W" if len(detected_steps) > 1 else ""
+        ]
+    )
+
+
 def segment_load_phases(
     df: pd.DataFrame, 
     power_col: str = 'watts',
@@ -336,7 +566,7 @@ def analyze_step_test(
 ) -> StepTestResult:
     """
     Analyze a step test (ramp test) for threshold detection.
-    Includes Sliding Window VT, Hysteresis, and Sensitivity Analysis.
+    Includes Step Detection, Sliding Window VT, Hysteresis, and Sensitivity Analysis.
     """
     result = StepTestResult()
     
@@ -351,11 +581,43 @@ def analyze_step_test(
     if not has_time:
         result.analysis_notes.append("Brak kolumny czasu")
         return result
+    
+    # 0. NEW: Auto-detect step test range
+    step_range = None
+    df_test = df  # Default to full data
+    
+    if has_power:
+        step_range = detect_step_test_range(
+            df, 
+            power_column=power_column, 
+            time_column=time_column,
+            min_step_duration=120,  # 2 min
+            max_step_duration=240,  # 4 min
+            min_power_increment=18,  # Slightly lower tolerance (20W - 10%)
+            max_power_increment=35,  # Slightly higher tolerance (30W + 17%)
+            min_steps=4
+        )
+        
+        if step_range and step_range.is_valid:
+            # Filter data to detected test range
+            mask = (df[time_column] >= step_range.start_time) & (df[time_column] <= step_range.end_time)
+            df_test = df[mask].copy()
+            
+            result.steps_analyzed = len(step_range.steps)
+            result.analysis_notes.append(f"✅ Wykryto test schodkowy: {len(step_range.steps)} stopni")
+            for note in step_range.notes:
+                result.analysis_notes.append(f"  • {note}")
+        else:
+            # No valid step test detected - fall back to legacy peak-based segmentation
+            notes = step_range.notes if step_range else ["Nie znaleziono prawidłowego testu schodkowego"]
+            for note in notes:
+                result.analysis_notes.append(f"⚠️ {note}")
+            result.analysis_notes.append("Używanie detekcji opartej na szczycie mocy (legacy)")
         
     # 1. Sliding Window Analysis for VT with Hysteresis
     if has_ve and has_power:
-        # Segment data
-        df_inc, df_dec = segment_load_phases(df, power_col=power_column, time_col=time_column)
+        # Segment data (use detected test range or full data)
+        df_inc, df_dec = segment_load_phases(df_test, power_col=power_column, time_col=time_column)
         
         # Analyze Increasing Phase (Primary)
         vt1_inc, vt2_inc = detect_vt_transition_zone(

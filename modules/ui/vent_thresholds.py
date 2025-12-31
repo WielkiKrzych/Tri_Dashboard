@@ -62,6 +62,22 @@ def render_vent_thresholds_tab(target_df, training_notes, uploaded_file_name, cp
     vt2_zone = result.vt2_zone
     hysteresis = result.hysteresis
     sensitivity = result.sensitivity
+    
+    # Display step detection info
+    if result.analysis_notes:
+        with st.expander("📋 Szczegóły Analizy", expanded=True):
+            for note in result.analysis_notes:
+                if note.startswith("✅"):
+                    st.success(note)
+                elif note.startswith("⚠️"):
+                    st.warning(note)
+                elif note.startswith("  •"):
+                    st.caption(note)
+                else:
+                    st.info(note)
+            
+            if result.steps_analyzed > 0:
+                st.metric("Liczba wykrytych stopni", result.steps_analyzed)
 
     # Wyświetlenie wyników automatycznych
     st.subheader("🤖 Automatyczna Detekcja Stref (Ramp Up)")
@@ -273,8 +289,8 @@ def render_vent_thresholds_tab(target_df, training_notes, uploaded_file_name, cp
                           help="0-1, wyżej = lepiej")
                 st.caption(f"Variability: ±{sensitivity.vt2_variability_watts:.1f} W")
                 
-            if sensitivity.warnings:
-                for w in sensitivity.warnings:
+            if sensitivity.details:
+                for w in sensitivity.details:
                     st.caption(f"ℹ️ {w}")
 
     # ===== TEORIA =====

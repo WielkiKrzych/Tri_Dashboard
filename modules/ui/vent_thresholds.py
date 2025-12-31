@@ -97,12 +97,17 @@ def render_vent_thresholds_tab(target_df, training_notes, uploaded_file_name, cp
                 # Format columns
                 if 've_slope' in step_df.columns:
                     step_df['ve_slope'] = step_df['ve_slope'].apply(lambda x: f"{x:.4f}")
+                # Safe formatting for numeric columns
                 if 'avg_power' in step_df.columns:
-                    step_df['avg_power'] = step_df['avg_power'].apply(lambda x: f"{x:.0f}W")
+                    step_df['avg_power'] = pd.to_numeric(step_df['avg_power'], errors='coerce').apply(lambda x: f"{x:.0f}W" if pd.notna(x) else "-")
                 if 'avg_hr' in step_df.columns:
-                    step_df['avg_hr'] = step_df['avg_hr'].apply(lambda x: f"{x:.0f}" if pd.notna(x) else "-")
+                    step_df['avg_hr'] = pd.to_numeric(step_df['avg_hr'], errors='coerce').apply(lambda x: f"{x:.0f}" if pd.notna(x) else "-")
                 if 'avg_ve' in step_df.columns:
-                    step_df['avg_ve'] = step_df['avg_ve'].apply(lambda x: f"{x:.1f}")
+                    step_df['avg_ve'] = pd.to_numeric(step_df['avg_ve'], errors='coerce').apply(lambda x: f"{x:.1f}" if pd.notna(x) else "-")
+                if 'avg_br' in step_df.columns:
+                    step_df['avg_br'] = pd.to_numeric(step_df['avg_br'], errors='coerce').apply(lambda x: f"{int(x)}" if pd.notna(x) else "-")
+                if 've_slope' in step_df.columns:
+                    step_df['ve_slope'] = pd.to_numeric(step_df['ve_slope'], errors='coerce').apply(lambda x: f"{x:.4f}" if pd.notna(x) else "-")
                 
                 # Add VT markers
                 if 'is_vt1' in step_df.columns:

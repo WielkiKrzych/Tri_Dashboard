@@ -91,9 +91,6 @@ def render_tab_content(tab_name, *args, **kwargs):
     elif tab_name == "thresholds":
         from modules.ui.threshold_analysis_ui import render_threshold_analysis_tab
         return render_threshold_analysis_tab(*args, **kwargs)
-    elif tab_name == "trends":
-        from modules.ui.trends import render_trends_tab
-        return render_trends_tab(*args, **kwargs)
     elif tab_name == "history":
         from modules.ui.trends_history import render_trends_history_tab
         return render_trends_history_tab(*args, **kwargs)
@@ -212,10 +209,9 @@ if uploaded_file is not None:
 
     with tab_overview:
         UIComponents.show_breadcrumb("📊 Overview")
-        t1, t2, t3 = st.tabs(["📋 Raport", "📈 KPI", "📉 Trends"])
+        t1, t2 = st.tabs(["📋 Raport", "📈 KPI"])
         with t1: render_tab_content("report", df_plot, rider_weight, cp_input)
         with t2: render_tab_content("kpi", df_plot, df_plot_resampled, metrics, rider_weight, decoupling_percent, drift_z2, vt1_vent, vt2_vent)
-        with t3: render_tab_content("trends", df_plot)
 
     with tab_performance:
         UIComponents.show_breadcrumb("⚡ Performance")

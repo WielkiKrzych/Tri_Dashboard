@@ -175,8 +175,8 @@ if uploaded_file is not None:
                     auto_pred = predict_only(df_plot_resampled)
                     if auto_pred is not None:
                         df_plot_resampled['ai_hr'] = auto_pred
-                except Exception as e:
-                    pass
+                except Exception:
+                    pass  # AI prediction is non-critical
 
         except Exception as e:
             st.error(f"Błąd wczytywania pliku: {e}")
@@ -194,7 +194,7 @@ if uploaded_file is not None:
         )
         SessionStore().add_session(SessionRecord(**session_data))
     except Exception:
-        pass
+        pass  # Auto-save is non-critical
 
     # Sticky Header
     header_data = prepare_sticky_header_data(df_plot, metrics)
@@ -265,7 +265,8 @@ if uploaded_file is not None:
             buf = BytesIO()
             docx.save(buf)
             st.sidebar.download_button("📥 DOCX", buf.getvalue(), f"{uploaded_file.name}.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
-        except: pass
+        except Exception:
+            pass  # DOCX export failure is non-critical
     with c2:
         try:
             zip_data = export_all_charts_as_png(
@@ -273,7 +274,8 @@ if uploaded_file is not None:
                 uploaded_file, None, None, None, None
             )
             st.sidebar.download_button("📸 PNG", zip_data, f"{uploaded_file.name}.zip", mime="application/zip")
-        except: pass
+        except Exception:
+            pass  # PNG export failure is non-critical
 
 else:
     st.sidebar.info("Wgraj plik.")

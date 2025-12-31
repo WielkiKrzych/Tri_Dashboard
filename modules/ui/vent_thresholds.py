@@ -117,11 +117,12 @@ def render_vent_thresholds_tab(target_df, training_notes, uploaded_file_name, cp
                     'avg_power': 'Power',
                     'avg_hr': 'HR',
                     'avg_ve': 'VE',
-                    've_slope': 'Slope (L/s)'
+                    'avg_br': 'BR',
+                    've_slope': 'Trend Slope'
                 })
                 
                 # Select columns to show
-                cols_to_show = ['Step', 'Power', 'HR', 'VE', 'Slope (L/s)', 'VT']
+                cols_to_show = ['Step', 'Power', 'HR', 'VE', 'BR', 'Trend Slope', 'VT']
                 cols_available = [c for c in cols_to_show if c in step_df.columns]
                 
                 st.dataframe(step_df[cols_available], hide_index=True)

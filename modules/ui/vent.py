@@ -26,8 +26,7 @@ def render_vent_tab(target_df, training_notes, uploaded_file_name):
     # Format czasu
     target_df['time_str'] = pd.to_datetime(target_df['time'], unit='s').dt.strftime('%H:%M:%S')
 
-    # 2. DETEKCJA AUTOMATYCZNA (Complex Phase Analysis)
-    # Use full analyze_step_test to get hysteresis data
+    # 2. DETEKCJA AUTOMATYCZNA (Full Analysis with Sensitivity)
     result = analyze_step_test(
         target_df, 
         power_column='watts',
@@ -39,6 +38,7 @@ def render_vent_tab(target_df, training_notes, uploaded_file_name):
     vt1_zone = result.vt1_zone
     vt2_zone = result.vt2_zone
     hysteresis = result.hysteresis
+    sensitivity = result.sensitivity
 
     # Wyświetlenie wyników automatycznych (Primary - Increasing Load)
     st.subheader("🤖 Automatyczna Detekcja Stref (Ramp Up)")
@@ -48,6 +48,15 @@ def render_vent_tab(target_df, training_notes, uploaded_file_name):
         if vt1_zone:
             st.success(f"**VT1 Zone (Up):** {vt1_zone.range_watts[0]:.0f} - {vt1_zone.range_watts[1]:.0f} W")
             st.caption(f"Confidence: {vt1_zone.confidence:.0%}")
+            
+            # Reliability Badge
+            if sensitivity and sensitivity.vt1_stability_score > 0.8:
+                st.caption(f"🛡️ Reliability: :green[HIGH] (Var: {sensitivity.vt1_variability_watts:.1f}W)")
+            elif sensitivity and sensitivity.vt1_stability_score > 0.5:
+                 st.caption(f"🛡️ Reliability: :orange[MEDIUM] (Var: {sensitivity.vt1_variability_watts:.1f}W)")
+            elif sensitivity:
+                 st.caption(f"🛡️ Reliability: :red[LOW] (Var: {sensitivity.vt1_variability_watts:.1f}W)")
+            
             if vt1_zone.range_hr:
                 st.caption(f"HR: {vt1_zone.range_hr[0]:.0f}-{vt1_zone.range_hr[1]:.0f} bpm")
         else:
@@ -57,6 +66,14 @@ def render_vent_tab(target_df, training_notes, uploaded_file_name):
         if vt2_zone:
             st.error(f"**VT2 Zone (Up):** {vt2_zone.range_watts[0]:.0f} - {vt2_zone.range_watts[1]:.0f} W")
             st.caption(f"Confidence: {vt2_zone.confidence:.0%}")
+            
+            if sensitivity and sensitivity.vt2_stability_score > 0.8:
+                st.caption(f"🛡️ Reliability: :green[HIGH] (Var: {sensitivity.vt2_variability_watts:.1f}W)")
+            elif sensitivity and sensitivity.vt2_stability_score > 0.5:
+                 st.caption(f"🛡️ Reliability: :orange[MEDIUM] (Var: {sensitivity.vt2_variability_watts:.1f}W)")
+            elif sensitivity:
+                 st.caption(f"🛡️ Reliability: :red[LOW] (Var: {sensitivity.vt2_variability_watts:.1f}W)")
+                 
             if vt2_zone.range_hr:
                 st.caption(f"HR: {vt2_zone.range_hr[0]:.0f}-{vt2_zone.range_hr[1]:.0f} bpm")
         else:
@@ -64,7 +81,7 @@ def render_vent_tab(target_df, training_notes, uploaded_file_name):
             
     # Hysteresis Information
     if hysteresis and (hysteresis.vt1_dec_zone or hysteresis.vt2_dec_zone):
-        with st.expander("📉 Analiza Histerezy (Ramp Down vs Up)", expanded=True):
+        with st.expander("📉 Analiza Histerezy (Ramp Down vs Up)", expanded=False):
             h_col1, h_col2 = st.columns(2)
             with h_col1:
                 if hysteresis.vt1_dec_zone:
@@ -84,8 +101,6 @@ def render_vent_tab(target_df, training_notes, uploaded_file_name):
             if hysteresis.warnings:
                 for w in hysteresis.warnings:
                     st.warning(f"⚠️ {w}")
-            else:
-                st.info("Brak istotnej histerezy (<20W). Fizjologia stabilna.")
 
     st.markdown("---")
 
@@ -212,7 +227,7 @@ def render_vent_tab(target_df, training_notes, uploaded_file_name):
             mv2.metric("Śr. Wentylacja (VE)", f"{avg_ve:.1f} L/min")
             mv3.metric("Częstość (RR)", f"{avg_rr:.1f} /min")
             
-            # Kolorowanie trendu (Tu odwrotnie niż w SmO2: Duży wzrost = Czerwony/Ostrzegawczy)
+            # Kolorowanie trendu
             trend_color = "inverse" if slope_ve > 0.1 else "normal"
             mv4.metric("Trend VE (Slope)", trend_desc_ve, delta=trend_desc_ve, delta_color=trend_color)
 
@@ -326,24 +341,17 @@ def render_vent_tab(target_df, training_notes, uploaded_file_name):
             # 6. TEORIA ODDECHOWA
             with st.expander("🫁 TEORIA: Płynne Strefy Przejścia vs Pojedynczy Punkt", expanded=False):
                 st.markdown("""
-                ### Dynamiczna Analiza Histerezy
+                ### Dynamiczna Analiza
                 
-                System analizuje fazę **wzrostu obciążenia (Ramp Up)** oraz fazę **regeneracji/spadku (Ramp Down)** niezależnie.
+                System stosuje:
+                1. **Sliding Window Analysis**: Skanuje okno po oknie, żeby znaleźć przejścia w nachyleniu (slope).
+                2. **Histereza**: Porównuje fazę narastania ("Up") z fazą opadania/odpoczynku ("Down").
+                3. **Sensitivity Analysis**: Uruchamia algorytm kilkukrotnie z różnymi oknami czasowymi (30s, 60s, 90s), aby sprawdzić stabilność wyniku.
                 
-                #### 🔄 Histereza (Przesunięcie)
-                * Jeśli Twój próg wentylacyjny (VT) na zmęczeniu pojawia się przy **niższej mocy** (np. VT1 spada z 210W do 180W), oznacza to nagromadzenie długu tlenowego i zmęczenie OUN.
-                * Duże przesunięcie (>20W) w dół sugeruje słabą **Durability** (wytrzymałość metaboliczną).
-                * Brak przesunięcia oznacza doskonałą, stabilną homeostazę.
-                
-                #### 🟢 Strefa VT1 (Aerobic Transition)
-                * Zakres mocy, gdzie zaczynasz angażować więcej włókien typu IIa.
-                * Slope VE (nachylenie) wchodzi w zakres **0.035 - 0.065**.
-                
-                #### 🔴 Strefa VT2 (Compensation/Anaerobic)
-                * Utrata kontroli oddechowej.
-                * Slope VE wchodzi w zakres **0.13 - 0.17**.
-                
-                **Interval Confidence:** Im węższa strefa i wyższe "Confidence", tym bardziej wyraźny był Twój próg.
+                #### 🛡️ Reliability Score (Niezawodność)
+                * **HIGH**: Wynik jest stabilny niezależnie od wygładzania.
+                * **MEDIUM**: Wynik zależy nieco od parametrów.
+                * **LOW**: Duża zmienność (>15W różnicy) w zależności od okna. Sugeruje "szumiący" sygnał lub nietypową fizjologię.
                 """)
     else:
         st.warning("Brak danych w tym zakresie.")

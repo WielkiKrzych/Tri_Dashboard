@@ -102,6 +102,7 @@ from .thresholds import (
     ThresholdResult,
     StepTestResult,
     HysteresisResult,
+    SensitivityResult,
 )
 
 # Async runner exports
@@ -186,6 +187,7 @@ __all__ = [
     'ThresholdResult',
     'StepTestResult',
     'HysteresisResult',
+    'SensitivityResult',
     # Data Processing
     'process_data',
     'ensure_pandas',

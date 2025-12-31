@@ -3,9 +3,9 @@ Threshold Detection Functions for Step Tests.
 
 Pure functions for detecting VT1/VT2 (ventilatory) and LT1/LT2 (metabolic) thresholds.
 Extracted from UI modules for reuse in MCP Server.
-Refactored to support Sliding Window, Transition Zones, and Hysteresis Analysis.
+Refactored to support Sliding Window, Transition Zones, Hysteresis, and Sensitivity Analysis.
 """
-from typing import Optional, List, Tuple
+from typing import Optional, List, Tuple, Dict
 from dataclasses import dataclass, field
 import numpy as np
 import pandas as pd
@@ -48,6 +48,21 @@ class HysteresisResult:
 
 
 @dataclass
+class SensitivityResult:
+    """Result of sensitivity/stability analysis."""
+    vt1_stability_score: float = 0.0 # 0.0 - 1.0
+    vt2_stability_score: float = 0.0 # 0.0 - 1.0
+    
+    vt1_variability_watts: float = 0.0 # StdDev of detected watts
+    vt2_variability_watts: float = 0.0
+    
+    is_vt1_unreliable: bool = False
+    is_vt2_unreliable: bool = False
+    
+    details: List[str] = field(default_factory=list)
+
+
+@dataclass
 class StepTestResult:
     """Complete result of step test analysis."""
     vt1_watts: Optional[float] = None
@@ -59,8 +74,9 @@ class StepTestResult:
     vt1_zone: Optional[TransitionZone] = None
     vt2_zone: Optional[TransitionZone] = None
     
-    # Hysteresis Data
+    # Advanced Diagnostics
     hysteresis: Optional[HysteresisResult] = None
+    sensitivity: Optional[SensitivityResult] = None
     
     vt1_hr: Optional[float] = None
     vt2_hr: Optional[float] = None
@@ -103,23 +119,11 @@ def segment_load_phases(
     """
     Split the dataset into Increasing Load (Ramp Up) and Decreasing Load (Ramp Down) phases.
     The split point is the peak power.
-    
-    Args:
-        df: Input DataFrame
-        power_col: Name of power column
-        time_col: Name of time column
-        min_phase_duration: Minimum seconds for a phase to be considered valid
-        
-    Returns:
-        Tuple of (df_increasing, df_decreasing)
     """
     if df.empty or power_col not in df.columns:
         return df, pd.DataFrame()
     
     # Find index of peak power (smoothed to avoid spikes)
-    # We use a simple moving average to find the "structural" peak
-    
-    # If watts_smooth exists, use it, else create temporary
     if 'watts_smooth_temp' not in df.columns:
          s_watts = df[power_col].rolling(window=30, center=True).mean().fillna(df[power_col])
     else:
@@ -127,9 +131,6 @@ def segment_load_phases(
          
     peak_idx = s_watts.idxmax()
     peak_time = df.loc[peak_idx, time_col]
-    
-    # Split
-    df_unknown = df.copy() # Just all data in case logic fails
     
     # Ensure strict time ordering just in case
     df = df.sort_values(time_col)
@@ -140,16 +141,13 @@ def segment_load_phases(
     df_inc = df[inc_mask].copy()
     df_dec = df[dec_mask].copy()
     
-    # Validate duration
     dur_inc = (df_inc[time_col].max() - df_inc[time_col].min()) if not df_inc.empty else 0
     dur_dec = (df_dec[time_col].max() - df_dec[time_col].min()) if not df_dec.empty else 0
     
     if dur_inc < min_phase_duration:
-        # If ramp up is too short, maybe connection error? Return full as increasing
         return df, pd.DataFrame()
         
     if dur_dec < min_phase_duration:
-        # No significant cool down / ramp down
         return df_inc, pd.DataFrame()
         
     return df_inc, df_dec
@@ -168,14 +166,6 @@ def detect_vt_transition_zone(
     Detect VT1 and VT2 transition zones using a sliding window approach.
     Definition: A Transition Zone is the range of time/power where the 
     slope's 95% Confidence Interval overlaps the threshold value (0.05 or 0.15).
-    
-    Args:
-        df: DataFrame with training data (must be time-sorted)
-        window_duration: Duration of sliding window in seconds
-        step_size: Step size for sliding window in seconds
-        
-    Returns:
-        Tuple of (VT1_Zone, VT2_Zone)
     """
     if len(df) < window_duration:
         return None, None
@@ -208,8 +198,7 @@ def detect_vt_transition_zone(
         ci_upper = slope_ve + (Z_SCORE * std_err)
         
         # VT1 Overlap Check (Threshold 0.05)
-        # We assume typical VT1 slope is around 0.05. 
-        # We enforce 0.02 <= slope <= 0.08 to avoid noise elsewhere.
+        # 0.02 <= slope <= 0.08 constraint
         if (ci_lower <= 0.05 <= ci_upper):
              if 0.02 <= slope_ve <= 0.08:
                 vt1_candidates.append({
@@ -270,6 +259,72 @@ def detect_vt_transition_zone(
     return vt1_zone, vt2_zone
 
 
+def run_sensitivity_analysis(
+    df: pd.DataFrame,
+    ve_column: str,
+    power_column: str,
+    hr_column: str,
+    time_column: str
+) -> SensitivityResult:
+    """
+    Run detection with multiple window sizes to check stability.
+    """
+    windows = [30, 45, 60, 90]
+    results_vt1 = []
+    results_vt2 = []
+    
+    for w in windows:
+        v1, v2 = detect_vt_transition_zone(
+            df, 
+            window_duration=w,
+            step_size=5,
+            ve_column=ve_column,
+            power_column=power_column,
+            hr_column=hr_column,
+            time_column=time_column
+        )
+        if v1:
+            # Use midpoint of the zone as the representative value
+            mid = (v1.range_watts[0] + v1.range_watts[1]) / 2
+            results_vt1.append(mid)
+        if v2:
+            mid = (v2.range_watts[0] + v2.range_watts[1]) / 2
+            results_vt2.append(mid)
+            
+    # Calculate Statistics
+    res = SensitivityResult()
+    
+    # VT1 Analysis
+    if len(results_vt1) >= 2:
+        std_dev = np.std(results_vt1)
+        res.vt1_variability_watts = float(std_dev)
+        # Relaxed heuristic: < 10W is very stable, > 50W is unstable
+        score = max(0.0, min(1.0, 1.0 - (std_dev / 50.0)))
+        res.vt1_stability_score = score
+        res.is_vt1_unreliable = std_dev > 30.0
+        res.details.append(f"VT1 Variability: {std_dev:.1f}W across windows {windows}")
+    elif len(results_vt1) > 0:
+        res.vt1_stability_score = 0.5 # Unknown
+        res.details.append("VT1 detected in some but not all windows.")
+    else:
+        res.details.append("VT1 not detected in sensitivity sweep.")
+        
+    # VT2 Analysis
+    if len(results_vt2) >= 2:
+        std_dev = np.std(results_vt2)
+        res.vt2_variability_watts = float(std_dev)
+        score = max(0.0, min(1.0, 1.0 - (std_dev / 50.0)))
+        res.vt2_stability_score = score
+        res.is_vt2_unreliable = std_dev > 30.0
+        res.details.append(f"VT2 Variability: {std_dev:.1f}W across windows {windows}")
+    elif len(results_vt2) > 0:
+        res.vt2_stability_score = 0.5
+    else:
+        res.details.append("VT2 not detected in sensitivity sweep.")
+        
+    return res
+
+
 def analyze_step_test(
     df: pd.DataFrame,
     step_duration_sec: int = 180,
@@ -281,7 +336,7 @@ def analyze_step_test(
 ) -> StepTestResult:
     """
     Analyze a step test (ramp test) for threshold detection.
-    Updated for Hysteresis: Analyzes both Ramp Up and Ramp Down (if present).
+    Includes Sliding Window VT, Hysteresis, and Sensitivity Analysis.
     """
     result = StepTestResult()
     
@@ -354,7 +409,7 @@ def analyze_step_test(
             if vt1_inc and vt1_dec:
                 mid_inc = (vt1_inc.range_watts[0] + vt1_inc.range_watts[1]) / 2
                 mid_dec = (vt1_dec.range_watts[0] + vt1_dec.range_watts[1]) / 2
-                diff = mid_dec - mid_inc # Negative means fatigue (usually) or drift
+                diff = mid_dec - mid_inc 
                 hysteresis.vt1_shift_watts = diff
                 if abs(diff) > 20: 
                     hysteresis.warnings.append(f"Significant VT1 hysteresis: {diff:.0f}W")
@@ -370,9 +425,22 @@ def analyze_step_test(
                     result.analysis_notes.append(f"Hysteresis VT2: {diff:+.0f}W")
             
             result.hysteresis = hysteresis
+            
+        # 3. Sensitivity Analysis (On Increasing Phase Only)
+        sensitivity = run_sensitivity_analysis(
+            df_inc,
+            ve_column=ve_column,
+            power_column=power_column,
+            hr_column=hr_column,
+            time_column=time_column
+        )
+        result.sensitivity = sensitivity
+        if sensitivity.is_vt1_unreliable:
+            result.analysis_notes.append("⚠️ VT1 Detection Unstable (High Variability)")
+        if sensitivity.is_vt2_unreliable:
+            result.analysis_notes.append("⚠️ VT2 Detection Unstable (High Variability)")
 
-    # 2. Classic Step Analysis (Legacy fallback + SmO2) - using FULL dataframe
-    # SmO2 Analysis usually assumes the whole step steps structure
+    # 4. Classic Step Analysis (Legacy fallback + SmO2) - using FULL dataframe
     
     total_duration = df[time_column].max() - df[time_column].min()
     num_steps = int(total_duration / max(step_duration_sec, 1))

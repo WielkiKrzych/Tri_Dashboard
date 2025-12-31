@@ -90,14 +90,14 @@ from .kinetics import (
     get_tau_interpretation,
     calculate_o2_deficit,
     detect_smo2_breakpoints,
+    normalize_smo2_series,
+    detect_smo2_trend,
 )
 
-# Threshold detection (MCP Server)
 from .thresholds import (
     detect_vt_transition_zone,
     analyze_step_test,
     calculate_training_zones_from_thresholds,
-    # New Data Structures
     TransitionZone,
     ThresholdResult,
     StepTestResult,
@@ -179,6 +179,8 @@ __all__ = [
     'get_tau_interpretation',
     'calculate_o2_deficit',
     'detect_smo2_breakpoints',
+    'normalize_smo2_series',
+    'detect_smo2_trend',
     # Thresholds (MCP)
     'detect_vt_transition_zone',
     'analyze_step_test',

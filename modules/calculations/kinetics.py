@@ -3,11 +3,95 @@ VO2/SmO2 Kinetics Module.
 
 Implements kinetics analysis for oxygen consumption and muscle oxygenation.
 Inspired by INSCYD O2 Deficit and academic VO2 kinetics research.
+Refactored to support Relative SmO2 analysis (normalization and trend classification).
 """
 import numpy as np
 import pandas as pd
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Dict
 from scipy.optimize import curve_fit
+from scipy import stats
+
+
+def normalize_smo2_series(series: pd.Series) -> pd.Series:
+    """
+    Normalize SmO2 series to 0.0 - 1.0 (0-100%) range based on session min/max.
+    Uses 5th and 95th percentiles to be robust against artifacts/outliers.
+    
+    Args:
+        series: Pandas Series with raw SmO2 values
+        
+    Returns:
+        Normalized Pandas Series (0.0 to 1.0)
+    """
+    if series.empty:
+        return series
+        
+    # Robust min/max
+    val_min = series.quantile(0.02) # 2nd percentile as physiological min
+    val_max = series.quantile(0.98) # 98th percentile as physiological max
+    
+    if val_max <= val_min:
+        return series.apply(lambda x: 0.5) # Flat line if no range
+        
+    normalized = (series - val_min) / (val_max - val_min)
+    return normalized.clip(0.0, 1.0)
+
+
+def detect_smo2_trend(
+    time_series: pd.Series, 
+    smo2_series: pd.Series
+) -> Dict[str, any]:
+    """
+    Detect SmO2 trend (Slope) and classify kinetics state.
+    
+    Args:
+        time_series: Time in seconds
+        smo2_series: SmO2 values (can be raw or normalized)
+        
+    Returns:
+        Dictionary with slope, interpretation, and category.
+    """
+    if len(time_series) < 10:
+        return {
+            "slope": 0.0,
+            "category": "Insufficient Data",
+            "description": "Too few data points"
+        }
+        
+    slope, _, _, _, std_err = stats.linregress(time_series, smo2_series)
+    
+    # Classification thresholds (assuming %/s for raw, or unit/s for norm)
+    # If raw SmO2 (0-100), slope is %/s.
+    # Typical physiological range:
+    # Stable: -0.01 to +0.01 %/s
+    # Deox: < -0.01 %/s
+    # Reox: > +0.01 %/s
+    
+    category = "Stable"
+    description = "Equilibrium (Steady State)"
+    
+    if slope < -0.05:
+        category = "Rapid Deoxygenation"
+        description = "High Intensity (>> Critical Power). Very fast O2 extraction."
+    elif slope < -0.01:
+        category = "Deoxygenation"
+        description = "Non-Steady State (> Critical Power). O2 debt accumulating."
+    elif slope <= 0.01:
+        category = "Equilibrium"
+        description = "Steady State. Supply matches Demand."
+    elif slope > 0.05:
+        category = "Rapid Reoxygenation"
+        description = "Recovery / Reperfusion."
+    else: # > 0.01
+        category = "Reoxygenation"
+        description = "Supply exceeds Demand (Recovery)."
+        
+    return {
+        "slope": slope,
+        "std_err": std_err,
+        "category": category,
+        "description": description
+    }
 
 
 def _mono_exponential(t: np.ndarray, a: float, tau: float, td: float) -> np.ndarray:

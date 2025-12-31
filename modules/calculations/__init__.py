@@ -16,6 +16,7 @@ Ten pakiet grupuje funkcje obliczeniowe według odpowiedzialności:
 - polars_adapter.py: Polars/Pandas interoperability
 - repeatability.py: Repeatability and stability analysis
 - quality.py: Data reliability checks
+- interpretation.py: Training advice generation
 
 Dla wstecznej kompatybilności, wszystkie funkcje są re-eksportowane z tego modułu.
 """
@@ -127,6 +128,10 @@ from .quality import (
     check_data_suitability,
 )
 
+from .interpretation import (
+    generate_training_advice,
+)
+
 # Async runner exports
 from .async_runner import (
     run_in_thread,
@@ -228,6 +233,8 @@ __all__ = [
     'check_signal_quality',
     'check_step_test_protocol',
     'check_data_suitability',
+    # Interpretation
+    'generate_training_advice',
     # Data Processing
     'process_data',
     'ensure_pandas',

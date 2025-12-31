@@ -10,6 +10,7 @@ from modules.calculations.kinetics import (
     analyze_temporal_sequence,
     generate_state_timeline
 )
+from modules.calculations.quality import check_signal_quality
 
 def render_smo2_tab(target_df, training_notes, uploaded_file_name):
     st.header("Analiza Kinetyki SmO2 (State & Lag)")
@@ -24,8 +25,6 @@ def render_smo2_tab(target_df, training_notes, uploaded_file_name):
         st.stop()
 
     # Ensure smoothed columns exist if not already present
-    from modules.calculations.quality import check_signal_quality
-    
     if 'smo2' in target_df.columns:
         # Check Quality
         qual_res = check_signal_quality(target_df['smo2'], "SmO2", (0, 100))
@@ -208,48 +207,77 @@ def render_smo2_tab(target_df, training_notes, uploaded_file_name):
 
                 st.subheader(f"Metryki: {format_time(startsec)} - {format_time(endsec)}")
                 
+                # Check Quality for Visual Styles
+                opacity_style = ""
+                if 'smo2_norm' in interval_data.columns:
+                     q_check = check_signal_quality(interval_data['smo2_norm'], "SmO2") 
+                     if q_check['score'] < 0.5:
+                         st.warning("⚠️ Low Signal Quality - Metrics dimmed")
+                         opacity_style = "opacity: 0.5;"
+
                 # Dynamic Metric Layout based on context
                 if is_recovery:
                     # RECOVERY MODE UI
                     c1, c2, c3, c4 = st.columns(4)
-                    c1.metric("Kinetic State", "RESATURATION", delta="Recovery Mode", delta_color="inverse")
                     
-                    c2.metric("T½ (Half-Recovery)", f"{resat_result.get('t_half', 0):.1f} s")
+                    c1.markdown(f"""
+                    <div style="{opacity_style} text-align:center;">
+                        <h4 style="margin:0; color:grey;">State</h4>
+                        <h2 style="margin:0; color:#2ecc71;">RECOVERY</h2>
+                        <p style="margin:0;">Re-oxygenation Phase</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    c2.metric("T½ (Half-Rec)", f"{resat_result.get('t_half', 0):.1f}s")
                     
                     tau = resat_result.get('tau_est', 0)
                     score = resat_result.get('recovery_score', 0)
-                    c3.metric("Est. Tau", f"{tau:.1f} s", delta=f"Score: {score:.0f}/100")
+                    c3.metric("Est. Tau", f"{tau:.1f}s", delta=f"Score: {score:.0f}", delta_color="normal")
                     
                     rate = resat_result.get('resat_rate', 0) * 100 
-                    c4.metric("Resat Rate", f"{rate:.2f} %/s")
-                    
-                    st.success(f"**Analiza Regeneracji:** Szybkość odbudowy (Tau={tau:.1f}s) wskazuje na tempo resyntezy PCr.")
+                    c4.metric("Resat Rate", f"{rate:.1f}%/s")
                     
                 else:
                     # STANDARD CONTEXT UI
                     c1, c2, c3, c4 = st.columns(4)
-                    c1.metric("Śr. Moc", f"{avg_watts:.0f} W")
-                    c1.caption(f"Śr. Kadencja: {interval_data['cadence'].mean():.0f} rpm")
                     
-                    c2.metric("Kinetic State", trend_cat, delta=f"{slope:.4f}/s")
+                    c1.metric("Avg Power", f"{avg_watts:.0f} W", f"{interval_data['cadence'].mean():.0f} rpm")
                     
-                    # Context Metric
-                    if c_type == 'mechanical':
-                        c3.metric("Przyczyna (Inferred)", f"⚙️ {cause}", delta="Sprawdź Kadencję", delta_color="inverse")
-                    elif c_type == 'limit':
-                        c3.metric("Przyczyna (Inferred)", f"🛑 {cause}", delta="Limit Dostaw", delta_color="inverse")
-                    elif c_type == 'warning':
-                        c3.metric("Przyczyna (Inferred)", f"⚠️ {cause}", delta="FATIGUE ALERT", delta_color="inverse")
-                    else:
-                        c3.metric("Przyczyna (Inferred)", f"✅ {cause}")
+                    # Visual Trend Arrow
+                    arrow = "→"
+                    if slope > 0.05: arrow = "↗"
+                    elif slope > 0.1: arrow = "⬆"
+                    elif slope < -0.05: arrow = "↘"
+                    elif slope < -0.1: arrow = "⬇"
+                    
+                    c2.markdown(f"""
+                    <div style="{opacity_style} text-align:center;">
+                        <h4 style="margin:0; color:grey;">Trend</h4>
+                        <h1 style="margin:0;">{arrow}</h1>
+                        <small>{slope:.4f}/s</small>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    # Context Badge
+                    badge_color = "grey"
+                    if c_type == 'mechanical': badge_color = "#e67e22" # Orange
+                    elif c_type == 'limit': badge_color = "#e74c3c" # Red
+                    elif c_type == 'warning': badge_color = "#c0392b" # Dark Red
+                    elif c_type == 'normal': badge_color = "#27ae60" # Green
+                    
+                    c3.markdown(f"""
+                    <div style="{opacity_style} text-align:center; padding:5px;">
+                        <h4 style="margin:0; color:grey;">Context</h4>
+                        <span style="background-color:{badge_color}; color:white; padding:4px 8px; border-radius:4px; font-weight:bold;">
+                            {cause}
+                        </span>
+                    </div>
+                    """, unsafe_allow_html=True)
                         
-                    c4.metric("Rel SmO2", f"{avg_norm:.1f} %")
+                    c4.metric("Rel SmO2", f"{avg_norm:.1f}%")
 
                     if explanation:
-                        if c_type in ['mechanical', 'limit', 'warning']:
-                            st.warning(f"**Wyjaśnienie Algorytmu:** {explanation}")
-                        else:
-                            st.info(f"**Wyjaśnienie Algorytmu:** {explanation}")
+                        st.caption(f"💡 **Analysis:** {explanation}")
                             
                 # ===== LAG ANALYSIS VISUALIZATION =====
                 if lag_results:

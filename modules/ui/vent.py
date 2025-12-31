@@ -3,6 +3,7 @@ import plotly.graph_objects as go
 import pandas as pd
 from scipy import stats
 from modules.calculations.thresholds import analyze_step_test
+from modules.calculations.quality import check_step_test_protocol
 
 def render_vent_tab(target_df, training_notes, uploaded_file_name):
     st.header("Analiza Progu Wentylacyjnego (VT1 / VT2 Detection)")
@@ -27,9 +28,6 @@ def render_vent_tab(target_df, training_notes, uploaded_file_name):
     target_df['time_str'] = pd.to_datetime(target_df['time'], unit='s').dt.strftime('%H:%M:%S')
 
     # --- Quality Check: Protocol Compliance ---
-    # Import locally to avoid circulars if any (though __init__ handles it)
-    from modules.calculations.quality import check_step_test_protocol
-    
     proto_check = check_step_test_protocol(target_df)
     
     if not proto_check['is_valid']:
@@ -37,7 +35,6 @@ def render_vent_tab(target_df, training_notes, uploaded_file_name):
         for issue in proto_check['issues']:
             st.error(issue)
         st.markdown("Analiza progów (VT/LT) może być **niewiarygodna** lub niemożliwa. Zalecany jest Test Stopniowany (Ramp Test).")
-        # Could stop here, but let's allow "Force Analysis" via expander or just show results with warning
         if not st.checkbox("Wymuś analizę mimo błędów protokołu"):
             st.stop()
     else:
@@ -62,40 +59,70 @@ def render_vent_tab(target_df, training_notes, uploaded_file_name):
     st.subheader("🤖 Automatyczna Detekcja Stref (Ramp Up)")
     
     col_z1, col_z2 = st.columns(2)
+    
+    # --- VT1 CARD ---
     with col_z1:
         if vt1_zone:
-            st.success(f"**VT1 Zone (Up):** {vt1_zone.range_watts[0]:.0f} - {vt1_zone.range_watts[1]:.0f} W")
-            st.caption(f"Confidence: {vt1_zone.confidence:.0%}")
+            # Calculate variability range from sensitivity or heuristic
+            var_w = sensitivity.vt1_variability_watts if sensitivity else 10.0
+            range_low = vt1_zone.range_watts[0] - (var_w/2)
+            range_high = vt1_zone.range_watts[1] + (var_w/2)
             
-            # Reliability Badge
-            if sensitivity and sensitivity.vt1_stability_score > 0.8:
-                st.caption(f"🛡️ Reliability: :green[HIGH] (Var: {sensitivity.vt1_variability_watts:.1f}W)")
-            elif sensitivity and sensitivity.vt1_stability_score > 0.5:
-                 st.caption(f"🛡️ Reliability: :orange[MEDIUM] (Var: {sensitivity.vt1_variability_watts:.1f}W)")
-            elif sensitivity:
-                 st.caption(f"🛡️ Reliability: :red[LOW] (Var: {sensitivity.vt1_variability_watts:.1f}W)")
+            # Determine Confidence
+            confidence_level = "LOW"
+            if sensitivity:
+                if sensitivity.vt1_stability_score > 0.8: confidence_level = "HIGH"
+                elif sensitivity.vt1_stability_score > 0.5: confidence_level = "MEDIUM"
+            
+            conf_color = {"HIGH": "green", "MEDIUM": "orange", "LOW": "red"}.get(confidence_level, "grey")
+
+            st.markdown(f"""
+            <div style="padding:10px; border-radius:5px; border:1px solid #333; background-color: #222;">
+                <h3 style="margin:0; color: #ffa15a;">VT1 Zone</h3>
+                <h2 style="margin:0;">{int(range_low)}-{int(range_high)} W</h2>
+                <div style="margin-top:5px;">
+                    <span style="background-color:{conf_color}; color:white; padding:2px 6px; border-radius:4px; font-size:0.8em;">
+                        {confidence_level} CONFIDENCE
+                    </span>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
             
             if vt1_zone.range_hr:
-                st.caption(f"HR: {vt1_zone.range_hr[0]:.0f}-{vt1_zone.range_hr[1]:.0f} bpm")
+                st.caption(f"Est. Heart Rate: {vt1_zone.range_hr[0]:.0f}-{vt1_zone.range_hr[1]:.0f} bpm")
         else:
-            st.info("VT1 Zone: Nie wykryto (brak wyraźnego przejścia slope 0.05)")
+            st.info("VT1: Nie wykryto")
 
+    # --- VT2 CARD ---
     with col_z2:
         if vt2_zone:
-            st.error(f"**VT2 Zone (Up):** {vt2_zone.range_watts[0]:.0f} - {vt2_zone.range_watts[1]:.0f} W")
-            st.caption(f"Confidence: {vt2_zone.confidence:.0%}")
+            var_w = sensitivity.vt2_variability_watts if sensitivity else 10.0
+            range_low = vt2_zone.range_watts[0] - (var_w/2)
+            range_high = vt2_zone.range_watts[1] + (var_w/2)
             
-            if sensitivity and sensitivity.vt2_stability_score > 0.8:
-                st.caption(f"🛡️ Reliability: :green[HIGH] (Var: {sensitivity.vt2_variability_watts:.1f}W)")
-            elif sensitivity and sensitivity.vt2_stability_score > 0.5:
-                 st.caption(f"🛡️ Reliability: :orange[MEDIUM] (Var: {sensitivity.vt2_variability_watts:.1f}W)")
-            elif sensitivity:
-                 st.caption(f"🛡️ Reliability: :red[LOW] (Var: {sensitivity.vt2_variability_watts:.1f}W)")
-                 
+            confidence_level = "LOW"
+            if sensitivity:
+                if sensitivity.vt2_stability_score > 0.8: confidence_level = "HIGH"
+                elif sensitivity.vt2_stability_score > 0.5: confidence_level = "MEDIUM"
+                
+            conf_color = {"HIGH": "green", "MEDIUM": "orange", "LOW": "red"}.get(confidence_level, "grey")
+
+            st.markdown(f"""
+            <div style="padding:10px; border-radius:5px; border:1px solid #333; background-color: #222;">
+                <h3 style="margin:0; color: #ef553b;">VT2 Zone</h3>
+                <h2 style="margin:0;">{int(range_low)}-{int(range_high)} W</h2>
+                <div style="margin-top:5px;">
+                    <span style="background-color:{conf_color}; color:white; padding:2px 6px; border-radius:4px; font-size:0.8em;">
+                        {confidence_level} CONFIDENCE
+                    </span>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+            
             if vt2_zone.range_hr:
-                st.caption(f"HR: {vt2_zone.range_hr[0]:.0f}-{vt2_zone.range_hr[1]:.0f} bpm")
+                st.caption(f"Est. Heart Rate: {vt2_zone.range_hr[0]:.0f}-{vt2_zone.range_hr[1]:.0f} bpm")
         else:
-            st.info("VT2 Zone: Nie wykryto (brak wyraźnego przejścia slope 0.15)")
+            st.info("VT2: Nie wykryto")
             
     # Hysteresis Information
     if hysteresis and (hysteresis.vt1_dec_zone or hysteresis.vt2_dec_zone):
@@ -275,22 +302,27 @@ def render_vent_tab(target_df, training_notes, uploaded_file_name):
             
             # VT1 Primary (Green)
             if vt1_zone:
+                # Add Confidence band
+                var_w = sensitivity.vt1_variability_watts if sensitivity else 10.0
                 fig_vent.add_hrect(
-                    y0=vt1_zone.range_watts[0], y1=vt1_zone.range_watts[1],
+                    y0=vt1_zone.range_watts[0] - (var_w/2), 
+                    y1=vt1_zone.range_watts[1] + (var_w/2),
                     fillcolor="green", opacity=0.15,
                     layer="below", line_width=0,
                     yref="y2",
-                    annotation_text=f"VT1 Up ({vt1_zone.range_watts[0]:.0f}-{vt1_zone.range_watts[1]:.0f}W)", annotation_position="top left"
+                    annotation_text=f"VT1 Zone", annotation_position="top left"
                 )
             
             # VT2 Primary (Red)
             if vt2_zone:
+                var_w = sensitivity.vt2_variability_watts if sensitivity else 10.0
                 fig_vent.add_hrect(
-                    y0=vt2_zone.range_watts[0], y1=vt2_zone.range_watts[1],
+                    y0=vt2_zone.range_watts[0] - (var_w/2), 
+                    y1=vt2_zone.range_watts[1] + (var_w/2),
                     fillcolor="red", opacity=0.15,
                     layer="below", line_width=0,
                     yref="y2",
-                    annotation_text=f"VT2 Up ({vt2_zone.range_watts[0]:.0f}-{vt2_zone.range_watts[1]:.0f}W)", annotation_position="top left"
+                    annotation_text=f"VT2 Zone", annotation_position="top left"
                 )
             
             # Hysteresis Zones (Decreasing) - Dashed/Ghost
@@ -301,7 +333,7 @@ def render_vent_tab(target_df, training_notes, uploaded_file_name):
                        fillcolor="blue", opacity=0.05, # Very faint
                        layer="below", line_width=1, line_dash="dot", line_color="blue",
                        yref="y2",
-                       annotation_text="VT1 Down", annotation_position="bottom right"
+                       annotation_text="VT1 (Down)", annotation_position="bottom right"
                     )
 
                 if hysteresis.vt2_dec_zone:
@@ -310,7 +342,7 @@ def render_vent_tab(target_df, training_notes, uploaded_file_name):
                        fillcolor="purple", opacity=0.05,
                        layer="below", line_width=1, line_dash="dot", line_color="purple",
                        yref="y2",
-                       annotation_text="VT2 Down", annotation_position="bottom right"
+                       annotation_text="VT2 (Down)", annotation_position="bottom right"
                     )
 
             # Zaznaczenie manualne

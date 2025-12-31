@@ -100,7 +100,7 @@ def render_vent_thresholds_tab(target_df, training_notes, uploaded_file_name, cp
                 vt1_pct = (result.vt1_watts / cp_input) * 100
                 st.caption(f"~{vt1_pct:.0f}% CP")
         else:
-            st.info("VT1: Nie wykryto (brak slope >= 0.05)")
+            st.info("VT1: Nie wykryto (brak slope >= 0.15)")
 
     # --- VT2 CARD ---
     with col_z2:
@@ -118,7 +118,7 @@ def render_vent_thresholds_tab(target_df, training_notes, uploaded_file_name, cp
                 vt2_pct = (result.vt2_watts / cp_input) * 100
                 st.caption(f"~{vt2_pct:.0f}% CP")
         else:
-            st.info("VT2: Nie wykryto (brak slope >= 0.12)")
+            st.info("VT2: Nie wykryto (brak slope >= 0.10 po VT1)")
 
     st.markdown("---")
 

@@ -364,23 +364,25 @@ def detect_vt_from_steps(
     power_column: str = 'watts',
     hr_column: str = 'hr',
     time_column: str = 'time',
-    vt1_slope_threshold: float = 0.05,  # VE slope threshold for VT1
-    vt2_slope_threshold: float = 0.12   # VE slope threshold for VT2
+    vt1_slope_threshold: float = 0.15,  # VE slope threshold for VT1
+    vt2_slope_threshold: float = 0.10   # VE slope threshold for VT2 (after VT1)
 ) -> StepVTResult:
     """
     Detect VT1 and VT2 by analyzing VE slope on each detected step.
     
     Algorithm:
-    1. For each step, calculate VE slope (VE change per second)
-    2. When slope first exceeds VT1 threshold (0.05) -> VT1 found
-    3. Continue searching, when slope exceeds VT2 threshold (0.12) -> VT2 found
-    4. Return exact power and HR values at those steps
+    1. SKIP first step, start searching from step 2
+    2. For each step, calculate VE slope (VE change per second)
+    3. When slope first exceeds VT1 threshold (0.15) -> VT1 found
+    4. Continue searching, when slope exceeds VT2 threshold (0.12) -> VT2 found
+    5. If not found in steps, extend to VE peak and search there
+    6. Return exact power and HR values at those steps
     
     Args:
         df: Full dataframe with VE data
         step_range: Detected steps from detect_step_test_range
         ve_column: Column name for ventilation
-        vt1_slope_threshold: Slope threshold for VT1 (default 0.05 L/min/s)
+        vt1_slope_threshold: Slope threshold for VT1 (default 0.15 L/min/s)
         vt2_slope_threshold: Slope threshold for VT2 (default 0.12 L/min/s)
     
     Returns:
@@ -398,11 +400,11 @@ def detect_vt_from_steps(
     
     has_hr = hr_column in df.columns
     
-    # Analyze each step
+    # Analyze each step (SKIP FIRST STEP - start from index 1)
     step_analysis = []
     vt1_found = False
     
-    for step in step_range.steps:
+    for step in step_range.steps[1:]:  # Skip first step
         # Get data for this step
         mask = (df[time_column] >= step.start_time) & (df[time_column] < step.end_time)
         step_data = df[mask]
@@ -441,7 +443,7 @@ def detect_vt_from_steps(
             step_info['is_vt1'] = True
             result.notes.append(f"VT1 @ Step {step.step_number}: {avg_power:.0f}W (slope={ve_slope:.4f})")
         
-        # Check for VT2 (after VT1, when slope exceeds higher threshold)
+        # Check for VT2 (after VT1, when slope exceeds threshold)
         elif vt1_found and result.vt2_watts is None and ve_slope >= vt2_slope_threshold:
             result.vt2_watts = round(avg_power, 0)
             result.vt2_hr = round(avg_hr, 0) if avg_hr else None
@@ -454,11 +456,77 @@ def detect_vt_from_steps(
     
     result.step_analysis = step_analysis
     
+    # If VT1 or VT2 not found in steps, extend search to VE peak
+    if not vt1_found or result.vt2_watts is None:
+        # Find VE peak in the test range
+        test_mask = (df[time_column] >= step_range.start_time) & (df[time_column] <= step_range.end_time)
+        test_data = df[test_mask].copy()
+        
+        if len(test_data) > 30:
+            # Smooth VE to find peak
+            ve_smooth = test_data[ve_column].rolling(window=30, center=True, min_periods=10).mean()
+            
+            if not ve_smooth.dropna().empty:
+                peak_idx = ve_smooth.idxmax()
+                peak_time = test_data.loc[peak_idx, time_column]
+                
+                # Look for sharp drop after peak (drop > 10% in 30 seconds)
+                post_peak_mask = test_data[time_column] > peak_time
+                if post_peak_mask.any():
+                    post_peak = ve_smooth[post_peak_mask]
+                    peak_ve = ve_smooth[peak_idx]
+                    
+                    # Find where VE drops significantly
+                    for idx in post_peak.dropna().index:
+                        if post_peak[idx] < peak_ve * 0.85:  # 15% drop
+                            extended_end_time = test_data.loc[idx, time_column]
+                            break
+                    else:
+                        extended_end_time = peak_time
+                else:
+                    extended_end_time = peak_time
+                
+                # Analyze extended period (from last step end to VE peak)
+                last_step_end = step_range.steps[-1].end_time
+                
+                if extended_end_time > last_step_end:
+                    extended_mask = (df[time_column] >= last_step_end) & (df[time_column] <= extended_end_time)
+                    extended_data = df[extended_mask]
+                    
+                    if len(extended_data) > 20:
+                        result.notes.append(f"Extending search to VE peak ({extended_end_time - last_step_end:.0f}s after last step)")
+                        
+                        # Calculate slope in extended period
+                        ve_slope_ext, _, _ = calculate_slope(
+                            extended_data[time_column], 
+                            extended_data[ve_column]
+                        )
+                        
+                        avg_power_ext = extended_data[power_column].mean()
+                        avg_hr_ext = extended_data[hr_column].mean() if has_hr else None
+                        
+                        # Check for VT1 in extended period
+                        if not vt1_found and ve_slope_ext >= vt1_slope_threshold:
+                            vt1_found = True
+                            result.vt1_watts = round(avg_power_ext, 0)
+                            result.vt1_hr = round(avg_hr_ext, 0) if avg_hr_ext else None
+                            result.vt1_step_number = -1  # Extended period
+                            result.vt1_ve_slope = round(ve_slope_ext, 4)
+                            result.notes.append(f"VT1 @ Extended: {avg_power_ext:.0f}W (slope={ve_slope_ext:.4f})")
+                        
+                        # Check for VT2 in extended period
+                        if vt1_found and result.vt2_watts is None and ve_slope_ext >= vt2_slope_threshold:
+                            result.vt2_watts = round(avg_power_ext, 0)
+                            result.vt2_hr = round(avg_hr_ext, 0) if avg_hr_ext else None
+                            result.vt2_step_number = -1  # Extended period
+                            result.vt2_ve_slope = round(ve_slope_ext, 4)
+                            result.notes.append(f"VT2 @ Extended: {avg_power_ext:.0f}W (slope={ve_slope_ext:.4f})")
+    
     # Add summary notes
     if not vt1_found:
-        result.notes.append(f"VT1 not found (no step with slope >= {vt1_slope_threshold})")
+        result.notes.append(f"VT1 not found (no slope >= {vt1_slope_threshold})")
     if vt1_found and result.vt2_watts is None:
-        result.notes.append(f"VT2 not found (no step with slope >= {vt2_slope_threshold})")
+        result.notes.append(f"VT2 not found (no slope >= {vt2_slope_threshold} after VT1)")
     
     return result
 

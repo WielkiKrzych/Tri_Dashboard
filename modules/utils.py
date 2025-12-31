@@ -93,18 +93,8 @@ def _clean_hrv_value(val: str) -> float:
         return np.nan
 
 
-@st.cache_data
-def load_data(file) -> pd.DataFrame:
-    """Load CSV/TXT file into DataFrame with column normalization.
-    
-    Uses Polars for faster reading if available, falls back to Pandas.
-    
-    Args:
-        file: Uploaded file object
-        
-    Returns:
-        Processed DataFrame with normalized columns
-    """
+def _read_raw_file(file) -> pd.DataFrame:
+    """Read file content into raw DataFrame using Polars/Pandas."""
     # Try Polars first for speed
     try:
         import polars as pl
@@ -121,31 +111,30 @@ def load_data(file) -> pd.DataFrame:
         
         df_pd = pl_df.to_pandas()
         logger.debug("Loaded data with Polars (fast mode)")
+        return df_pd
     except Exception as e:
         logger.debug(f"Polars load failed, using Pandas: {e}")
         # Pandas fallback
         try:
             file.seek(0)
-            df_pd = pd.read_csv(file, low_memory=False) 
+            return pd.read_csv(file, low_memory=False) 
         except (pd.errors.ParserError, UnicodeDecodeError) as e:
             logger.info(f"Standard CSV parse failed, trying semicolon separator: {e}")
             file.seek(0)
-            df_pd = pd.read_csv(file, sep=';', low_memory=False)
+            return pd.read_csv(file, sep=';', low_memory=False)
 
-    # Normalize columns (DRY - use shared function)
-    df_pd = normalize_columns_pandas(df_pd)
 
-    # Process HRV column if present
-    if 'hrv' in df_pd.columns:
-        df_pd['hrv'] = df_pd['hrv'].astype(str).apply(_clean_hrv_value)
-        df_pd['hrv'] = pd.to_numeric(df_pd['hrv'], errors='coerce')
-        df_pd['hrv'] = df_pd['hrv'].interpolate(method='linear').ffill().bfill()
+def _process_hrv_column(df: pd.DataFrame) -> pd.DataFrame:
+    """Process and clean HRV column if present."""
+    if 'hrv' in df.columns:
+        df['hrv'] = df['hrv'].astype(str).apply(_clean_hrv_value)
+        df['hrv'] = pd.to_numeric(df['hrv'], errors='coerce')
+        df['hrv'] = df['hrv'].interpolate(method='linear').ffill().bfill()
+    return df
 
-    # Ensure time column exists
-    if 'time' not in df_pd.columns:
-        df_pd['time'] = np.arange(len(df_pd)).astype(float)
 
-    # Convert numeric columns
+def _convert_numeric_types(df: pd.DataFrame) -> pd.DataFrame:
+    """Convert known columns to numeric types."""
     numeric_cols = [
         'watts', 'heartrate', 'cadence', 'smo2', 'thb', 'temp', 'torque', 
         'core_temperature', 'skin_temperature', 'velocity_smooth', 
@@ -154,8 +143,39 @@ def load_data(file) -> pd.DataFrame:
     ]
     
     for col in numeric_cols:
-        if col in df_pd.columns:
-            df_pd[col] = pd.to_numeric(df_pd[col], errors='coerce')
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors='coerce')
+    return df
+
+
+@st.cache_data
+def load_data(file) -> pd.DataFrame:
+    """Load CSV/TXT file into DataFrame with column normalization.
+    
+    Uses Polars for faster reading if available, falls back to Pandas.
+    Refactored to single responsibility steps.
+    
+    Args:
+        file: Uploaded file object
+        
+    Returns:
+        Processed DataFrame with normalized columns
+    """
+    # 1. IO -> Raw DataFrame
+    df_pd = _read_raw_file(file)
+
+    # 2. Normalization -> Standard Column Names
+    df_pd = normalize_columns_pandas(df_pd)
+    
+    # 3. Data Cleaning (HRV)
+    df_pd = _process_hrv_column(df_pd)
+
+    # 4. Structure Enforcement (Time)
+    if 'time' not in df_pd.columns:
+        df_pd['time'] = np.arange(len(df_pd)).astype(float)
+        
+    # 5. Type Conversion
+    df_pd = _convert_numeric_types(df_pd)
 
     return df_pd
 

@@ -108,20 +108,32 @@ def calculate_extended_metrics(
     elif 'hrv' in df.columns:
         metrics['avg_rmssd'] = df['hrv'].mean()
     
-    # Efficiency factor and average pulse power
+    # Efficiency factor
     metrics['ef_factor'] = ef_factor 
-    metrics['avg_pp'] = 0
     
-    if 'watts' in df.columns and 'heartrate' in df.columns:
-        mask = (df['watts'] > Config.MIN_WATTS_ACTIVE) & (df['heartrate'] > Config.MIN_HR_ACTIVE)
-        if mask.sum() > 0:
-            hr_values = df.loc[mask, 'heartrate']
-            watts_values = df.loc[mask, 'watts']
-            safe_mask = hr_values > 0
-            if safe_mask.sum() > 0:
-                metrics['avg_pp'] = (watts_values[safe_mask] / hr_values[safe_mask]).mean()
+    # Average Pulse Power
+    metrics['avg_pp'] = _calculate_average_pulse_power(df)
     
     return metrics
+
+
+def _calculate_average_pulse_power(df: pd.DataFrame) -> float:
+    """Calculate average pulse power for active zones."""
+    if 'watts' not in df.columns or 'heartrate' not in df.columns:
+        return 0.0
+        
+    mask = (df['watts'] > Config.MIN_WATTS_ACTIVE) & (df['heartrate'] > Config.MIN_HR_ACTIVE)
+    if mask.sum() == 0:
+        return 0.0
+        
+    hr_values = df.loc[mask, 'heartrate']
+    watts_values = df.loc[mask, 'watts']
+    safe_mask = hr_values > 0
+    
+    if safe_mask.sum() == 0:
+        return 0.0
+        
+    return (watts_values[safe_mask] / hr_values[safe_mask]).mean()
 
 
 def apply_smo2_smoothing(df: pd.DataFrame) -> pd.DataFrame:

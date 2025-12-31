@@ -103,6 +103,9 @@ def render_tab_content(tab_name, *args, **kwargs):
     elif tab_name == "import":
         from modules.ui.history_import_ui import render_history_import_tab
         return render_history_import_tab(*args, **kwargs)
+    elif tab_name == "heart_rate":
+        from modules.ui.heart_rate import render_hr_tab
+        return render_hr_tab(*args, **kwargs)
 
 # --- INIT ---
 ThemeManager.set_page_config()
@@ -218,12 +221,13 @@ if uploaded_file is not None:
 
     with tab_performance:
         UIComponents.show_breadcrumb("⚡ Performance")
-        t1, t2, t3, t4, t5 = st.tabs(["🔋 Power", "📊 PDC", "⏱️ Intervals", "🦵 Biomech", "📐 Model"])
+        t1, t2, t3, t4, t5, t6 = st.tabs(["🔋 Power", "📊 PDC", "⏱️ Intervals", "🦵 Biomech", "📐 Model", "❤️ HR"])
         with t1: render_tab_content("power", df_plot, df_plot_resampled, cp_input, w_prime_input)
         with t2: render_tab_content("pdc", df_plot, cp_input, w_prime_input, rider_weight, metrics.get('vo2_max_est', 0))
         with t3: render_tab_content("intervals", df_plot, df_plot_resampled, cp_input, rider_weight, rider_age, is_male)
         with t4: render_tab_content("biomech", df_plot, df_plot_resampled)
         with t5: render_tab_content("model", df_plot, cp_input, w_prime_input)
+        with t6: render_tab_content("heart_rate", df_plot)
 
     with tab_physiology:
         UIComponents.show_breadcrumb("🫀 Physiology")

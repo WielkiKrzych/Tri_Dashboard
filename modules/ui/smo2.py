@@ -2,11 +2,11 @@ import streamlit as st
 import plotly.graph_objects as go
 import pandas as pd
 from scipy import stats
-from modules.calculations.kinetics import normalize_smo2_series, detect_smo2_trend, classify_smo2_context
+from modules.calculations.kinetics import normalize_smo2_series, detect_smo2_trend, classify_smo2_context, calculate_resaturation_metrics
 
 def render_smo2_tab(target_df, training_notes, uploaded_file_name):
-    st.header("Analiza Kinetyki SmO2 (Context-Aware)")
-    st.markdown("Zaawansowana analiza biorąca pod uwagę kontekst: Moc, Kadencję i Tętno.")
+    st.header("Analiza Kinetyki SmO2 (Context & Recovery)")
+    st.markdown("Zaawansowana analiza biorąca pod uwagę kontekst wysiłku oraz kinetykę regeneracji (Resaturation).")
 
     if target_df is None or target_df.empty:
         st.error("Brak danych. Najpierw wgraj plik w sidebar.")
@@ -30,11 +30,11 @@ def render_smo2_tab(target_df, training_notes, uploaded_file_name):
     
     col_inp1, col_inp2 = st.columns(2)
     
-    # Inicjalizacja session_state dla zaznaczenia
+    # Inicjalizacja session_state
     if 'smo2_start_sec' not in st.session_state:
-        st.session_state.smo2_start_sec = 600  # 10 minut domyślnie
+        st.session_state.smo2_start_sec = 600
     if 'smo2_end_sec' not in st.session_state:
-        st.session_state.smo2_end_sec = 1200  # 20 minut domyślnie
+        st.session_state.smo2_end_sec = 1200
         
     # ===== NOTATKI SmO2 =====
     with st.expander("📝 Dodaj Notatkę do tej Analizy", expanded=False):
@@ -78,7 +78,7 @@ def render_smo2_tab(target_df, training_notes, uploaded_file_name):
     st.markdown("---")
     # ===== KONIEC NOTATEK SmO2 =====
 
-    st.info("💡 **ANALIZA SYTUACYJNA:** Zaznacz obszar na wykresie. Algorytm spróbuje odgadnąć PRZYCZYNĘ zmian SmO2 (np. niska kadencja, wzrost mocy, utrata wydajności).")
+    st.info("💡 **ANALIZA SYTUACYJNA:** Zaznacz obszar na wykresie. Algorytm wykrywa również **Regenerację (Resaturation)**.")
 
     # Użyj wartości z session_state
     startsec = st.session_state.smo2_start_sec
@@ -100,18 +100,28 @@ def render_smo2_tab(target_df, training_notes, uploaded_file_name):
 
             if not interval_data.empty:
                 avg_watts = interval_data['watts'].mean() if 'watts' in interval_data.columns else 0
-                avg_smo2 = interval_data['smo2'].mean() if 'smo2' in interval_data.columns else 0
                 avg_norm = interval_data['smo2_norm'].mean() if 'smo2_norm' in interval_data.columns else 0
                 
                 # Trend Classification & Context
+                is_recovery = False
+                resat_result = {}
+                
                 if len(interval_data) > 10 and 'smo2_norm' in interval_data.columns:
                     # 1. Detect Base SmO2 Trend
                     trend_res = detect_smo2_trend(interval_data['time'], interval_data['smo2_norm'])
                     slope = trend_res['slope']
                     trend_cat = trend_res['category']
                     
-                    # 2. Classify Context (Why?)
-                    context_res = classify_smo2_context(interval_data, trend_res)
+                    # 2. Check for Recovery Mode
+                    if "Reoxygenation" in trend_cat:
+                        is_recovery = True
+                        resat_result = calculate_resaturation_metrics(interval_data['time'], interval_data['smo2_norm'])
+                        context_res = classify_smo2_context(interval_data, trend_res) # Still get context (e.g. Recovery vs Priming)
+                        
+                    else:
+                        # 3. Classify Context (Why?) if not recovery
+                        context_res = classify_smo2_context(interval_data, trend_res)
+                    
                     cause = context_res.get('cause', 'Unknown')
                     explanation = context_res.get('explanation', '')
                     c_type = context_res.get('type', 'normal')
@@ -126,29 +136,48 @@ def render_smo2_tab(target_df, training_notes, uploaded_file_name):
 
                 st.subheader(f"Metryki: {format_time(startsec)} - {format_time(endsec)}")
                 
-                c1, c2, c3, c4 = st.columns(4)
-                c1.metric("Śr. Moc", f"{avg_watts:.0f} W")
-                c1.caption(f"Śr. Kadencja: {interval_data['cadence'].mean():.0f} rpm")
-                
-                c2.metric("Kinetic State", trend_cat, delta=f"{slope:.4f}/s")
-                
-                # Context Metric
-                if c_type == 'mechanical':
-                    c3.metric("Przyczyna (Inferred)", f"⚙️ {cause}", delta="Sprawdź Kadencję", delta_color="inverse")
-                elif c_type == 'limit':
-                    c3.metric("Przyczyna (Inferred)", f"🛑 {cause}", delta="Limit Dostaw", delta_color="inverse")
-                elif c_type == 'warning':
-                    c3.metric("Przyczyna (Inferred)", f"⚠️ {cause}", delta="FATIGUE ALERT", delta_color="inverse")
-                else:
-                    c3.metric("Przyczyna (Inferred)", f"✅ {cause}")
+                # Dynamic Metric Layout based on context
+                if is_recovery:
+                    # RECOVERY MODE UI
+                    c1, c2, c3, c4 = st.columns(4)
+                    c1.metric("Kinetic State", "RESATURATION", delta="Recovery Mode", delta_color="inverse")
                     
-                c4.metric("Rel SmO2", f"{avg_norm:.1f} %")
-
-                if explanation:
-                    if c_type in ['mechanical', 'limit', 'warning']:
-                        st.warning(f"**Wyjaśnienie Algorytmu:** {explanation}")
+                    c2.metric("T½ (Half-Recovery)", f"{resat_result.get('t_half', 0):.1f} s")
+                    
+                    tau = resat_result.get('tau_est', 0)
+                    score = resat_result.get('recovery_score', 0)
+                    c3.metric("Est. Tau", f"{tau:.1f} s", delta=f"Score: {score:.0f}/100")
+                    
+                    rate = resat_result.get('resat_rate', 0) * 100 # Convert back to %/s approx for normalized
+                    c4.metric("Resat Rate", f"{rate:.2f} %/s")
+                    
+                    st.success(f"**Analiza Regeneracji:** Szybkość odbudowy (Tau={tau:.1f}s) wskazuje na tempo resyntezy PCr.")
+                    
+                else:
+                    # STANDARD CONTEXT UI
+                    c1, c2, c3, c4 = st.columns(4)
+                    c1.metric("Śr. Moc", f"{avg_watts:.0f} W")
+                    c1.caption(f"Śr. Kadencja: {interval_data['cadence'].mean():.0f} rpm")
+                    
+                    c2.metric("Kinetic State", trend_cat, delta=f"{slope:.4f}/s")
+                    
+                    # Context Metric
+                    if c_type == 'mechanical':
+                        c3.metric("Przyczyna (Inferred)", f"⚙️ {cause}", delta="Sprawdź Kadencję", delta_color="inverse")
+                    elif c_type == 'limit':
+                        c3.metric("Przyczyna (Inferred)", f"🛑 {cause}", delta="Limit Dostaw", delta_color="inverse")
+                    elif c_type == 'warning':
+                        c3.metric("Przyczyna (Inferred)", f"⚠️ {cause}", delta="FATIGUE ALERT", delta_color="inverse")
                     else:
-                        st.info(f"**Wyjaśnienie Algorytmu:** {explanation}")
+                        c3.metric("Przyczyna (Inferred)", f"✅ {cause}")
+                        
+                    c4.metric("Rel SmO2", f"{avg_norm:.1f} %")
+
+                    if explanation:
+                        if c_type in ['mechanical', 'limit', 'warning']:
+                            st.warning(f"**Wyjaśnienie Algorytmu:** {explanation}")
+                        else:
+                            st.info(f"**Wyjaśnienie Algorytmu:** {explanation}")
 
                 fig_smo2 = go.Figure()
 
@@ -192,13 +221,13 @@ def render_smo2_tab(target_df, training_notes, uploaded_file_name):
 
                 fig_smo2.add_vrect(
                     x0=startsec, x1=endsec,
-                    fillcolor="green", opacity=0.1,
+                    fillcolor="blue" if is_recovery else "green", opacity=0.1,
                     layer="below", line_width=0,
-                    annotation_text="ANALIZA", annotation_position="top left"
+                    annotation_text="RECOVERY" if is_recovery else "LOADING", annotation_position="top left"
                 )
 
                 fig_smo2.update_layout(
-                    title="Analiza Relatywna SmO2 (Context Aware)",
+                    title="Analiza Relatywna SmO2 (Context & Recovery)",
                     xaxis_title="Czas",
                     yaxis=dict(title="Relative SmO2 (%)", range=[0, 100]),
                     yaxis2=dict(title="Power (W)", overlaying='y', side='right', showgrid=False),

@@ -5,6 +5,7 @@ Implements kinetics analysis for oxygen consumption and muscle oxygenation.
 Inspired by INSCYD O2 Deficit and academic VO2 kinetics research.
 Refactored to support Relative SmO2 analysis (normalization and trend classification).
 Includes Context-Aware Analysis (Power/HR/Cadence fusion).
+Includes Resaturation Analysis (Recovery Kinetics).
 """
 import numpy as np
 import pandas as pd
@@ -195,6 +196,73 @@ def classify_smo2_context(
                 "explanation": "Supply exceeds demand despite steady/rising load (Warm-up effect).",
                 "type": "success"
             }
+
+
+def calculate_resaturation_metrics(
+    time_series: pd.Series,
+    smo2_series: pd.Series
+) -> Dict[str, float]:
+    """
+    Calculate Resaturation (Recovery) Metrics: T1/2, Tau, Rate.
+    
+    Args:
+        time_series: Time inputs (seconds)
+        smo2_series: SmO2 values (absolute or normalized)
+        
+    Returns:
+        Dict with T_half, Tau, Resat_Rate, Score
+    """
+    if len(time_series) < 10:
+        return {}
+        
+    # Zero time
+    t = time_series.values - time_series.values[0]
+    y = smo2_series.values
+    
+    # 1. Basic Stats
+    min_val = np.min(y)
+    max_val = np.max(y)
+    range_val = max_val - min_val
+    
+    if range_val <= 0.0:
+        return {"t_half": 0, "tau": 0, "rate": 0, "score": 0}
+        
+    # 2. T1/2 (Time to 50% recovery)
+    target_50 = min_val + (range_val * 0.5)
+    
+    # Find first index where y >= target_50
+    # Assuming generally increasing for resaturation
+    idx_50 = np.argmax(y >= target_50) 
+    if y[idx_50] < target_50: # If never reached (argmax returns 0 if all False)
+         # Check if 0 is actually >= target (unlikely for min) or if max < target
+         if max_val < target_50:
+             t_half = t[-1] # Never reached, assume > window
+         else:
+             t_half = t[idx_50]
+    else:
+        t_half = t[idx_50]
+        
+    # 3. Resaturation Rate (Slope of first 30s or 50% of window)
+    window_limit_idx = np.searchsorted(t, 30.0) # Look at first 30s
+    if window_limit_idx < 5: 
+        window_limit_idx = len(t) # If window short, use all
+        
+    slope, _, _, _, _ = stats.linregress(t[:window_limit_idx], y[:window_limit_idx])
+    
+    # 4. Tau Interpretation (Score)
+    # Estimate Tau ~ T_half / ln(2) approx for mono-exponential
+    tau_est = t_half / 0.693 if t_half > 0 else 0
+    
+    # Simple score: Tau < 30s = 100, Tau > 90s = 0
+    score = max(0, min(100, 100 - (tau_est - 30) * (100/60)))
+    if tau_est < 30: score = 100
+    
+    return {
+        "t_half": float(t_half),
+        "tau_est": float(tau_est),
+        "resat_rate": float(slope),
+        "recovery_score": float(score)
+    }
 
 
 def _mono_exponential(t: np.ndarray, a: float, tau: float, td: float) -> np.ndarray:

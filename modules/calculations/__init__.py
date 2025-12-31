@@ -93,6 +93,7 @@ from .kinetics import (
     normalize_smo2_series,
     detect_smo2_trend,
     classify_smo2_context,
+    calculate_resaturation_metrics,
 )
 
 from .thresholds import (
@@ -183,6 +184,7 @@ __all__ = [
     'normalize_smo2_series',
     'detect_smo2_trend',
     'classify_smo2_context',
+    'calculate_resaturation_metrics',
     # Thresholds (MCP)
     'detect_vt_transition_zone',
     'analyze_step_test',

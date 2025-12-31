@@ -212,8 +212,8 @@ if uploaded_file is not None:
     m3.metric("Praca [kJ]", f"{df_plot['watts'].sum()/1000:.0f}")
 
     # Layout Tabs
-    tab_overview, tab_performance, tab_physiology, tab_intelligence, tab_analytics = st.tabs([
-        "📊 Overview", "⚡ Performance", "🫀 Physiology", "🧠 Intelligence", "📈 Analytics"
+    tab_overview, tab_performance, tab_physiology, tab_intelligence = st.tabs([
+        "📊 Overview", "⚡ Performance", "🫀 Physiology", "🧠 Intelligence"
     ])
 
     with tab_overview:
@@ -253,12 +253,7 @@ if uploaded_file is not None:
              max_hr = int(208 - 0.7 * rider_age) if rider_age else 185
              render_tab_content("thresholds", df_plot, training_notes, uploaded_file.name, cp_input, cp_input, max_hr)
 
-    with tab_analytics:
-        UIComponents.show_breadcrumb("📈 Analytics")
-        t1, t2, t3 = st.tabs(["📊 History", "👥 Community", "📂 Import"])
-        with t1: render_tab_content("history")
-        with t2: render_tab_content("community", cp_input, rider_weight, metrics.get('vo2_max_est', 0), rider_age, 'M' if is_male else 'F')
-        with t3: render_tab_content("import", cp_input)
+
 
     # DOCX / PNG Export
     st.sidebar.markdown("---")

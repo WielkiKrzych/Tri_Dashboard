@@ -365,7 +365,7 @@ def detect_vt_from_steps(
     power_column: str = 'watts',
     hr_column: str = 'hr',
     time_column: str = 'time',
-    vt1_slope_threshold: float = 0.15,  # VE slope threshold for VT1
+    vt1_slope_threshold: float = 0.13,  # VE slope threshold for VT1
     vt2_slope_threshold: float = 0.10   # VE slope threshold for VT2 (after VT1)
 ) -> StepVTResult:
     """
@@ -809,7 +809,7 @@ def analyze_step_test(
                     power_column=power_column,
                     hr_column=hr_column,
                     time_column=time_column,
-                    vt1_slope_threshold=0.15,
+                    vt1_slope_threshold=0.13,
                     vt2_slope_threshold=0.10
                 )
                 

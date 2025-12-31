@@ -43,12 +43,25 @@ def render_hr_tab(df):
     
     st.markdown("#### Wybierz zakres analizy")
     
-    # Dwustronny slider
-    range_sel = st.slider("Zakres czasu (s)", 
-                          min_value=min_time, max_value=max_time, 
-                          value=(min_time, max_time))
-    
-    start_s, end_s = range_sel
+    # Wybór trybu
+    input_mode = st.radio("Metoda wyboru zakresu:", ["Suwak", "Ręcznie (wpisz czas)"], horizontal=True)
+
+    if input_mode.startswith("Suwak"):
+        # Dwustronny slider
+        range_sel = st.slider("Zakres czasu (s)", 
+                              min_value=min_time, max_value=max_time, 
+                              value=(min_time, max_time))
+        start_s, end_s = range_sel
+    else:
+        # Ręczne wpisywanie
+        c1, c2 = st.columns(2)
+        start_s = c1.number_input("Start (s)", min_value=min_time, max_value=max_time, value=min_time)
+        end_s = c2.number_input("Koniec (s)", min_value=min_time, max_value=max_time, value=max_time)
+        
+        if start_s >= end_s:
+            st.error("Czas końcowy musi być większy niż startowy.")
+            # Fallback to avoid empty/error logic
+            start_s, end_s = min_time, max_time
     
     # Filtrowanie
     mask = (df_chart['time'] >= start_s) & (df_chart['time'] <= end_s)

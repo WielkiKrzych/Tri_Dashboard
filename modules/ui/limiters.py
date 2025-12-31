@@ -7,7 +7,18 @@ def render_limiters_tab(df_plot, cp_input, vt2_vent):
     st.markdown("Sprawdzamy, który układ (Serce, Płuca, Mięśnie) był 'wąskim gardłem' podczas najcięższych momentów treningu.")
 
     # Sprawdzamy dostępność danych
-    has_hr = 'heartrate' in df_plot.columns
+    # Normalize for safety
+    df_plot.columns = df_plot.columns.str.lower().str.strip()
+    
+    # Handle HR aliases if needed
+    if 'hr' not in df_plot.columns: # and 'heartrate' might be there
+        for alias in ['heartrate', 'heart_rate', 'bpm']:
+            if alias in df_plot.columns:
+                df_plot.rename(columns={alias: 'hr'}, inplace=True)
+                break
+    
+    # Check checks
+    has_hr = 'hr' in df_plot.columns
     has_ve = any(c in df_plot.columns for c in ['tymeventilation', 've', 'ventilation'])
     has_smo2 = 'smo2' in df_plot.columns
     has_watts = 'watts' in df_plot.columns
@@ -43,8 +54,8 @@ def render_limiters_tab(df_plot, cp_input, vt2_vent):
             # 2. Obliczamy % wykorzystania potencjału (Estymacja Maxów)
             
             # HR (Centralny)
-            peak_hr_avg = df_peak['heartrate'].mean() if has_hr else 0
-            max_hr_user = df_plot['heartrate'].max() 
+            peak_hr_avg = df_peak['hr'].mean() if has_hr else 0
+            max_hr_user = df_plot['hr'].max() 
             pct_hr = (peak_hr_avg / max_hr_user * 100) if max_hr_user > 0 else 0
             
             # VE (Oddechowy)

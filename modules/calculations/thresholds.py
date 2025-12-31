@@ -426,6 +426,8 @@ def detect_vt_from_steps(
         
         step_info = {
             'step_number': step.step_number,
+            'start_time': step.start_time,
+            'end_time': step.end_time,
             'avg_power': round(avg_power, 0),
             'avg_hr': round(avg_hr, 0) if avg_hr else None,
             'avg_ve': round(avg_ve, 1),

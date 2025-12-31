@@ -215,29 +215,42 @@ def render_vent_thresholds_tab(target_df, training_notes, uploaded_file_name, cp
             hovertemplate="<b>Czas:</b> %{customdata}<br><b>Moc:</b> %{y:.0f} W<extra></extra>"
         ))
 
-    # VT1 Horizontal Line (Orange)
-    if result.vt1_watts:
-        hr_text = f" @ {int(result.vt1_hr)} HR" if result.vt1_hr else ""
-        fig_thresh.add_hline(
-            y=result.vt1_watts,
-            line=dict(color="#ffa15a", width=3, dash="solid"),
-            yref="y2",
-            annotation_text=f"VT1 {int(result.vt1_watts)}W{hr_text}",
-            annotation_position="right",
-            annotation_font=dict(color="#ffa15a", size=14)
-        )
-    
-    # VT2 Horizontal Line (Red)
-    if result.vt2_watts:
-        hr_text = f" @ {int(result.vt2_hr)} HR" if result.vt2_hr else ""
-        fig_thresh.add_hline(
-            y=result.vt2_watts,
-            line=dict(color="#ef553b", width=3, dash="solid"),
-            yref="y2",
-            annotation_text=f"VT2 {int(result.vt2_watts)}W{hr_text}",
-            annotation_position="right",
-            annotation_font=dict(color="#ef553b", size=14)
-        )
+    # HR Trace (Red, Dotted, Secondary Axis)
+    if 'hr' in target_df.columns:
+        fig_thresh.add_trace(go.Scatter(
+            x=target_df['time'], y=target_df['hr'],
+            customdata=target_df['time_str'],
+            mode='lines', name='Heart Rate',
+            line=dict(color='#d62728', width=1, dash='dot'),
+            yaxis='y2', opacity=0.5,
+            hovertemplate="<b>Czas:</b> %{customdata}<br><b>HR:</b> %{y:.0f} bpm<extra></extra>"
+        ))
+
+    # VT Markers based on identified steps
+    if result.step_ve_analysis:
+        for step in result.step_ve_analysis:
+            # Check if this step is VT1 or VT2
+            is_vt1 = step.get('is_vt1', False)
+            is_vt2 = step.get('is_vt2', False)
+            
+            if is_vt1 or is_vt2:
+                # Get step info
+                power = step.get('avg_power', 0)
+                hr = step.get('avg_hr', 0)
+                end_time = step.get('end_time', 0)  # Use end of step for marker
+                
+                label = "VT1" if is_vt1 else "VT2"
+                color = "#ffa15a" if is_vt1 else "#ef553b"
+                
+                # Add Vertical Line Marker at End of Step
+                fig_thresh.add_vline(
+                    x=end_time,
+                    line=dict(color=color, width=2, dash="dash"),
+                    annotation_text=f"<b>{label}</b><br>{int(power)}W @ {int(hr)} bpm",
+                    annotation_position="top left",
+                    annotation_font=dict(color=color, size=12),
+                    layer="above"
+                )
     
     # Hysteresis Zones (Dashed, if available from legacy detection)
     if hysteresis:

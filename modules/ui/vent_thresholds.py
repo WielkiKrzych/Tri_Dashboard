@@ -139,6 +139,8 @@ def render_vent_thresholds_tab(target_df, training_notes, uploaded_file_name, cp
                 <h3 style="margin:0; color: #ffa15a;">VT1 (Próg Tlenowy)</h3>
                 <h1 style="margin:5px 0; font-size:2.5em;">{int(result.vt1_watts)} W</h1>
                 {f'<p style="margin:0; color:#aaa;"><b>HR:</b> {int(result.vt1_hr)} bpm</p>' if result.vt1_hr else ''}
+                {f'<p style="margin:0; color:#aaa;"><b>VE:</b> {result.vt1_ve} L/min</p>' if result.vt1_ve else ''}
+                {f'<p style="margin:0; color:#aaa;"><b>Oddechy:</b> {int(result.vt1_br)} BR/min</p>' if result.vt1_br else ''}
             </div>
             """, unsafe_allow_html=True)
             
@@ -147,7 +149,7 @@ def render_vent_thresholds_tab(target_df, training_notes, uploaded_file_name, cp
                 vt1_pct = (result.vt1_watts / cp_input) * 100
                 st.caption(f"~{vt1_pct:.0f}% CP")
         else:
-            st.info("VT1: Nie wykryto (brak slope >= 0.13)")
+            st.info("VT1: Nie wykryto (brak slope >= 0.05)")
 
     # --- VT2 CARD ---
     with col_z2:
@@ -157,6 +159,8 @@ def render_vent_thresholds_tab(target_df, training_notes, uploaded_file_name, cp
                 <h3 style="margin:0; color: #ef553b;">VT2 (Próg Beztlenowy)</h3>
                 <h1 style="margin:5px 0; font-size:2.5em;">{int(result.vt2_watts)} W</h1>
                 {f'<p style="margin:0; color:#aaa;"><b>HR:</b> {int(result.vt2_hr)} bpm</p>' if result.vt2_hr else ''}
+                {f'<p style="margin:0; color:#aaa;"><b>VE:</b> {result.vt2_ve} L/min</p>' if result.vt2_ve else ''}
+                 {f'<p style="margin:0; color:#aaa;"><b>Oddechy:</b> {int(result.vt2_br)} BR/min</p>' if result.vt2_br else ''}
             </div>
             """, unsafe_allow_html=True)
             
@@ -165,7 +169,7 @@ def render_vent_thresholds_tab(target_df, training_notes, uploaded_file_name, cp
                 vt2_pct = (result.vt2_watts / cp_input) * 100
                 st.caption(f"~{vt2_pct:.0f}% CP")
         else:
-            st.info("VT2: Nie wykryto (brak slope >= 0.10 po VT1)")
+            st.info("VT2: Nie wykryto (brak slope >= 0.05 po VT1)")
 
     st.markdown("---")
 

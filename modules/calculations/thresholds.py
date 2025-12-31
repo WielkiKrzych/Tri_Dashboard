@@ -353,11 +353,15 @@ class StepVTResult:
     """Result of step-by-step VT detection - returns exact values, not ranges."""
     vt1_watts: Optional[float] = None
     vt1_hr: Optional[float] = None
+    vt1_ve: Optional[float] = None  # New: Ventilation at threshold
+    vt1_br: Optional[float] = None  # New: Breath Rate at threshold
     vt1_step_number: Optional[int] = None
     vt1_ve_slope: Optional[float] = None
     
     vt2_watts: Optional[float] = None
     vt2_hr: Optional[float] = None
+    vt2_ve: Optional[float] = None  # New
+    vt2_br: Optional[float] = None  # New
     vt2_step_number: Optional[int] = None
     vt2_ve_slope: Optional[float] = None
     
@@ -365,178 +369,205 @@ class StepVTResult:
     notes: List[str] = field(default_factory=list)
 
 
+def calculate_slope(time_series: pd.Series, value_series: pd.Series) -> Tuple[float, float, float]:
+    """
+    Calculate linear regression slope and standard error.
+    """
+    if len(time_series) < 2:
+        return 0.0, 0.0, 0.0
+    
+    mask = ~(time_series.isna() | value_series.isna())
+    if mask.sum() < 2:
+        return 0.0, 0.0, 0.0
+    
+    slope, intercept, _, _, std_err = stats.linregress(
+        time_series[mask], 
+        value_series[mask]
+    )
+    return slope, intercept, std_err
+
+
 def detect_vt_from_steps(
     df: pd.DataFrame,
-    step_range: StepTestRange,
+    step_range: 'StepTestRange',
     ve_column: str = 'tymeventilation',
     power_column: str = 'watts',
     hr_column: str = 'hr',
     time_column: str = 'time',
-    vt1_slope_threshold: float = 0.13,  # VE slope threshold for VT1
-    vt2_slope_threshold: float = 0.10   # VE slope threshold for VT2 (after VT1)
+    vt1_slope_threshold: float = 0.05,  # User requested > 0.05
+    vt2_slope_threshold: float = 0.05   # Re-evaluation uses same criteria
 ) -> StepVTResult:
     """
-    Detect VT1 and VT2 by analyzing VE slope on each detected step.
-    
-    Algorithm:
-    1. SKIP first step, start searching from step 2
-    2. For each step, calculate VE slope (VE change per second)
-    3. When slope first exceeds VT1 threshold (0.15) -> VT1 found
-    4. Continue searching, when slope exceeds VT2 threshold (0.12) -> VT2 found
-    5. If not found in steps, extend to VE peak and search there
-    6. Return exact power and HR values at those steps
-    
-    Args:
-        df: Full dataframe with VE data
-        step_range: Detected steps from detect_step_test_range
-        ve_column: Column name for ventilation
-        vt1_slope_threshold: Slope threshold for VT1 (default 0.15 L/min/s)
-        vt2_slope_threshold: Slope threshold for VT2 (default 0.12 L/min/s)
-    
-    Returns:
-        StepVTResult with exact VT1 and VT2 watt/HR values
+    Detect VT1 and VT2 using Recursive Window Scan algorithm:
+    1. Divide each step into 2 halves (Stages).
+    2. Search for slope > 0.05 using increasing window sizes (1 stage, 2 stages, etc).
+    3. If found, mark VT1, then restart search for VT2.
     """
     result = StepVTResult()
     
-    if not step_range or not step_range.is_valid or len(step_range.steps) < 3:
-        result.notes.append("Insufficient steps for VT detection (need at least 3)")
+    if not step_range or not step_range.is_valid or len(step_range.steps) < 2:
+        result.notes.append("Insufficient steps for VT detection")
         return result
     
     if ve_column not in df.columns:
         result.notes.append(f"Missing VE column: {ve_column}")
         return result
-    
+        
     has_hr = hr_column in df.columns
+    # Try to find Breath Rate column
+    br_column = None
+    for cand in ['tymebreathrate', 'br', 'rr', 'breath_rate']:
+        if cand in df.columns:
+            br_column = cand
+            break
+
+    # 1. Prepare Stages (Half-Steps)
+    # Filter out first step (User: "z wyłączeniem pierwszego")
+    stages = []
     
-    # Analyze each step (SKIP FIRST STEP - start from index 1)
-    step_analysis = []
-    vt1_found = False
-    
-    for step in step_range.steps[1:]:  # Skip first step
-        # Get data for this step
-        mask = (df[time_column] >= step.start_time) & (df[time_column] < step.end_time)
-        step_data = df[mask]
+    for step in step_range.steps[1:]: # Skip Step 1 entirely
+        step_mask = (df[time_column] >= step.start_time) & (df[time_column] < step.end_time)
+        full_step_data = df[step_mask]
         
-        if len(step_data) < 10:
-            continue
-        
-        # Calculate VE slope for this step
-        ve_slope, ve_intercept, ve_std_err = calculate_slope(
-            step_data[time_column], 
-            step_data[ve_column]
-        )
-        
-        # Get average values for this step
-        avg_power = step_data[power_column].mean()
-        avg_hr = step_data[hr_column].mean() if has_hr else None
-        avg_ve = step_data[ve_column].mean()
-        
-        step_info = {
-            'step_number': step.step_number,
-            'start_time': step.start_time,
-            'end_time': step.end_time,
-            'avg_power': round(avg_power, 0),
-            'avg_hr': round(avg_hr, 0) if avg_hr else None,
-            'avg_ve': round(avg_ve, 1),
-            've_slope': round(ve_slope, 4),
-            'is_vt1': False,
-            'is_vt2': False
-        }
-        
-        # Check for VT1 (first time slope exceeds threshold)
-        if not vt1_found and ve_slope >= vt1_slope_threshold:
-            vt1_found = True
-            result.vt1_watts = round(avg_power, 0)
-            result.vt1_hr = round(avg_hr, 0) if avg_hr else None
-            result.vt1_step_number = step.step_number
-            result.vt1_ve_slope = round(ve_slope, 4)
-            step_info['is_vt1'] = True
-            result.notes.append(f"VT1 @ Step {step.step_number}: {avg_power:.0f}W (slope={ve_slope:.4f})")
-        
-        # Check for VT2 (after VT1, when slope exceeds threshold)
-        elif vt1_found and result.vt2_watts is None and ve_slope >= vt2_slope_threshold:
-            result.vt2_watts = round(avg_power, 0)
-            result.vt2_hr = round(avg_hr, 0) if avg_hr else None
-            result.vt2_step_number = step.step_number
-            result.vt2_ve_slope = round(ve_slope, 4)
-            step_info['is_vt2'] = True
-            result.notes.append(f"VT2 @ Step {step.step_number}: {avg_power:.0f}W (slope={ve_slope:.4f})")
-        
-        step_analysis.append(step_info)
-    
-    result.step_analysis = step_analysis
-    
-    # If VT1 or VT2 not found in steps, extend search to VE peak
-    if not vt1_found or result.vt2_watts is None:
-        # Find VE peak in the test range
-        test_mask = (df[time_column] >= step_range.start_time) & (df[time_column] <= step_range.end_time)
-        test_data = df[test_mask].copy()
-        
-        if len(test_data) > 30:
-            # Smooth VE to find peak
-            ve_smooth = test_data[ve_column].rolling(window=30, center=True, min_periods=10).mean()
+        if len(full_step_data) < 4: continue # Too short
             
-            if not ve_smooth.dropna().empty:
-                peak_idx = ve_smooth.idxmax()
-                peak_time = test_data.loc[peak_idx, time_column]
+        mid_time = step.start_time + (step.end_time - step.start_time) / 2
+        
+        # Split into 2 halves
+        halves = [
+            (full_step_data[full_step_data[time_column] < mid_time], 1),
+            (full_step_data[full_step_data[time_column] >= mid_time], 2)
+        ]
+        
+        for part_data, part_num in halves:
+            if len(part_data) < 2: continue
+            
+            avg_power = part_data[power_column].mean()
+            avg_hr = part_data[hr_column].mean() if has_hr else None
+            avg_ve = part_data[ve_column].mean()
+            avg_br = part_data[br_column].mean() if br_column else None
+            
+            stages.append({
+                'data': part_data,
+                'avg_power': avg_power,
+                'avg_hr': avg_hr,
+                'avg_ve': avg_ve,
+                'avg_br': avg_br,
+                'step_number': step.step_number,
+                'sub_step': part_num,
+                'start_time': part_data[time_column].min(),
+                'end_time': part_data[time_column].max()
+            })
+
+    if not stages:
+        result.notes.append("No valid stages generated for analysis")
+        return result
+
+    # 2. Recursive Search Function
+    def search_for_threshold(start_idx, threshold_value):
+        """
+        Searches for a block of stages where slope > threshold_value.
+        Tries joining 2 stages, then 3, etc.
+        Returns (found_index, slope, details_dict) or (None, None, None)
+        """
+        n_stages = len(stages)
+        if start_idx >= n_stages:
+            return None, None, None
+            
+        # Iterate through detected stages
+        for i in range(start_idx, n_stages):
+            # Try increasing window sizes
+            # Max window size? Let's say up to 4 stages (2 full steps) to keep it local
+            max_window = min(6, n_stages - i) 
+            
+            for w in range(1, max_window + 1):
+                # combine data from stages i to i+w
+                combined_df = pd.concat([s['data'] for s in stages[i : i+w]])
                 
-                # Look for sharp drop after peak (drop > 10% in 30 seconds)
-                post_peak_mask = test_data[time_column] > peak_time
-                if post_peak_mask.any():
-                    post_peak = ve_smooth[post_peak_mask]
-                    peak_ve = ve_smooth[peak_idx]
-                    
-                    # Find where VE drops significantly
-                    for idx in post_peak.dropna().index:
-                        if post_peak[idx] < peak_ve * 0.85:  # 15% drop
-                            extended_end_time = test_data.loc[idx, time_column]
-                            break
-                    else:
-                        extended_end_time = peak_time
-                else:
-                    extended_end_time = peak_time
+                if len(combined_df) < 5: continue
                 
-                # Analyze extended period (from last step end to VE peak)
-                last_step_end = step_range.steps[-1].end_time
+                slope, _, _ = calculate_slope(combined_df[time_column], combined_df[ve_column])
                 
-                if extended_end_time > last_step_end:
-                    extended_mask = (df[time_column] >= last_step_end) & (df[time_column] <= extended_end_time)
-                    extended_data = df[extended_mask]
-                    
-                    if len(extended_data) > 20:
-                        result.notes.append(f"Extending search to VE peak ({extended_end_time - last_step_end:.0f}s after last step)")
-                        
-                        # Calculate slope in extended period
-                        ve_slope_ext, _, _ = calculate_slope(
-                            extended_data[time_column], 
-                            extended_data[ve_column]
-                        )
-                        
-                        avg_power_ext = extended_data[power_column].mean()
-                        avg_hr_ext = extended_data[hr_column].mean() if has_hr else None
-                        
-                        # Check for VT1 in extended period
-                        if not vt1_found and ve_slope_ext >= vt1_slope_threshold:
-                            vt1_found = True
-                            result.vt1_watts = round(avg_power_ext, 0)
-                            result.vt1_hr = round(avg_hr_ext, 0) if avg_hr_ext else None
-                            result.vt1_step_number = -1  # Extended period
-                            result.vt1_ve_slope = round(ve_slope_ext, 4)
-                            result.notes.append(f"VT1 @ Extended: {avg_power_ext:.0f}W (slope={ve_slope_ext:.4f})")
-                        
-                        # Check for VT2 in extended period
-                        if vt1_found and result.vt2_watts is None and ve_slope_ext >= vt2_slope_threshold:
-                            result.vt2_watts = round(avg_power_ext, 0)
-                            result.vt2_hr = round(avg_hr_ext, 0) if avg_hr_ext else None
-                            result.vt2_step_number = -1  # Extended period
-                            result.vt2_ve_slope = round(ve_slope_ext, 4)
-                            result.notes.append(f"VT2 @ Extended: {avg_power_ext:.0f}W (slope={ve_slope_ext:.4f})")
+                if slope > threshold_value:
+                    # Found it!
+                    # Return the LAST stage of this window as the threshold point
+                    # or the AVERAGE of the window? Usually threshold is "at this point it breaks"
+                    # User: "podziel... szukaj w każdym etapie... jeśli nie znajdziesz połącz".
+                    # This implies the *whole block* has the trend. 
+                    # We will attribute the threshold metrics to the *end* of this block (or average of block).
+                    # Let's use the LAST stage in the block for Power/HR reference (conservative) 
+                    # or the FIRST stage (sensitive)?
+                    # "Trend > 0.05". If the trend exists in the block [A, B], the rise is happening there.
+                    # We usually pick the stage where the high slope *starts* or is confirmed.
+                    # Let's pick the last stage of the window as the "confirmed" point.
+                    target_stage = stages[i + w - 1] 
+                    return i + w, slope, target_stage # Return next search start index
+        
+        return None, None, None
+
+    # 3. Find VT1
+    vt1_next_idx, vt1_slope, vt1_stage = search_for_threshold(0, vt1_slope_threshold)
     
-    # Add summary notes
-    if not vt1_found:
-        result.notes.append(f"VT1 not found (no slope >= {vt1_slope_threshold})")
-    if vt1_found and result.vt2_watts is None:
-        result.notes.append(f"VT2 not found (no slope >= {vt2_slope_threshold} after VT1)")
+    if vt1_stage:
+        result.vt1_watts = round(vt1_stage['avg_power'], 0)
+        result.vt1_hr = round(vt1_stage['avg_hr'], 0) if vt1_stage['avg_hr'] else None
+        result.vt1_ve = round(vt1_stage['avg_ve'], 1)
+        result.vt1_br = round(vt1_stage['avg_br'], 0) if vt1_stage['avg_br'] else None
+        result.vt1_ve_slope = round(vt1_slope, 4)
+        result.vt1_step_number = vt1_stage['step_number']
+        
+        result.notes.append(f"VT1 found at Step {vt1_stage['step_number']}.{vt1_stage['sub_step']} (Slope: {vt1_slope:.4f})")
+        
+        # 4. Find VT2 (Start searching AFTER VT1)
+        # Note: VT2 usually requires a *steeper* slope or a second breakaway.
+        # However, user instruction says: "gdy znajdziesz VT1 zacznij szukać zależności od nowa dla poszukiwań VT2"
+        # And "Trend VE > 0.05". It implies looking for *another* block with this trend?
+        # If the slope stays > 0.05, we might just find the immediate next block.
+        # Usually VT2 is > 0.15 or similar. 
+        # But I must follow "start searching anew". 
+        # I will enforce a small gap or ensure we are looking for a *new* rise.
+        # Actually, if the slope continues to be high, it might just trigger immediately.
+        # Let's trust the user algo: Search again with same criteria from next point.
+        # To avoid re-detecting the same "hill", maybe we search for a HIGHER trend? 
+        # Or just the next occurrence? 
+        # "kontynuuj tak dopóki nie znajdziesz VT1... zacznij szukać zależności od nowa dla VT2"
+        # This implies the same dependency (slope > 0.05).
+        # Realistically, for VT2 we often look for slope > 0.10 or RCP.
+        # I will stick to the user's explicit request (same check) but I will add 
+        # a "buffer" or expect it to be distinct? 
+        # No, I will just continue the search from `vt1_next_idx`.
+        
+        vt2_next_idx, vt2_slope, vt2_stage = search_for_threshold(vt1_next_idx, vt1_slope_threshold) # Same 0.05
+        
+        if vt2_stage:
+             # Basic sanity check: VT2 power should be > VT1 power
+             if vt2_stage['avg_power'] > result.vt1_watts:
+                result.vt2_watts = round(vt2_stage['avg_power'], 0)
+                result.vt2_hr = round(vt2_stage['avg_hr'], 0) if vt2_stage['avg_hr'] else None
+                result.vt2_ve = round(vt2_stage['avg_ve'], 1)
+                result.vt2_br = round(vt2_stage['avg_br'], 0) if vt2_stage['avg_br'] else None
+                result.vt2_ve_slope = round(vt2_slope, 4)
+                result.vt2_step_number = vt2_stage['step_number']
+                result.notes.append(f"VT2 found at Step {vt2_stage['step_number']}.{vt2_stage['sub_step']} (Slope: {vt2_slope:.4f})")
+             else:
+                result.notes.append(f"Ignored VT2 candidate at {vt2_stage['avg_power']}W (<= VT1)")
+        else:
+            result.notes.append("VT2 not found (no subsequent slope > 0.05)")
+            
+    else:
+        result.notes.append("VT1 not found (no slope > 0.05)")
+
+    # Fill step_analysis for UI debug
+    result.step_analysis = [
+        {
+            'step_number': s['step_number'], 
+            'sub_step': s['sub_step'],
+            'avg_power': s['avg_power'],
+            'avg_ve': s['avg_ve'],
+            'avg_br': s['avg_br']
+        }
+        for s in stages
+    ]
     
     return result
 

@@ -6,12 +6,13 @@ Inspired by INSCYD O2 Deficit and academic VO2 kinetics research.
 Refactored to support Relative SmO2 analysis (normalization and trend classification).
 Includes Context-Aware Analysis (Power/HR/Cadence fusion).
 Includes Resaturation Analysis (Recovery Kinetics).
+Includes Cross-Correlation Analysis (Signal Lag).
 """
 import numpy as np
 import pandas as pd
-from typing import Optional, Tuple, Dict
+from typing import Optional, Tuple, Dict, List
 from scipy.optimize import curve_fit
-from scipy import stats
+from scipy import stats, signal
 
 
 def normalize_smo2_series(series: pd.Series) -> pd.Series:
@@ -263,6 +264,94 @@ def calculate_resaturation_metrics(
         "resat_rate": float(slope),
         "recovery_score": float(score)
     }
+
+
+def calculate_signal_lag(
+    reference_series: pd.Series, 
+    target_series: pd.Series, 
+    max_lag: int = 60
+) -> float:
+    """
+    Calculate the cross-correlation lag between two signals.
+    Determine how much 'target' lags behind 'reference'.
+    
+    Args:
+        reference_series: The leading signal (usually Power)
+        target_series: The following signal (HR, SmO2)
+        max_lag: Maximum expected lag in seconds to search
+        
+    Returns:
+        Lag in seconds. Positive means Target LAGS Reference.
+    """
+    if len(reference_series) != len(target_series):
+        # Must be same length
+        min_len = min(len(reference_series), len(target_series))
+        reference_series = reference_series.iloc[:min_len]
+        target_series = target_series.iloc[:min_len]
+        
+    if len(reference_series) < max_lag * 2:
+        return 0.0 # Too short for meaningful correlation
+
+    # Normalize signals (Z-score) to focus on shape not magnitude
+    ref = (reference_series - reference_series.mean()) / (reference_series.std() + 1e-9)
+    tgt = (target_series - target_series.mean()) / (target_series.std() + 1e-9)
+    
+    # Cross-correlate
+    # mode='full' returns correlation at all lags
+    corr = signal.correlate(tgt, ref, mode='full')
+    lags = signal.correlation_lags(len(tgt), len(ref), mode='full')
+    
+    # Find max correlation within valid window (-max_lag to +max_lag)
+    mask = (lags >= -max_lag) & (lags <= max_lag)
+    
+    if not np.any(mask):
+        return 0.0
+        
+    valid_lags = lags[mask]
+    valid_corr = corr[mask]
+    
+    # Argmax
+    peak_idx = np.argmax(valid_corr)
+    best_lag = valid_lags[peak_idx]
+    
+    return float(best_lag)
+
+def analyze_temporal_sequence(df_window: pd.DataFrame) -> Dict[str, float]:
+    """
+    Analyze time lags for HR and SmO2 relative to Power.
+    Builds a picture of the response sequence.
+    
+    Args:
+        df_window: DataFrame with 'watts', 'hr', 'smo2' (or 'smo2_norm')
+        
+    Returns:
+        Dict with lags for HR, SmO2, etc.
+    """
+    results = {}
+    
+    if 'watts' not in df_window.columns:
+        return results
+        
+    # Reference
+    watts = df_window['watts']
+    
+    # Check HR Lag
+    if 'hr' in df_window.columns:
+        lag_hr = calculate_signal_lag(watts, df_window['hr'], max_lag=90)
+        results['hr_lag'] = lag_hr
+        
+    # Check SmO2 Lag (Note: SmO2 often INVERSELY correlates with Power increase)
+    # We should correlate Power with -SmO2 if we want positive peak for deoxygenation?
+    # Or just use raw and expect negative correlation peak?
+    # Standard approach: Correlation of Power and SmO2 usually yields a negative peak.
+    # To find lag, we multiply SmO2 by -1 (since power UP = SmO2 DOWN)
+    if 'smo2' in df_window.columns:
+        # Invert SmO2 for correlation with Power 
+        # (Assuming Deoxygenation is the response to Load)
+        lag_smo2 = calculate_signal_lag(watts, -df_window['smo2'], max_lag=60)
+        results['smo2_lag'] = lag_smo2
+        
+    return results
 
 
 def _mono_exponential(t: np.ndarray, a: float, tau: float, td: float) -> np.ndarray:

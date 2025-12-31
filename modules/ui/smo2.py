@@ -2,11 +2,17 @@ import streamlit as st
 import plotly.graph_objects as go
 import pandas as pd
 from scipy import stats
-from modules.calculations.kinetics import normalize_smo2_series, detect_smo2_trend, classify_smo2_context, calculate_resaturation_metrics
+from modules.calculations.kinetics import (
+    normalize_smo2_series, 
+    detect_smo2_trend, 
+    classify_smo2_context, 
+    calculate_resaturation_metrics,
+    analyze_temporal_sequence
+)
 
 def render_smo2_tab(target_df, training_notes, uploaded_file_name):
-    st.header("Analiza Kinetyki SmO2 (Context & Recovery)")
-    st.markdown("Zaawansowana analiza biorąca pod uwagę kontekst wysiłku oraz kinetykę regeneracji (Resaturation).")
+    st.header("Analiza Kinetyki SmO2 (Context & Lag)")
+    st.markdown("Zaawansowana analiza biorąca pod uwagę kontekst wysiłku, kinetykę regeneracji oraz **opóźnienia sygnałów**.")
 
     if target_df is None or target_df.empty:
         st.error("Brak danych. Najpierw wgraj plik w sidebar.")
@@ -78,7 +84,7 @@ def render_smo2_tab(target_df, training_notes, uploaded_file_name):
     st.markdown("---")
     # ===== KONIEC NOTATEK SmO2 =====
 
-    st.info("💡 **ANALIZA SYTUACYJNA:** Zaznacz obszar na wykresie. Algorytm wykrywa również **Regenerację (Resaturation)**.")
+    st.info("💡 **ANALIZA SYTUACYJNA:** Zaznacz obszar na wykresie. Algorytm wykrywa również **Regenerację** i **Opóźnienia**.")
 
     # Użyj wartości z session_state
     startsec = st.session_state.smo2_start_sec
@@ -105,8 +111,9 @@ def render_smo2_tab(target_df, training_notes, uploaded_file_name):
                 # Trend Classification & Context
                 is_recovery = False
                 resat_result = {}
+                lag_results = {}
                 
-                if len(interval_data) > 10 and 'smo2_norm' in interval_data.columns:
+                if len(interval_data) > 30 and 'smo2_norm' in interval_data.columns:
                     # 1. Detect Base SmO2 Trend
                     trend_res = detect_smo2_trend(interval_data['time'], interval_data['smo2_norm'])
                     slope = trend_res['slope']
@@ -116,8 +123,7 @@ def render_smo2_tab(target_df, training_notes, uploaded_file_name):
                     if "Reoxygenation" in trend_cat:
                         is_recovery = True
                         resat_result = calculate_resaturation_metrics(interval_data['time'], interval_data['smo2_norm'])
-                        context_res = classify_smo2_context(interval_data, trend_res) # Still get context (e.g. Recovery vs Priming)
-                        
+                        context_res = classify_smo2_context(interval_data, trend_res)
                     else:
                         # 3. Classify Context (Why?) if not recovery
                         context_res = classify_smo2_context(interval_data, trend_res)
@@ -125,6 +131,9 @@ def render_smo2_tab(target_df, training_notes, uploaded_file_name):
                     cause = context_res.get('cause', 'Unknown')
                     explanation = context_res.get('explanation', '')
                     c_type = context_res.get('type', 'normal')
+                    
+                    # 4. Lag Analysis (Cross-Correlation)
+                    lag_results = analyze_temporal_sequence(interval_data)
                     
                 else:
                     trend_res = {}
@@ -148,7 +157,7 @@ def render_smo2_tab(target_df, training_notes, uploaded_file_name):
                     score = resat_result.get('recovery_score', 0)
                     c3.metric("Est. Tau", f"{tau:.1f} s", delta=f"Score: {score:.0f}/100")
                     
-                    rate = resat_result.get('resat_rate', 0) * 100 # Convert back to %/s approx for normalized
+                    rate = resat_result.get('resat_rate', 0) * 100 
                     c4.metric("Resat Rate", f"{rate:.2f} %/s")
                     
                     st.success(f"**Analiza Regeneracji:** Szybkość odbudowy (Tau={tau:.1f}s) wskazuje na tempo resyntezy PCr.")
@@ -178,6 +187,49 @@ def render_smo2_tab(target_df, training_notes, uploaded_file_name):
                             st.warning(f"**Wyjaśnienie Algorytmu:** {explanation}")
                         else:
                             st.info(f"**Wyjaśnienie Algorytmu:** {explanation}")
+                            
+                # ===== LAG ANALYSIS VISUALIZATION =====
+                if lag_results:
+                    with st.expander("⏱️ Analiza Opóźnień (Kinetyska Sekwencja)", expanded=False):
+                        st.markdown("Opóźnienie reakcji względem zmiany obciążenia (Moc = 0s).")
+                        
+                        lag_hr = lag_results.get('hr_lag', 0)
+                        lag_smo2 = lag_results.get('smo2_lag', 0)
+                        
+                        lag_col1, lag_col2 = st.columns([1, 1])
+                        
+                        # Visualization of timeline
+                        # Simple ASCII or metrics
+                        lag_col1.metric("SmO2 Lag", f"{lag_smo2:.1f} s", 
+                                        delta="OK" if lag_smo2 < 40 else "Slow", 
+                                        delta_color="inverse" if lag_smo2 > 40 else "normal")
+                        lag_col2.metric("HR Lag", f"{lag_hr:.1f} s",
+                                        delta="Lagging Indicator" if lag_hr > 60 else "OK",
+                                        delta_color="inverse" if lag_hr > 60 else "normal")
+                        
+                        # Timeline visualization
+                        fig_lag = go.Figure()
+                        
+                        metrics = ['Power (Trigger)', 'SmO2 Response', 'HR Response']
+                        lags = [0, lag_smo2, lag_hr]
+                        colors = ['blue', 'red', 'lightgreen']
+                        
+                        fig_lag.add_trace(go.Bar(
+                            y=metrics,
+                            x=lags,
+                            orientation='h',
+                            marker_color=colors,
+                            text=[f"{l:.1f}s" for l in lags],
+                            textposition='auto'
+                        ))
+                        
+                        fig_lag.update_layout(
+                            title="Sekwencja Czasowa Reakcji (Time to Response)",
+                            xaxis_title="Opóźnienie (s)",
+                            height=200,
+                            margin=dict(l=20, r=20, t=30, b=20)
+                        )
+                        st.plotly_chart(fig_lag, use_container_width=True)
 
                 fig_smo2 = go.Figure()
 

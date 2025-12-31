@@ -63,21 +63,35 @@ def render_hemo_tab(target_df):
         
         # 3. Wykres Liniowy w czasie (Dual Axis)
         st.subheader("Trendy w Czasie (Szukanie Rozjazdu)")
+        
+        # Prepare time formatting for hover
+        if 'time' in target_df.columns:
+            time_str_trend = pd.to_datetime(target_df['time'], unit='s').dt.strftime('%H:%M:%S')
+        else:
+            time_str_trend = target_df['time_min'].apply(lambda x: f"{int(x//60):02d}:{int(x%60):02d}:00")
+        
         fig_trend = go.Figure()
         
         # SmO2 (Oś Lewa)
         fig_trend.add_trace(go.Scatter(
-            x=target_df['time_min'], y=target_df[col_smo2_hemo_trend],
-            name='SmO2', line=dict(color='#ab63fa', width=2),
-            hovertemplate="SmO2: %{y:.1f}%<extra></extra>"
+            x=target_df['time_min'], 
+            y=target_df[col_smo2_hemo_trend],
+            customdata=time_str_trend,
+            name='SmO2', 
+            line=dict(color='#ab63fa', width=2),
+            hovertemplate="<b>Czas:</b> %{customdata}<br><b>SmO2:</b> %{y:.1f}%<extra></extra>"
         ))
 
         
         # THb (Oś Prawa)
         fig_trend.add_trace(go.Scatter(
-            x=target_df['time_min'], y=target_df[thb_val],
-            name='THb', line=dict(color='#ffa15a', width=2), yaxis='y2',
-            hovertemplate="THb: %{y:.2f}<extra></extra>"
+            x=target_df['time_min'], 
+            y=target_df[thb_val],
+            customdata=time_str_trend,
+            name='THb', 
+            line=dict(color='#ffa15a', width=2), 
+            yaxis='y2',
+            hovertemplate="<b>Czas:</b> %{customdata}<br><b>THb:</b> %{y:.2f} g/dL<extra></extra>"
         ))
         
         # Tło - Moc (dla kontekstu)
@@ -93,12 +107,13 @@ def render_hemo_tab(target_df):
         fig_trend.update_layout(
             template="plotly_dark",
             title="SmO2 vs THb w Czasie",
+            xaxis_title="Czas [min]",
             hovermode="x unified",
             yaxis=dict(
                 title=dict(text="SmO2 [%]", font=dict(color='#ab63fa'))
             ),
             yaxis2=dict(
-                title=dict(text="THb [a.u.]", font=dict(color='#ffa15a')),
+                title=dict(text="THb [g/dL]", font=dict(color='#ffa15a')),
                 overlaying='y', side='right'
             ),
             yaxis3=dict(title="Moc", overlaying='y', side='right', showgrid=False, showticklabels=False), 

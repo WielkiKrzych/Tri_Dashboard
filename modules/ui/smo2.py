@@ -3,11 +3,6 @@ import plotly.graph_objects as go
 import pandas as pd
 from scipy import stats
 from modules.calculations.kinetics import (
-    normalize_smo2_series, 
-    detect_smo2_trend, 
-    classify_smo2_context, 
-    calculate_resaturation_metrics,
-    analyze_temporal_sequence,
     generate_state_timeline
 )
 from modules.calculations.quality import check_signal_quality
@@ -268,29 +263,6 @@ def render_smo2_tab(target_df, training_notes, uploaded_file_name):
                         st.session_state.smo2_end_sec = new_end
                         st.rerun()
                         
-        # ===== ADVANCED CONTEXT ANALYSIS =====
-        with st.expander("🧠 Zaawansowana Analiza Kontekstu", expanded=False):
-            if len(interval_data) > 30:
-                trend_res = detect_smo2_trend(interval_data['time'], interval_data['smo2'])
-                context_res = classify_smo2_context(interval_data, trend_res)
-                
-                cause = context_res.get('cause', 'Unknown')
-                explanation = context_res.get('explanation', '')
-                c_type = context_res.get('type', 'normal')
-                
-                st.markdown(f"**Trend:** {trend_res.get('category', 'N/A')}")
-                st.markdown(f"**Przyczyna (Inferred):** {cause}")
-                if explanation:
-                    st.info(f"💡 {explanation}")
-                    
-                # Lag Analysis
-                lag_results = analyze_temporal_sequence(interval_data)
-                if lag_results:
-                    st.markdown("---")
-                    st.markdown("**Opóźnienia (Lag):**")
-                    lag_hr = lag_results.get('hr_lag', 0)
-                    lag_smo2 = lag_results.get('smo2_lag', 0)
-                    st.caption(f"SmO2 Lag: {lag_smo2:.1f}s | HR Lag: {lag_hr:.1f}s")
 
         # ===== LEGACY TOOLS =====
         with st.expander("🔧 Szczegółowa Analiza (Legacy Tools)", expanded=False):
@@ -298,29 +270,53 @@ def render_smo2_tab(target_df, training_notes, uploaded_file_name):
             
             # Scatter Plot: SmO2 vs Watts
             if 'watts' in interval_data.columns:
+                # Prepare time formatting
+                interval_time_str = pd.to_datetime(interval_data['time'], unit='s').dt.strftime('%H:%M:%S')
+                
                 fig_scatter = go.Figure()
                 fig_scatter.add_trace(go.Scatter(
                     x=interval_data['watts'], 
                     y=interval_data['smo2'],
+                    customdata=interval_time_str,
                     mode='markers',
-                    marker=dict(size=5, color=interval_data['time'], colorscale='Viridis', showscale=True),
-                    name='SmO2 vs Power'
+                    marker=dict(size=6, color=interval_data['time'], colorscale='Viridis', showscale=True, colorbar=dict(title="Czas (s)")),
+                    name='SmO2 vs Power',
+                    hovertemplate="<b>Czas:</b> %{customdata}<br><b>Moc:</b> %{x:.0f} W<br><b>SmO2:</b> %{y:.1f}%<extra></extra>"
                 ))
-                fig_scatter.update_layout(title="Korelacja: SmO2 vs Moc", xaxis_title="Power (W)", yaxis_title="SmO2 (%)", height=400)
+                fig_scatter.update_layout(
+                    title="Korelacja: SmO2 vs Moc", 
+                    xaxis_title="Power (W)", 
+                    yaxis_title="SmO2 (%)", 
+                    height=400,
+                    hovermode="closest"
+                )
                 st.plotly_chart(fig_scatter, use_container_width=True)
                 
             # THb Visualization
             if 'thb' in interval_data.columns:
                 st.subheader("Hemoglobina Całkowita (THb)")
-                fig_thb = go.Figure()
-                fig_thb.add_trace(go.Scatter(x=interval_data['time'], y=interval_data['thb'], mode='lines', name='THb', line=dict(color='purple')))
-                fig_thb.update_layout(title="Total Hemoglobin (tHb)", height=300)
-                st.plotly_chart(fig_thb, use_container_width=True)
                 
-            # Raw Data Table
-            available_cols = [c for c in ['time_str', 'watts', 'smo2', 'thb', 'hr', 'cadence'] if c in interval_data.columns]
-            if available_cols:
-                st.dataframe(interval_data[available_cols].head(100))
+                # Prepare time_str for interval data
+                interval_time_str = pd.to_datetime(interval_data['time'], unit='s').dt.strftime('%H:%M:%S')
+                
+                fig_thb = go.Figure()
+                fig_thb.add_trace(go.Scatter(
+                    x=interval_data['time'], 
+                    y=interval_data['thb'], 
+                    customdata=interval_time_str,
+                    mode='lines', 
+                    name='THb',
+                    line=dict(color='purple', width=2),
+                    hovertemplate="<b>Czas:</b> %{customdata}<br><b>THb:</b> %{y:.2f} g/dL<extra></extra>"
+                ))
+                fig_thb.update_layout(
+                    title="Total Hemoglobin (tHb)", 
+                    xaxis_title="Czas",
+                    yaxis_title="THb (g/dL)",
+                    height=300,
+                    hovermode="x unified"
+                )
+                st.plotly_chart(fig_thb, use_container_width=True)
 
     else:
         st.warning("Brak danych w wybranym zakresie.")
@@ -328,14 +324,99 @@ def render_smo2_tab(target_df, training_notes, uploaded_file_name):
     # ===== TEORIA =====
     with st.expander("🫁 TEORIA: Interpretacja SmO2", expanded=False):
         st.markdown("""
-        ### Co oznacza SmO2?
+        ## Co oznacza SmO2?
         
-        - **SmO2** = Saturacja tlenu w mięśniu (Muscle Oxygen Saturation).
-        - Mierzona przez sensory NIRS (np. Moxy, TrainRed).
-        - Zakres typowy: **30% - 80%** (zależnie od sensora i umiejscowienia).
+        **SmO2 (Muscle Oxygen Saturation)** to procent hemoglobiny związanej z tlenem w tkance mięśniowej. 
+        Mierzona przez sensory NIRS (Near-Infrared Spectroscopy), np. **Moxy, TrainRed, Humon Hex**.
         
-        #### Trend SmO2 (Slope)
-        * **Negatywny (< 0)**: Desaturacja - mięsień zużywa więcej tlenu niż dostaje.
-        * **Zerowy (~0)**: Równowaga zużycie/dostawa.
-        * **Pozytywny (> 0)**: Reoxygenacja - recovery, zmniejszenie obciążenia.
+        | Parametr | Opis |
+        |----------|------|
+        | **SmO2** | Saturacja tlenu w mięśniu (%) |
+        | **THb** | Całkowita hemoglobina - wskaźnik przepływu krwi |
+        | **Zakres typowy** | 30% - 80% (zależnie od sensora i umiejscowienia) |
+        
+        ---
+        
+        ## Strefy SmO2 i ich znaczenie
+        
+        | Strefa SmO2 | Interpretacja | Typ wysiłku |
+        |-------------|---------------|-------------|
+        | **70-80%** | Pełna saturacja, regeneracja | Recovery, rozgrzewka |
+        | **50-70%** | Równowaga zużycie/dostawa | Tempo, Sweet Spot |
+        | **30-50%** | Desaturacja, próg beztlenowy | Threshold, VO2max |
+        | **< 30%** | Głęboka hipoksja, okluzja | Sprint, maksymalny wysiłek |
+        
+        ---
+        
+        ## Trend SmO2 (Slope) - Co oznacza nachylenie?
+        
+        | Trend | Wartość | Interpretacja |
+        |-------|---------|---------------|
+        | 🟢 **Pozytywny** | > 0 | Reoxygenacja - recovery, spadek obciążenia |
+        | 🟡 **Zerowy** | ~ 0 | Równowaga - steady state, zużycie = dostawa |
+        | 🔴 **Negatywny** | < 0 | Desaturacja - mięsień zużywa więcej tlenu niż dostaje |
+        
+        ---
+        
+        ## THb (Total Hemoglobin) - Przepływ krwi
+        
+        **THb** odzwierciedla ilość krwi w obszarze pomiaru:
+        
+        - **⬆️ Wzrost THb**: Większy przepływ krwi (rozszerzenie naczyń, niższa kadencja)
+        - **⬇️ Spadek THb**: Okluzja naczyń (wysokie napięcie mięśniowe, niska kadencja + duża siła)
+        - **➡️ Stabilny THb**: Prawidłowy przepływ przy stałym obciążeniu
+        
+        ### Praktyczny przykład:
+        - **Podjazd na niskiej kadencji (50 rpm)**: THb spada → napięcie mięśni blokuje przepływ
+        - **Płaski teren, wysoka kadencja (95 rpm)**: THb rośnie → "pompa mięśniowa" wspomaga krążenie
+        
+        ---
+        
+        ## Zastosowania Treningowe SmO2
+        
+        ### 1️⃣ Wyznaczanie Progów (VT1, VT2)
+        - **VT1 (Próg tlenowy)**: Moment, gdy SmO2 zaczyna stabilnie spadać
+        - **VT2 (Próg beztlenowy)**: Gwałtowny spadek SmO2, przejście do metabolizmu beztlenowego
+        
+        ### 2️⃣ Kontrola Intensywności Interwałów
+        - **Start interwału**: SmO2 powinno być wysokie (> 60%)
+        - **Koniec interwału**: Obserwuj głębokość desaturacji
+        - **Przerwa**: Czekaj na reoxygenację (SmO2 > 70%) przed kolejnym powtórzeniem
+        
+        ### 3️⃣ Optymalizacja Kadencji
+        - Jeśli SmO2 spada szybko przy niskiej kadencji → **zwiększ kadencję**
+        - Optymalna kadencja = maksymalna moc przy stabilnym SmO2
+        
+        ### 4️⃣ Detekcja Zmęczenia
+        - **Zmęczenie lokalne**: SmO2 baseline spada w czasie treningu
+        - **Zmęczenie centralne**: SmO2 przestaje odpowiadać na zmiany mocy
+        
+        ---
+        
+        ## Korelacja SmO2 vs Moc
+        
+        Wykres scatter pokazuje zależność między mocą a saturacją:
+        
+        - **Negatywna korelacja** (typowa): Wyższa moc → niższe SmO2
+        - **Płaska krzywa**: Dobra wydolność tlenowa, mięśnie dobrze ukrwione
+        - **Stroma krzywa**: Szybka desaturacja, limitacja przepływu lub mitochondriów
+        
+        ### Kolor punktów (czas):
+        - **Wczesne punkty (ciemne)**: Początek treningu, świeże mięśnie
+        - **Późne punkty (jasne)**: Koniec treningu, kumulacja zmęczenia
+        
+        Jeśli późne punkty są niżej niż wczesne przy tej samej mocy → **zmęczenie lokalne mięśni**
+        
+        ---
+        
+        ## Limitacje Pomiaru SmO2
+        
+        ⚠️ **Czynniki wpływające na dokładność:**
+        - Grubość tkanki tłuszczowej (> 10mm zaburza pomiar)
+        - Pozycja sensora (różne mięśnie = różne wartości)
+        - Ruch sensora podczas jazdy
+        - Światło zewnętrzne (bezpośrednie słońce)
+        - Temperatura skóry
+        
+        💡 **Wskazówka**: Porównuj tylko pomiary z tej samej pozycji sensora!
         """)

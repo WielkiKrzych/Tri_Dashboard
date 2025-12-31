@@ -83,6 +83,13 @@ class StepTestResult:
     steps_analyzed: int = 0
     analysis_notes: List[str] = field(default_factory=list)
     step_ve_analysis: List[dict] = field(default_factory=list)  # Per-step VE slope data
+    
+    # SmO2 Thresholds (AeT/AnT equivalent)
+    smo2_1_watts: Optional[float] = None
+    smo2_2_watts: Optional[float] = None
+    smo2_1_hr: Optional[float] = None
+    smo2_2_hr: Optional[float] = None
+    step_smo2_analysis: List[dict] = field(default_factory=list)
 
 
 def calculate_slope(time_series: pd.Series, value_series: pd.Series) -> Tuple[float, float, float]:
@@ -826,6 +833,23 @@ def analyze_step_test(
                 
                 # Store step analysis for UI display
                 result.step_ve_analysis = vt_result.step_analysis
+            
+            # NEW: Step-based SmO2 detection
+            if has_smo2:
+                smo2_res = detect_smo2_from_steps(
+                    df, step_range,
+                    smo2_column=smo2_column,
+                    power_column=power_column,
+                    hr_column=hr_column,
+                    time_column=time_column
+                )
+                result.smo2_1_watts = smo2_res.smo2_1_watts
+                result.smo2_1_hr = smo2_res.smo2_1_hr
+                result.smo2_2_watts = smo2_res.smo2_2_watts
+                result.smo2_2_hr = smo2_res.smo2_2_hr
+                result.step_smo2_analysis = smo2_res.step_analysis
+                # We reuse analysis_notes, maybe prefix them? Or just append.
+                # result.analysis_notes.extend([f"SmO2: {n}" for n in smo2_res.notes])
         else:
             # No valid step test detected - fall back to legacy peak-based segmentation
             notes = step_range.notes if step_range else ["Nie znaleziono prawidłowego testu schodkowego"]

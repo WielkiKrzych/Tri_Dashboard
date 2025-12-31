@@ -79,6 +79,9 @@ def render_tab_content(tab_name, *args, **kwargs):
     elif tab_name == "vent_thresholds":
         from modules.ui.vent_thresholds import render_vent_thresholds_tab
         return render_vent_thresholds_tab(*args, **kwargs)
+    elif tab_name == "smo2_thresholds":
+        from modules.ui.smo2_thresholds import render_smo2_thresholds_tab
+        return render_smo2_thresholds_tab(*args, **kwargs)
     elif tab_name == "thermal":
         from modules.ui.thermal import render_thermal_tab
         return render_thermal_tab(*args, **kwargs)
@@ -231,13 +234,14 @@ if uploaded_file is not None:
 
     with tab_physiology:
         UIComponents.show_breadcrumb("🫀 Physiology")
-        t1, t2, t3, t4, t5, t6 = st.tabs(["💓 HRV", "🩸 SmO2", "🧬 Hematology", "🫁 Ventilation", "🎯 Vent - Progi", "🌡️ Thermal"])
+        t1, t2, t3, t4, t5, t6, t7 = st.tabs(["💓 HRV", "🩸 SmO2", "🧬 Hematology", "🫁 Ventilation", "🎯 Vent - Progi", "🎯 SmO2 - Progi", "🌡️ Thermal"])
         with t1: render_tab_content("hrv", df_clean_pl)
         with t2: render_tab_content("smo2", df_plot, training_notes, uploaded_file.name)
         with t3: render_tab_content("hemo", df_plot)
         with t4: render_tab_content("vent", df_plot, training_notes, uploaded_file.name)
         with t5: render_tab_content("vent_thresholds", df_plot, training_notes, uploaded_file.name, cp_input)
-        with t6: render_tab_content("thermal", df_plot)
+        with t6: render_tab_content("smo2_thresholds", df_plot, training_notes, uploaded_file.name, cp_input)
+        with t7: render_tab_content("thermal", df_plot)
 
     with tab_intelligence:
         UIComponents.show_breadcrumb("🧠 Intelligence")

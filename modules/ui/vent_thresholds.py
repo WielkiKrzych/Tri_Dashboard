@@ -215,31 +215,31 @@ def render_vent_thresholds_tab(target_df, training_notes, uploaded_file_name, cp
             hovertemplate="<b>Czas:</b> %{customdata}<br><b>Moc:</b> %{y:.0f} W<extra></extra>"
         ))
 
-    # VT1 Zone (Green)
-    if vt1_zone:
-        var_w = sensitivity.vt1_variability_watts if sensitivity else 10.0
-        fig_thresh.add_hrect(
-            y0=vt1_zone.range_watts[0] - (var_w/2), 
-            y1=vt1_zone.range_watts[1] + (var_w/2),
-            fillcolor="green", opacity=0.15,
-            layer="below", line_width=0,
+    # VT1 Horizontal Line (Orange)
+    if result.vt1_watts:
+        hr_text = f" @ {int(result.vt1_hr)} HR" if result.vt1_hr else ""
+        fig_thresh.add_hline(
+            y=result.vt1_watts,
+            line=dict(color="#ffa15a", width=3, dash="solid"),
             yref="y2",
-            annotation_text="VT1 Zone", annotation_position="top left"
+            annotation_text=f"VT1 {int(result.vt1_watts)}W{hr_text}",
+            annotation_position="right",
+            annotation_font=dict(color="#ffa15a", size=14)
         )
     
-    # VT2 Zone (Red)
-    if vt2_zone:
-        var_w = sensitivity.vt2_variability_watts if sensitivity else 10.0
-        fig_thresh.add_hrect(
-            y0=vt2_zone.range_watts[0] - (var_w/2), 
-            y1=vt2_zone.range_watts[1] + (var_w/2),
-            fillcolor="red", opacity=0.15,
-            layer="below", line_width=0,
+    # VT2 Horizontal Line (Red)
+    if result.vt2_watts:
+        hr_text = f" @ {int(result.vt2_hr)} HR" if result.vt2_hr else ""
+        fig_thresh.add_hline(
+            y=result.vt2_watts,
+            line=dict(color="#ef553b", width=3, dash="solid"),
             yref="y2",
-            annotation_text="VT2 Zone", annotation_position="top left"
+            annotation_text=f"VT2 {int(result.vt2_watts)}W{hr_text}",
+            annotation_position="right",
+            annotation_font=dict(color="#ef553b", size=14)
         )
     
-    # Hysteresis Zones (Dashed)
+    # Hysteresis Zones (Dashed, if available from legacy detection)
     if hysteresis:
         if hysteresis.vt1_dec_zone:
             fig_thresh.add_hrect(

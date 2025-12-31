@@ -16,7 +16,7 @@ except ImportError:
     exit()
 
 # KONFIGURACJA
-DATA_FOLDER = "treningi CSV"  # Tutaj wrzuć pliki CSV lub JSON
+DATA_FOLDER = "treningi_csv"  # Tutaj wrzuć pliki CSV lub JSON
 MODEL_FILE = "cycling_brain_weights.npz"
 HISTORY_FILE = "brain_evolution_history.json"
 

@@ -94,12 +94,12 @@ from .kinetics import (
 
 # Threshold detection (MCP Server)
 from .thresholds import (
-    detect_vent_zone,
-    detect_smo2_zone,
+    detect_vt_transition_zone,
     analyze_step_test,
     calculate_training_zones_from_thresholds,
     ThresholdResult,
     StepTestResult,
+    TransitionZone,
 )
 
 # Async runner exports
@@ -177,12 +177,12 @@ __all__ = [
     'calculate_o2_deficit',
     'detect_smo2_breakpoints',
     # Thresholds (MCP)
-    'detect_vent_zone',
-    'detect_smo2_zone',
+    'detect_vt_transition_zone',
     'analyze_step_test',
     'calculate_training_zones_from_thresholds',
     'ThresholdResult',
     'StepTestResult',
+    'TransitionZone',
     # Data Processing
     'process_data',
     'ensure_pandas',

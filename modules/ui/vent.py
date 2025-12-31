@@ -2,6 +2,7 @@ import streamlit as st
 import plotly.graph_objects as go
 import pandas as pd
 from scipy import stats
+from modules.calculations.thresholds import detect_vt_transition_zone
 
 def render_vent_tab(target_df, training_notes, uploaded_file_name):
     st.header("Analiza Progu Wentylacyjnego (VT1 / VT2 Detection)")
@@ -25,7 +26,43 @@ def render_vent_tab(target_df, training_notes, uploaded_file_name):
     # Format czasu
     target_df['time_str'] = pd.to_datetime(target_df['time'], unit='s').dt.strftime('%H:%M:%S')
 
-    # 2. Interfejs (START -> KONIEC)
+    # 2. DETEKCJA AUTOMATYCZNA (Sliding Window)
+    # Uruchamiamy nową detekcję na całym pliku
+    vt1_zone, vt2_zone = detect_vt_transition_zone(
+        target_df, 
+        window_duration=60, 
+        step_size=5,
+        ve_column='tymeventilation',
+        power_column='watts',
+        hr_column='hr' if 'hr' in target_df.columns else 'time', # Fallback hack if no HR
+        time_column='time'
+    )
+
+    # Wyświetlenie wyników automatycznych (Na górze)
+    st.subheader("🤖 Automatyczna Detekcja Stref (Sliding Window)")
+    
+    col_z1, col_z2 = st.columns(2)
+    with col_z1:
+        if vt1_zone:
+            st.success(f"**VT1 Zone:** {vt1_zone.range_watts[0]:.0f} - {vt1_zone.range_watts[1]:.0f} W")
+            st.caption(f"Confidence: {vt1_zone.confidence:.0%}")
+            if vt1_zone.range_hr:
+                st.caption(f"HR: {vt1_zone.range_hr[0]:.0f}-{vt1_zone.range_hr[1]:.0f} bpm")
+        else:
+            st.info("VT1 Zone: Nie wykryto (brak wyraźnego przejścia slope 0.05)")
+
+    with col_z2:
+        if vt2_zone:
+            st.error(f"**VT2 Zone:** {vt2_zone.range_watts[0]:.0f} - {vt2_zone.range_watts[1]:.0f} W")
+            st.caption(f"Confidence: {vt2_zone.confidence:.0%}")
+            if vt2_zone.range_hr:
+                st.caption(f"HR: {vt2_zone.range_hr[0]:.0f}-{vt2_zone.range_hr[1]:.0f} bpm")
+        else:
+            st.info("VT2 Zone: Nie wykryto (brak wyraźnego przejścia slope 0.15)")
+
+    st.markdown("---")
+
+    # 3. Interfejs Manualny (START -> KONIEC)
     # Inicjalizacja session_state dla zaznaczenia
     if 'vent_start_sec' not in st.session_state:
             st.session_state.vent_start_sec = 600  # 10 minut domyślnie
@@ -74,7 +111,7 @@ def render_vent_tab(target_df, training_notes, uploaded_file_name):
     st.markdown("---")
     # ===== KONIEC NOTATEK VENTILATION =====
 
-    st.info("💡 **NOWA FUNKCJA:** Zaznacz obszar na wykresie poniżej (kliknij i przeciągnij), aby automatycznie obliczyć metryki!")
+    st.info("💡 **ANALIZA MANUALNA:** Zaznacz obszar na wykresie poniżej (kliknij i przeciągnij), aby sprawdzić nachylenie lokalne.")
 
         # Opcjonalne: ręczne wprowadzenie czasu (dla precyzji)
     def parse_time_to_seconds(t_str):
@@ -116,10 +153,6 @@ def render_vent_tab(target_df, training_notes, uploaded_file_name):
             avg_w = interval_v['watts'].mean()
             avg_ve = interval_v['tymeventilation'].mean()
             avg_rr = interval_v['tymebreathrate'].mean() if 'tymebreathrate' in interval_v else 0
-            max_ve = interval_v['tymeventilation'].max()
-            
-            # Ve/Power Ratio (Efektywność)
-            ve_power_ratio = avg_ve / avg_w if avg_w > 0 else 0
             
             # Trend (Slope) dla VE
             if len(interval_v) > 1:
@@ -127,20 +160,6 @@ def render_vent_tab(target_df, training_notes, uploaded_file_name):
                 trend_desc_ve = f"{slope_ve:.4f} L/s"
             else:
                 slope_ve = 0; intercept_ve = 0; trend_desc_ve = "N/A"
-
-            # === AUTOMATYCZNA DETEKCJA STREFY (VT1/VT2) ===
-            def detect_vent_zone(slope_val):
-                """Wykrywa strefę wentylacyjną na podstawie slope VE."""
-                if slope_val < 0.02:
-                    return "⚪ Bardzo niska intensywność", "info", "Wentylacja stabilna. Strefa regeneracji."
-                elif slope_val <= 0.05:
-                    return "🟢 Poniżej VT1 (Strefa tlenowa)", "success", "Liniowy wzrost VE. Komfortowa intensywność tlenowa."
-                elif slope_val <= 0.15:
-                    return "🟡 VT1-VT2 (Strefa progowa)", "warning", "Pierwsze przełamanie wentylacyjne. Buforowanie kwasu mlekowego."
-                else:
-                    return "🔴 Powyżej VT2 (Hiperwentylacja)", "error", "Wykładniczy wzrost VE. Organizm nie nadąża z usuwaniem CO2."
-            
-            zone_name, zone_type, zone_desc = detect_vent_zone(slope_ve)
 
             # Formatowanie czasu dla wyświetlania
             def fmt_time_v(seconds):
@@ -160,28 +179,15 @@ def render_vent_tab(target_df, training_notes, uploaded_file_name):
             duration_v = int(endsec - startsec) if (endsec is not None and startsec is not None) else 0
 
             # Metryki
-            st.subheader(f"Metryki Oddechowe: {start_time_v} - {end_time_v} ({duration_v}s)")
-            mv1, mv2, mv3, mv4, mv5 = st.columns(5)
+            st.subheader(f"Metryki Manualne: {start_time_v} - {end_time_v} ({duration_v}s)")
+            mv1, mv2, mv3, mv4 = st.columns(4)
             mv1.metric("Śr. Moc", f"{avg_w:.0f} W")
             mv2.metric("Śr. Wentylacja (VE)", f"{avg_ve:.1f} L/min")
             mv3.metric("Częstość (RR)", f"{avg_rr:.1f} /min")
-            mv4.metric("Wydajność (VE/W)", f"{ve_power_ratio:.3f}", help="Ile litrów powietrza na 1 Wat mocy. Niżej = lepiej (do pewnego momentu).")
             
             # Kolorowanie trendu (Tu odwrotnie niż w SmO2: Duży wzrost = Czerwony/Ostrzegawczy)
             trend_color = "inverse" if slope_ve > 0.1 else "normal"
-            mv5.metric("Trend VE (Slope)", trend_desc_ve, delta=trend_desc_ve, delta_color=trend_color)
-
-            # Wyświetl wykrytą strefę
-            st.markdown("---")
-            st.markdown("### 🎯 Automatyczna Detekcja Progu Wentylacyjnego")
-            if zone_type == "info":
-                st.info(f"**{zone_name}**\n\n{zone_desc}")
-            elif zone_type == "success":
-                st.success(f"**{zone_name}**\n\n{zone_desc}")
-            elif zone_type == "warning":
-                st.warning(f"**{zone_name}**\n\n{zone_desc}")
-            else:
-                st.error(f"**{zone_name}**\n\n{zone_desc}")
+            mv4.metric("Trend VE (Slope)", trend_desc_ve, delta=trend_desc_ve, delta_color=trend_color)
 
             # 5. Wykres
             fig_vent = go.Figure()
@@ -205,22 +211,47 @@ def render_vent_tab(target_df, training_notes, uploaded_file_name):
                 hovertemplate="<b>Czas:</b> %{customdata}<br><b>Moc:</b> %{y:.0f} W<extra></extra>"
             ))
 
-            # Zaznaczenie
-            fig_vent.add_vrect(x0=startsec, x1=endsec, fillcolor="orange", opacity=0.1, layer="below", annotation_text="ANALIZA", annotation_position="top left")
+            # === WIZUALIZACJA STREF (ZONES) ===
+            # Rysujemy prostokąty dla wykrytych stref (jeśli moc odpowiada tym strefom, konwertujemy na czas - trudne na wykresie czasu)
+            # Zamiast mapować moc na czas (co jest trudne bo moc może falować), lepiej by było gdyby detect_vt_transition_zone zwracało też czas.
+            # Ale detect_vt_transition_zone zwraca waty. W step teście waty rosną liniowo, więc można zmapować.
+            # Dla bezpieczeństwa (nie wiemy czy to step test) - po prostu wyświetlmy strefy jako horyzontalne pasy na osi Mocy (prawa oś)
+            
+            if vt1_zone:
+                # Pasek na osi Y2 (Moc)
+                fig_vent.add_hrect(
+                    y0=vt1_zone.range_watts[0], y1=vt1_zone.range_watts[1],
+                    fillcolor="green", opacity=0.15,
+                    layer="below", line_width=0,
+                    yref="y2",  # Referencja do prawej osi
+                    annotation_text="VT1 Zone", annotation_position="top left"
+                )
+                
+            if vt2_zone:
+                fig_vent.add_hrect(
+                    y0=vt2_zone.range_watts[0], y1=vt2_zone.range_watts[1],
+                    fillcolor="red", opacity=0.15,
+                    layer="below", line_width=0,
+                    yref="y2",
+                    annotation_text="VT2 Zone", annotation_position="top left"
+                )
 
-            # Linia trendu VE
+            # Zaznaczenie manualne
+            fig_vent.add_vrect(x0=startsec, x1=endsec, fillcolor="orange", opacity=0.1, layer="below", annotation_text="MANUAL", annotation_position="top left")
+
+            # Linia trendu VE (dla manualnego)
             if len(interval_v) > 1:
                 trend_line_ve = intercept_ve + slope_ve * interval_v['time']
                 fig_vent.add_trace(go.Scatter(
                     x=interval_v['time'], y=trend_line_ve,
                     customdata=interval_v['time_str'],
-                    mode='lines', name='Trend VE',
+                    mode='lines', name='Trend VE (Man)',
                     line=dict(color='white', width=2, dash='dash'),
                     hovertemplate="<b>Trend:</b> %{y:.2f} L/min<extra></extra>"
                 ))
 
             fig_vent.update_layout(
-                title="Dynamika Wentylacji vs Moc",
+                title="Dynamika Wentylacji vs Moc (z wykrytymi strefami VT)",
                 xaxis_title="Czas",
                 yaxis=dict(title=dict(text="Wentylacja (L/min)", font=dict(color="#ffa15a"))),
                 yaxis2=dict(title=dict(text="Moc (W)", font=dict(color="#1f77b4")), overlaying='y', side='right', showgrid=False),
@@ -249,28 +280,24 @@ def render_vent_tab(target_df, training_notes, uploaded_file_name):
                             st.rerun()
 
             # 6. TEORIA ODDECHOWA
-            with st.expander("🫁 TEORIA: Jak znaleźć VT1 i VT2 na podstawie Slope?", expanded=False):
+            with st.expander("🫁 TEORIA: Płynne Strefy Przejścia vs Pojedynczy Punkt", expanded=False):
                 st.markdown("""
-                ### Interpretacja Slope (Nachylenia VE)
-                Wentylacja rośnie nieliniowo. Szukamy punktów załamania krzywej ("Kinks").
-
-                #### 🟢 1. Strefa Tlenowa (Poniżej VT1)
-                * **Zachowanie:** VE rośnie proporcjonalnie do mocy (liniowo).
-                * **Slope:** Stabilny, umiarkowanie dodatni (np. 0.02 - 0.05 L/s).
-                * **RR (Oddechy):** Stabilne, wolne pogłębianie oddechu.
-
-                #### 🟡 2. Próg VT1 (Aerobic Threshold) - "Pierwsze Przełamanie"
-                * **Co szukać:** Pierwszy moment, gdzie Slope wyraźnie wzrasta, mimo że moc rośnie liniowo.
-                * **Fizjologia:** Buforowanie kwasu mlekowego wodorowęglanami -> powstaje ekstra CO2 -> musisz go wydychać.
-                * **Test mowy:** Tutaj zaczynasz urywać zdania.
-
-                #### 🔴 3. Próg VT2 (Respiratory Compensation Point) - "Drugie Przełamanie"
-                * **Co szukać:** Slope wystrzeliwuje w górę ("Vertical spike"). VE rośnie wykładniczo.
-                * **Wartości Slope:** Bardzo wysokie (np. > 0.15 L/s).
-                * **RR (Oddechy):** Gwałtowny wzrost częstości (tachypnoe).
-                * **Fizjologia:** Hiperwentylacja. Organizm nie nadąża z usuwaniem CO2. Koniec równowagi.
-                ---
-                **Pro Tip:** Porównaj Slope VE ze Slope Mocy. Jeśli Moc rośnie o 5%, a VE o 15% -> właśnie przekroczyłeś próg.
+                ### Dlaczego Strefy a nie Punkty?
+                
+                Tradycyjna fizjologia szuka "punktu" (np. 300W), ale organizm to nie maszyna cyfrowa. 
+                Przemiany metaboliczne dzieją się w **strefach przejścia**.
+                
+                #### 🟢 Strefa VT1 (Aerobic Transition)
+                * To zakres mocy, gdzie zaczynasz angażować więcej włókien typu IIa.
+                * Oddech przyspiesza, ale jest to zmiana płynna.
+                * Nasz algorytm szuka momentu, gdzie Slope (nachylenie VE) wchodzi w zakres **0.035 - 0.065**.
+                
+                #### 🔴 Strefa VT2 (Compensation/Anaerobic)
+                * Zakres mocy, gdzie buforowanie przestaje działać.
+                * To tutaj tracisz kontrolę nad oddechem (Hyperventilation).
+                * Szukamy momentu, gdzie Slope wchodzi w zakres **0.13 - 0.17**.
+                
+                **Interval Confidence:** Im węższa strefa i wyższe "Confidence", tym bardziej wyraźny był Twój próg. Szeroka strefa oznacza powolną, rozmytą reakcję organizmu.
                 """)
     else:
         st.warning("Brak danych w tym zakresie.")

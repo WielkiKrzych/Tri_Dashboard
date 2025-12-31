@@ -3,17 +3,28 @@ Threshold Detection Functions for Step Tests.
 
 Pure functions for detecting VT1/VT2 (ventilatory) and LT1/LT2 (metabolic) thresholds.
 Extracted from UI modules for reuse in MCP Server.
+Refactored to support Sliding Window and Transition Zones.
 """
 from typing import Optional, List, Tuple
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import numpy as np
 import pandas as pd
 from scipy import stats
 
 
 @dataclass
+class TransitionZone:
+    """Represents a transition zone instead of a single point."""
+    range_watts: Tuple[float, float]
+    range_hr: Optional[Tuple[float, float]]
+    confidence: float  # 0.0 to 1.0
+    method: str
+    description: str = ""
+
+
+@dataclass
 class ThresholdResult:
-    """Result of threshold detection."""
+    """Result of threshold detection (Legacy/Simple)."""
     zone_name: str
     zone_type: str  # info, success, warning, error
     description: str
@@ -29,132 +40,155 @@ class StepTestResult:
     vt2_watts: Optional[float] = None
     lt1_watts: Optional[float] = None
     lt2_watts: Optional[float] = None
+    
+    # New Zone Fields
+    vt1_zone: Optional[TransitionZone] = None
+    vt2_zone: Optional[TransitionZone] = None
+    
     vt1_hr: Optional[float] = None
     vt2_hr: Optional[float] = None
     steps_analyzed: int = 0
-    analysis_notes: List[str] = None
-    
-    def __post_init__(self):
-        if self.analysis_notes is None:
-            self.analysis_notes = []
+    analysis_notes: List[str] = field(default_factory=list)
 
 
-def detect_vent_zone(slope_ve: float) -> ThresholdResult:
+def calculate_slope(time_series: pd.Series, value_series: pd.Series) -> Tuple[float, float, float]:
     """
-    Detect ventilatory zone based on VE (minute ventilation) slope.
-    
-    Thresholds based on research:
-    - < 0.02: Very low intensity (recovery)
-    - 0.02-0.05: Below VT1 (aerobic zone)
-    - 0.05-0.15: VT1-VT2 (threshold zone)
-    - > 0.15: Above VT2 (hyperventilation)
-    
-    Args:
-        slope_ve: Slope of VE over time (L/min per second)
-    
-    Returns:
-        ThresholdResult with zone classification
-    """
-    if slope_ve < 0.02:
-        return ThresholdResult(
-            zone_name="Poniżej VT1 (Regeneracja)",
-            zone_type="info",
-            description="Wentylacja stabilna. Strefa regeneracji.",
-            slope_value=slope_ve
-        )
-    elif slope_ve <= 0.05:
-        return ThresholdResult(
-            zone_name="Poniżej VT1 (Strefa tlenowa)",
-            zone_type="success",
-            description="Liniowy wzrost VE. Komfortowa intensywność tlenowa.",
-            slope_value=slope_ve
-        )
-    elif slope_ve <= 0.15:
-        return ThresholdResult(
-            zone_name="VT1-VT2 (Strefa progowa)",
-            zone_type="warning",
-            description="Pierwsze przełamanie wentylacyjne. Buforowanie kwasu mlekowego.",
-            slope_value=slope_ve
-        )
-    else:
-        return ThresholdResult(
-            zone_name="Powyżej VT2 (Hiperwentylacja)",
-            zone_type="error",
-            description="Wykładniczy wzrost VE. Organizm nie nadąża z usuwaniem CO2.",
-            slope_value=slope_ve
-        )
-
-
-def detect_smo2_zone(slope_smo2: float) -> ThresholdResult:
-    """
-    Detect metabolic zone based on SmO2 (muscle oxygen saturation) slope.
-    
-    Thresholds:
-    - > 0.005: Below LT1 (oxygen surplus)
-    - -0.005 to 0.005: Steady state (LT1-LT2)
-    - -0.01 to -0.005: Approaching LT2
-    - < -0.01: Above LT2 (anaerobic)
-    
-    Args:
-        slope_smo2: Slope of SmO2 over time (% per second)
-    
-    Returns:
-        ThresholdResult with zone classification
-    """
-    if slope_smo2 > 0.005:
-        return ThresholdResult(
-            zone_name="Poniżej LT1",
-            zone_type="success",
-            description="Podaż tlenu przewyższa zużycie. Strefa regeneracji.",
-            slope_value=slope_smo2
-        )
-    elif slope_smo2 >= -0.005:
-        return ThresholdResult(
-            zone_name="Steady State (LT1-LT2)",
-            zone_type="warning",
-            description="Równowaga tlenowa. Możliwa długa intensywność.",
-            slope_value=slope_smo2
-        )
-    elif slope_smo2 >= -0.01:
-        return ThresholdResult(
-            zone_name="Zbliżasz się do LT2",
-            zone_type="warning",
-            description="Powolna desaturacja. Blisko progu beztlenowego.",
-            slope_value=slope_smo2
-        )
-    else:
-        return ThresholdResult(
-            zone_name="Powyżej LT2 (Anaerobic)",
-            zone_type="error",
-            description="Dług tlenowy. Intensywność nie do utrzymania.",
-            slope_value=slope_smo2
-        )
-
-
-def calculate_slope(time_series: pd.Series, value_series: pd.Series) -> Tuple[float, float]:
-    """
-    Calculate linear regression slope for a time series.
+    Calculate linear regression slope and standard error.
     
     Args:
         time_series: Time values
         value_series: Measurement values
     
     Returns:
-        Tuple of (slope, intercept)
+        Tuple of (slope, intercept, std_err)
     """
     if len(time_series) < 2:
-        return 0.0, 0.0
+        return 0.0, 0.0, 0.0
     
     # Remove NaN values
     mask = ~(time_series.isna() | value_series.isna())
     if mask.sum() < 2:
-        return 0.0, 0.0
+        return 0.0, 0.0, 0.0
     
-    slope, intercept, _, _, _ = stats.linregress(
+    slope, intercept, _, _, std_err = stats.linregress(
         time_series[mask], 
         value_series[mask]
     )
-    return slope, intercept
+    return slope, intercept, std_err
+
+
+def detect_vt_transition_zone(
+    df: pd.DataFrame,
+    window_duration: int = 60,
+    step_size: int = 10,
+    ve_column: str = 'tymeventilation',
+    power_column: str = 'watts',
+    hr_column: str = 'hr',
+    time_column: str = 'time'
+) -> Tuple[Optional[TransitionZone], Optional[TransitionZone]]:
+    """
+    Detect VT1 and VT2 transition zones using a sliding window approach.
+    Definition: A Transition Zone is the range of time/power where the 
+    slope's 95% Confidence Interval overlaps the threshold value (0.05 or 0.15).
+    
+    Args:
+        df: DataFrame with training data (must be time-sorted)
+        window_duration: Duration of sliding window in seconds
+        step_size: Step size for sliding window in seconds
+        
+    Returns:
+        Tuple of (VT1_Zone, VT2_Zone)
+    """
+    if len(df) < window_duration:
+        return None, None
+
+    min_time = df[time_column].min()
+    max_time = df[time_column].max()
+    
+    # List to store results for each window
+    vt1_candidates = []
+    vt2_candidates = []
+    
+    # Z-score for 95% CI (approx 1.96)
+    Z_SCORE = 1.96
+    
+    # Slide window
+    for t_start in range(int(min_time), int(max_time) - window_duration, step_size):
+        t_end = t_start + window_duration
+        mask = (df[time_column] >= t_start) & (df[time_column] < t_end)
+        window = df[mask]
+        
+        if len(window) < 10:  # Require min points
+            continue
+            
+        slope_ve, _, std_err = calculate_slope(window[time_column], window[ve_column])
+        avg_watts = window[power_column].mean()
+        avg_hr = window[hr_column].mean() if hr_column in window.columns else None
+        
+        # Calculate 95% CI bounds
+        ci_lower = slope_ve - (Z_SCORE * std_err)
+        ci_upper = slope_ve + (Z_SCORE * std_err)
+        
+        # VT1 Overlap Check (Threshold 0.05)
+        if (ci_lower <= 0.05 <= ci_upper):
+             # Sanity check: slope shouldn't be wildly off
+             if 0.02 <= slope_ve <= 0.08:
+                vt1_candidates.append({
+                    'avg_watts': avg_watts,
+                    'avg_hr': avg_hr,
+                    'std_err': std_err
+                })
+
+        # VT2 Overlap Check (Threshold 0.15)
+        if (ci_lower <= 0.15 <= ci_upper):
+             if 0.10 <= slope_ve <= 0.20:
+                vt2_candidates.append({
+                    'avg_watts': avg_watts,
+                    'avg_hr': avg_hr,
+                    'std_err': std_err
+                })
+        
+    # Process VT1 Candidates
+    vt1_zone = None
+    if vt1_candidates:
+        df_vt1 = pd.DataFrame(vt1_candidates)
+        watts_min = df_vt1['avg_watts'].min()
+        watts_max = df_vt1['avg_watts'].max()
+        hr_min = df_vt1['avg_hr'].min() if 'avg_hr' in df_vt1.columns else 0
+        hr_max = df_vt1['avg_hr'].max() if 'avg_hr' in df_vt1.columns else 0
+        
+        avg_err = df_vt1['std_err'].mean()
+        confidence = max(0.1, min(1.0, 1.0 - (avg_err * 100))) 
+        
+        vt1_zone = TransitionZone(
+            range_watts=(watts_min, watts_max),
+            range_hr=(hr_min, hr_max) if hr_min else None,
+            confidence=confidence,
+            method="Sliding Window CI Overlap (0.05)",
+            description=f"Region where slope CI overlaps 0.05. Avg Err: {avg_err:.4f}"
+        )
+
+    # Process VT2 Candidates
+    vt2_zone = None
+    if vt2_candidates:
+        df_vt2 = pd.DataFrame(vt2_candidates)
+        watts_min = df_vt2['avg_watts'].min()
+        watts_max = df_vt2['avg_watts'].max()
+        hr_min = df_vt2['avg_hr'].min() if 'avg_hr' in df_vt2.columns else 0
+        hr_max = df_vt2['avg_hr'].max() if 'avg_hr' in df_vt2.columns else 0
+        
+        avg_err = df_vt2['std_err'].mean()
+        confidence = max(0.1, min(1.0, 1.0 - (avg_err * 50)))
+        
+        vt2_zone = TransitionZone(
+            range_watts=(watts_min, watts_max),
+            range_hr=(hr_min, hr_max) if hr_min else None,
+            confidence=confidence,
+            method="Sliding Window CI Overlap (0.15)",
+            description=f"Region where slope CI overlaps 0.15. Avg Err: {avg_err:.4f}"
+        )
+        
+    return vt1_zone, vt2_zone
 
 
 def analyze_step_test(
@@ -168,208 +202,124 @@ def analyze_step_test(
 ) -> StepTestResult:
     """
     Analyze a step test (ramp test) for threshold detection.
-    
-    Detects VT1/VT2 from ventilation data and LT1/LT2 from SmO2 data.
-    Uses classic 3-minute step test protocol by default.
-    
-    Args:
-        df: DataFrame with training data
-        step_duration_sec: Duration of each step in seconds (default: 180 = 3min)
-        power_column: Column name for power data
-        ve_column: Column name for ventilation data
-        smo2_column: Column name for SmO2 data
-        hr_column: Column name for heart rate data
-        time_column: Column name for time data
-    
-    Returns:
-        StepTestResult with detected thresholds
+    Updated to use Sliding Window for VT and classic step analysis for SmO2 (hybrid).
     """
     result = StepTestResult()
     
     # Normalize column names
     df.columns = df.columns.str.lower().str.strip()
     
-    # Check available data
     has_ve = ve_column in df.columns
     has_smo2 = smo2_column in df.columns
     has_power = power_column in df.columns
-    has_hr = hr_column in df.columns
     has_time = time_column in df.columns
     
     if not has_time:
-        result.analysis_notes.append("Brak kolumny czasu - nie można przeprowadzić analizy")
+        result.analysis_notes.append("Brak kolumny czasu")
         return result
+        
+    # 1. Sliding Window Analysis for VT (New)
+    if has_ve and has_power:
+        vt1_zone, vt2_zone = detect_vt_transition_zone(
+            df, 
+            window_duration=60, # 60s windows
+            step_size=5,        # 5s steps for high resolution
+            ve_column=ve_column,
+            power_column=power_column,
+            hr_column=hr_column,
+            time_column=time_column
+        )
+        
+        result.vt1_zone = vt1_zone
+        result.vt2_zone = vt2_zone
+        
+        if vt1_zone:
+            # For backward compatibility, pick the midpoint of the zone
+            result.vt1_watts = (vt1_zone.range_watts[0] + vt1_zone.range_watts[1]) / 2
+            if vt1_zone.range_hr:
+                result.vt1_hr = (vt1_zone.range_hr[0] + vt1_zone.range_hr[1]) / 2
+            result.analysis_notes.append(f"VT1 Zone Detected: {vt1_zone.range_watts[0]:.0f}-{vt1_zone.range_watts[1]:.0f}W (Conf: {vt1_zone.confidence:.2f})")
+            
+        if vt2_zone:
+            result.vt2_watts = (vt2_zone.range_watts[0] + vt2_zone.range_watts[1]) / 2
+            if vt2_zone.range_hr:
+                result.vt2_hr = (vt2_zone.range_hr[0] + vt2_zone.range_hr[1]) / 2
+            result.analysis_notes.append(f"VT2 Zone Detected: {vt2_zone.range_watts[0]:.0f}-{vt2_zone.range_watts[1]:.0f}W (Conf: {vt2_zone.confidence:.2f})")
+
+    # 2. Classic Step Analysis (Legacy fallback + SmO2)
+    # This preserves the step-by-step functionality for SmO2 which we haven't refactored yet
+    # ... (Keeping the logic for preparing step_data to pass to SmO2 detection) ...
     
-    if not has_power:
-        result.analysis_notes.append("Brak danych mocy - ograniczona analiza")
-    
-    # Determine test duration and number of steps
     total_duration = df[time_column].max() - df[time_column].min()
-    num_steps = int(total_duration / step_duration_sec)
-    result.steps_analyzed = num_steps
+    num_steps = int(total_duration / max(step_duration_sec, 1)) # avoid div by 0
     
-    if num_steps < 3:
-        result.analysis_notes.append(f"Za mało stopni ({num_steps}). Potrzeba minimum 3.")
-        return result
-    
-    # Analyze each step
+    # We need step_data for SmO2
     step_data = []
-    start_time = df[time_column].min()
-    
-    for step in range(num_steps):
-        step_start = start_time + step * step_duration_sec
-        step_end = step_start + step_duration_sec
-        
-        # Get data for this step (last 60s to avoid transitions)
-        stable_start = step_end - 60
-        mask = (df[time_column] >= stable_start) & (df[time_column] < step_end)
-        step_df = df[mask]
-        
-        if len(step_df) < 10:
-            continue
-        
-        step_info = {
-            'step': step + 1,
-            'start': step_start,
-            'end': step_end
-        }
-        
-        if has_power:
-            step_info['avg_power'] = step_df[power_column].mean()
-        
-        if has_hr:
-            step_info['avg_hr'] = step_df[hr_column].mean()
-        
-        # Calculate VE slope within step
-        if has_ve:
-            ve_slope, _ = calculate_slope(step_df[time_column], step_df[ve_column])
-            step_info['ve_slope'] = ve_slope
-            step_info['avg_ve'] = step_df[ve_column].mean()
-        
-        # Calculate SmO2 slope within step
-        if has_smo2:
-            smo2_slope, _ = calculate_slope(step_df[time_column], step_df[smo2_column])
-            step_info['smo2_slope'] = smo2_slope
-            step_info['avg_smo2'] = step_df[smo2_column].mean()
-        
-        step_data.append(step_info)
-    
-    if not step_data:
-        result.analysis_notes.append("Nie udało się wyodrębnić żadnych stopni")
-        return result
-    
-    # Detect VT1/VT2 from ventilation data
-    if has_ve and len(step_data) >= 3:
-        ve_thresholds = _detect_vent_thresholds(step_data)
-        if ve_thresholds:
-            result.vt1_watts = ve_thresholds.get('vt1_power')
-            result.vt2_watts = ve_thresholds.get('vt2_power')
-            result.vt1_hr = ve_thresholds.get('vt1_hr')
-            result.vt2_hr = ve_thresholds.get('vt2_hr')
-            result.analysis_notes.append(
-                f"VT1/VT2 wykryte z wentylacji na stopniach {ve_thresholds.get('vt1_step')}/{ve_thresholds.get('vt2_step')}"
-            )
-    
-    # Detect LT1/LT2 from SmO2 data
+    if num_steps >= 3:
+        start_time = df[time_column].min()
+        for step in range(num_steps):
+            step_start = start_time + step * step_duration_sec
+            step_end = step_start + step_duration_sec
+            
+            stable_start = step_end - 60
+            mask = (df[time_column] >= stable_start) & (df[time_column] < step_end)
+            step_df = df[mask]
+            
+            if len(step_df) < 10: continue
+            
+            step_info = {'step': step + 1, 'start': step_start, 'end': step_end}
+            if has_power: step_info['avg_power'] = step_df[power_column].mean()
+            if has_smo2:
+                smo2_slope, _, _ = calculate_slope(step_df[time_column], step_df[smo2_column])
+                step_info['smo2_slope'] = smo2_slope
+                step_info['avg_smo2'] = step_df[smo2_column].mean()
+            
+            step_data.append(step_info)
+
+    # Detect LT1/LT2 from SmO2 data (Legacy single-point)
     if has_smo2 and len(step_data) >= 3:
         smo2_thresholds = _detect_smo2_thresholds(step_data)
         if smo2_thresholds:
             result.lt1_watts = smo2_thresholds.get('lt1_power')
             result.lt2_watts = smo2_thresholds.get('lt2_power')
             result.analysis_notes.append(
-                f"LT1/LT2 wykryte z SmO2 na stopniach {smo2_thresholds.get('lt1_step')}/{smo2_thresholds.get('lt2_step')}"
+                f"LT1/LT2 (SmO2) detected at steps {smo2_thresholds.get('lt1_step')}/{smo2_thresholds.get('lt2_step')}"
             )
-    
+            
     return result
 
 
-def _detect_vent_thresholds(step_data: List[dict]) -> Optional[dict]:
-    """
-    Detect VT1 and VT2 from step test ventilation data.
-    
-    VT1: First inflection point where VE slope increases disproportionally
-    VT2: Second inflection point (respiratory compensation point)
-    """
-    if len(step_data) < 3:
-        return None
-    
-    # Filter steps with VE data
-    ve_steps = [s for s in step_data if 've_slope' in s and 'avg_power' in s]
-    if len(ve_steps) < 3:
-        return None
-    
-    slopes = [s['ve_slope'] for s in ve_steps]
-    
-    # Find VT1: transition from low slope to medium slope (>0.05)
-    vt1_idx = None
-    for i, slope in enumerate(slopes):
-        if slope > 0.05:  # Threshold zone
-            vt1_idx = max(0, i - 1)  # Step before threshold
-            break
-    
-    # Find VT2: transition to high slope (>0.15)
-    vt2_idx = None
-    for i, slope in enumerate(slopes):
-        if slope > 0.15:  # Above VT2
-            vt2_idx = max(0, i - 1)  # Step before hyperventilation
-            break
-    
-    result = {}
-    
-    if vt1_idx is not None:
-        result['vt1_power'] = ve_steps[vt1_idx].get('avg_power')
-        result['vt1_hr'] = ve_steps[vt1_idx].get('avg_hr')
-        result['vt1_step'] = ve_steps[vt1_idx].get('step')
-    
-    if vt2_idx is not None:
-        result['vt2_power'] = ve_steps[vt2_idx].get('avg_power')
-        result['vt2_hr'] = ve_steps[vt2_idx].get('avg_hr')
-        result['vt2_step'] = ve_steps[vt2_idx].get('step')
-    
-    return result if result else None
-
-
 def _detect_smo2_thresholds(step_data: List[dict]) -> Optional[dict]:
-    """
-    Detect LT1 and LT2 from step test SmO2 data.
+    """Detect LT1 and LT2 from step test SmO2 data (Legacy implementation)."""
+    if len(step_data) < 3: return None
     
-    LT1: Point where SmO2 slope transitions from positive to near-zero
-    LT2: Point where SmO2 slope becomes significantly negative
-    """
-    if len(step_data) < 3:
-        return None
-    
-    # Filter steps with SmO2 data
     smo2_steps = [s for s in step_data if 'smo2_slope' in s and 'avg_power' in s]
-    if len(smo2_steps) < 3:
-        return None
+    if len(smo2_steps) < 3: return None
     
     slopes = [s['smo2_slope'] for s in smo2_steps]
     
-    # Find LT1: transition from positive to near-zero slope
+    # LT1: transition to near-zero
     lt1_idx = None
     for i, slope in enumerate(slopes):
-        if slope <= 0.005:  # Steady state or below
-            lt1_idx = max(0, i - 1)  # Step before steady state
+        if slope <= 0.005: 
+            lt1_idx = max(0, i - 1)
             break
-    
-    # Find LT2: transition to significantly negative slope
+            
+    # LT2: transition to neg
     lt2_idx = None
     for i, slope in enumerate(slopes):
-        if slope < -0.01:  # Anaerobic zone
-            lt2_idx = max(0, i - 1)  # Step before anaerobic
+        if slope < -0.01:
+            lt2_idx = max(0, i - 1)
             break
-    
+            
     result = {}
-    
     if lt1_idx is not None:
         result['lt1_power'] = smo2_steps[lt1_idx].get('avg_power')
         result['lt1_step'] = smo2_steps[lt1_idx].get('step')
-    
     if lt2_idx is not None:
         result['lt2_power'] = smo2_steps[lt2_idx].get('avg_power')
         result['lt2_step'] = smo2_steps[lt2_idx].get('step')
-    
+        
     return result if result else None
 
 
@@ -383,13 +333,17 @@ def calculate_training_zones_from_thresholds(
     if cp is None:
         cp = vt2_watts
     
+    # Fallback to 0 if None
+    vt1_watts = vt1_watts if vt1_watts else 0
+    vt2_watts = vt2_watts if vt2_watts else 0
+    
     return {
         "power_zones": {
             "Z1_Recovery": (0, int(vt1_watts * 0.75)),
-            "Z2_Endurance": (int(vt1_watts * 0.75), vt1_watts),
-            "Z3_Tempo": (vt1_watts, int((vt1_watts + vt2_watts) / 2)),
-            "Z4_Threshold": (int((vt1_watts + vt2_watts) / 2), vt2_watts),
-            "Z5_VO2max": (vt2_watts, int(cp * 1.2)),
+            "Z2_Endurance": (int(vt1_watts * 0.75), int(vt1_watts)),
+            "Z3_Tempo": (int(vt1_watts), int((vt1_watts + vt2_watts) / 2)),
+            "Z4_Threshold": (int((vt1_watts + vt2_watts) / 2), int(vt2_watts)),
+            "Z5_VO2max": (int(vt2_watts), int(cp * 1.2)),
             "Z6_Anaerobic": (int(cp * 1.2), int(cp * 1.5))
         },
         "hr_zones": {

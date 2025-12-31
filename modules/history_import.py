@@ -13,6 +13,7 @@ import re
 from modules.db import SessionStore, SessionRecord
 from modules.utils import load_data, normalize_columns_pandas
 from modules.calculations import process_data, calculate_metrics, calculate_normalized_power
+from services.data_validation import validate_dataframe
 
 
 # Default folder path
@@ -76,6 +77,11 @@ def import_single_file(
         
         if df_raw is None or df_raw.empty:
             return False, f"Pusty plik: {filepath.name}"
+            
+        # Validate logic
+        is_valid, error = validate_dataframe(df_raw)
+        if not is_valid:
+            return False, f"Błąd walidacji ({filepath.name}): {error}"
         
         df = process_data(df_raw)
         metrics = calculate_metrics(df, cp)

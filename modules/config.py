@@ -31,6 +31,13 @@ class Config:
     MIN_HR_ACTIVE = int(os.getenv("MIN_HR_ACTIVE", "40"))
     MIN_RECORDS_FOR_ROLLING = int(os.getenv("MIN_RECORDS_FOR_ROLLING", "30"))
     MIN_DF_LENGTH = int(os.getenv("MIN_DF_LENGTH", "10"))
+    
+    # --- Data Validation ---
+    VALIDATION_MAX_WATTS = int(os.getenv("VALIDATION_MAX_WATTS", "3000"))
+    VALIDATION_MAX_HR = int(os.getenv("VALIDATION_MAX_HR", "250"))
+    VALIDATION_MAX_CADENCE = int(os.getenv("VALIDATION_MAX_CADENCE", "250"))
+    VALIDATION_REQUIRED_COLS = ["time"]
+    VALIDATION_DATA_COLS = ["watts", "heartrate", "cadence", "smo2", "power"]
 
     # --- ML Settings ---
     MODEL_FILE = os.getenv("MODEL_FILE", "cycling_brain_weights.npz")

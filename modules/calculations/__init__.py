@@ -97,9 +97,11 @@ from .thresholds import (
     detect_vt_transition_zone,
     analyze_step_test,
     calculate_training_zones_from_thresholds,
+    # New Data Structures
+    TransitionZone,
     ThresholdResult,
     StepTestResult,
-    TransitionZone,
+    HysteresisResult,
 )
 
 # Async runner exports
@@ -180,9 +182,10 @@ __all__ = [
     'detect_vt_transition_zone',
     'analyze_step_test',
     'calculate_training_zones_from_thresholds',
+    'TransitionZone',
     'ThresholdResult',
     'StepTestResult',
-    'TransitionZone',
+    'HysteresisResult',
     # Data Processing
     'process_data',
     'ensure_pandas',

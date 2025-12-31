@@ -3,7 +3,7 @@ Threshold Detection Functions for Step Tests.
 
 Pure functions for detecting VT1/VT2 (ventilatory) and LT1/LT2 (metabolic) thresholds.
 Extracted from UI modules for reuse in MCP Server.
-Refactored to support Sliding Window and Transition Zones.
+Refactored to support Sliding Window, Transition Zones, and Hysteresis Analysis.
 """
 from typing import Optional, List, Tuple
 from dataclasses import dataclass, field
@@ -34,6 +34,20 @@ class ThresholdResult:
 
 
 @dataclass
+class HysteresisResult:
+    """Result of directional analysis (hysteresis)."""
+    vt1_inc_zone: Optional[TransitionZone] = None
+    vt1_dec_zone: Optional[TransitionZone] = None
+    vt2_inc_zone: Optional[TransitionZone] = None
+    vt2_dec_zone: Optional[TransitionZone] = None
+    
+    vt1_shift_watts: Optional[float] = None # Positive = Upward shift, Negative = Downward shift (Fatigue)
+    vt2_shift_watts: Optional[float] = None
+    
+    warnings: List[str] = field(default_factory=list)
+
+
+@dataclass
 class StepTestResult:
     """Complete result of step test analysis."""
     vt1_watts: Optional[float] = None
@@ -41,9 +55,12 @@ class StepTestResult:
     lt1_watts: Optional[float] = None
     lt2_watts: Optional[float] = None
     
-    # New Zone Fields
+    # New Zone Fields (Primary - usually Increasing Load)
     vt1_zone: Optional[TransitionZone] = None
     vt2_zone: Optional[TransitionZone] = None
+    
+    # Hysteresis Data
+    hysteresis: Optional[HysteresisResult] = None
     
     vt1_hr: Optional[float] = None
     vt2_hr: Optional[float] = None
@@ -75,6 +92,67 @@ def calculate_slope(time_series: pd.Series, value_series: pd.Series) -> Tuple[fl
         value_series[mask]
     )
     return slope, intercept, std_err
+
+
+def segment_load_phases(
+    df: pd.DataFrame, 
+    power_col: str = 'watts',
+    time_col: str = 'time',
+    min_phase_duration: int = 180
+) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    """
+    Split the dataset into Increasing Load (Ramp Up) and Decreasing Load (Ramp Down) phases.
+    The split point is the peak power.
+    
+    Args:
+        df: Input DataFrame
+        power_col: Name of power column
+        time_col: Name of time column
+        min_phase_duration: Minimum seconds for a phase to be considered valid
+        
+    Returns:
+        Tuple of (df_increasing, df_decreasing)
+    """
+    if df.empty or power_col not in df.columns:
+        return df, pd.DataFrame()
+    
+    # Find index of peak power (smoothed to avoid spikes)
+    # We use a simple moving average to find the "structural" peak
+    
+    # If watts_smooth exists, use it, else create temporary
+    if 'watts_smooth_temp' not in df.columns:
+         s_watts = df[power_col].rolling(window=30, center=True).mean().fillna(df[power_col])
+    else:
+         s_watts = df['watts_smooth_temp']
+         
+    peak_idx = s_watts.idxmax()
+    peak_time = df.loc[peak_idx, time_col]
+    
+    # Split
+    df_unknown = df.copy() # Just all data in case logic fails
+    
+    # Ensure strict time ordering just in case
+    df = df.sort_values(time_col)
+    
+    inc_mask = df[time_col] <= peak_time
+    dec_mask = df[time_col] > peak_time
+    
+    df_inc = df[inc_mask].copy()
+    df_dec = df[dec_mask].copy()
+    
+    # Validate duration
+    dur_inc = (df_inc[time_col].max() - df_inc[time_col].min()) if not df_inc.empty else 0
+    dur_dec = (df_dec[time_col].max() - df_dec[time_col].min()) if not df_dec.empty else 0
+    
+    if dur_inc < min_phase_duration:
+        # If ramp up is too short, maybe connection error? Return full as increasing
+        return df, pd.DataFrame()
+        
+    if dur_dec < min_phase_duration:
+        # No significant cool down / ramp down
+        return df_inc, pd.DataFrame()
+        
+    return df_inc, df_dec
 
 
 def detect_vt_transition_zone(
@@ -130,8 +208,9 @@ def detect_vt_transition_zone(
         ci_upper = slope_ve + (Z_SCORE * std_err)
         
         # VT1 Overlap Check (Threshold 0.05)
+        # We assume typical VT1 slope is around 0.05. 
+        # We enforce 0.02 <= slope <= 0.08 to avoid noise elsewhere.
         if (ci_lower <= 0.05 <= ci_upper):
-             # Sanity check: slope shouldn't be wildly off
              if 0.02 <= slope_ve <= 0.08:
                 vt1_candidates.append({
                     'avg_watts': avg_watts,
@@ -202,7 +281,7 @@ def analyze_step_test(
 ) -> StepTestResult:
     """
     Analyze a step test (ramp test) for threshold detection.
-    Updated to use Sliding Window for VT and classic step analysis for SmO2 (hybrid).
+    Updated for Hysteresis: Analyzes both Ramp Up and Ramp Down (if present).
     """
     result = StepTestResult()
     
@@ -218,42 +297,86 @@ def analyze_step_test(
         result.analysis_notes.append("Brak kolumny czasu")
         return result
         
-    # 1. Sliding Window Analysis for VT (New)
+    # 1. Sliding Window Analysis for VT with Hysteresis
     if has_ve and has_power:
-        vt1_zone, vt2_zone = detect_vt_transition_zone(
-            df, 
-            window_duration=60, # 60s windows
-            step_size=5,        # 5s steps for high resolution
-            ve_column=ve_column,
-            power_column=power_column,
-            hr_column=hr_column,
+        # Segment data
+        df_inc, df_dec = segment_load_phases(df, power_col=power_column, time_col=time_column)
+        
+        # Analyze Increasing Phase (Primary)
+        vt1_inc, vt2_inc = detect_vt_transition_zone(
+            df_inc, 
+            window_duration=60, 
+            step_size=5,
+            ve_column=ve_column, 
+            power_column=power_column, 
+            hr_column=hr_column, 
             time_column=time_column
         )
         
-        result.vt1_zone = vt1_zone
-        result.vt2_zone = vt2_zone
+        # Set Primary Results
+        result.vt1_zone = vt1_inc
+        result.vt2_zone = vt2_inc
         
-        if vt1_zone:
-            # For backward compatibility, pick the midpoint of the zone
-            result.vt1_watts = (vt1_zone.range_watts[0] + vt1_zone.range_watts[1]) / 2
-            if vt1_zone.range_hr:
-                result.vt1_hr = (vt1_zone.range_hr[0] + vt1_zone.range_hr[1]) / 2
-            result.analysis_notes.append(f"VT1 Zone Detected: {vt1_zone.range_watts[0]:.0f}-{vt1_zone.range_watts[1]:.0f}W (Conf: {vt1_zone.confidence:.2f})")
-            
-        if vt2_zone:
-            result.vt2_watts = (vt2_zone.range_watts[0] + vt2_zone.range_watts[1]) / 2
-            if vt2_zone.range_hr:
-                result.vt2_hr = (vt2_zone.range_hr[0] + vt2_zone.range_hr[1]) / 2
-            result.analysis_notes.append(f"VT2 Zone Detected: {vt2_zone.range_watts[0]:.0f}-{vt2_zone.range_watts[1]:.0f}W (Conf: {vt2_zone.confidence:.2f})")
+        if vt1_inc:
+            result.vt1_watts = (vt1_inc.range_watts[0] + vt1_inc.range_watts[1]) / 2
+            if vt1_inc.range_hr:
+                result.vt1_hr = (vt1_inc.range_hr[0] + vt1_inc.range_hr[1]) / 2
+            result.analysis_notes.append(f"VT1 (Inc): {vt1_inc.range_watts[0]:.0f}-{vt1_inc.range_watts[1]:.0f}W")
+        
+        if vt2_inc:
+            result.vt2_watts = (vt2_inc.range_watts[0] + vt2_inc.range_watts[1]) / 2
+            if vt2_inc.range_hr:
+                result.vt2_hr = (vt2_inc.range_hr[0] + vt2_inc.range_hr[1]) / 2
+            result.analysis_notes.append(f"VT2 (Inc): {vt2_inc.range_watts[0]:.0f}-{vt2_inc.range_watts[1]:.0f}W")
 
-    # 2. Classic Step Analysis (Legacy fallback + SmO2)
-    # This preserves the step-by-step functionality for SmO2 which we haven't refactored yet
-    # ... (Keeping the logic for preparing step_data to pass to SmO2 detection) ...
+        # Analyze Decreasing Phase (Secondary/Hysteresis)
+        vt1_dec = None
+        vt2_dec = None
+        hysteresis = HysteresisResult()
+        
+        if not df_dec.empty:
+            vt1_dec, vt2_dec = detect_vt_transition_zone(
+                df_dec, 
+                window_duration=60, 
+                step_size=5,
+                ve_column=ve_column, 
+                power_column=power_column, 
+                hr_column=hr_column, 
+                time_column=time_column
+            )
+            
+            hysteresis.vt1_inc_zone = vt1_inc
+            hysteresis.vt1_dec_zone = vt1_dec
+            hysteresis.vt2_inc_zone = vt2_inc
+            hysteresis.vt2_dec_zone = vt2_dec
+            
+            # Calculate Shifts
+            if vt1_inc and vt1_dec:
+                mid_inc = (vt1_inc.range_watts[0] + vt1_inc.range_watts[1]) / 2
+                mid_dec = (vt1_dec.range_watts[0] + vt1_dec.range_watts[1]) / 2
+                diff = mid_dec - mid_inc # Negative means fatigue (usually) or drift
+                hysteresis.vt1_shift_watts = diff
+                if abs(diff) > 20: 
+                    hysteresis.warnings.append(f"Significant VT1 hysteresis: {diff:.0f}W")
+                    result.analysis_notes.append(f"Hysteresis VT1: {diff:+.0f}W")
+            
+            if vt2_inc and vt2_dec:
+                mid_inc = (vt2_inc.range_watts[0] + vt2_inc.range_watts[1]) / 2
+                mid_dec = (vt2_dec.range_watts[0] + vt2_dec.range_watts[1]) / 2
+                diff = mid_dec - mid_inc
+                hysteresis.vt2_shift_watts = diff
+                if abs(diff) > 20: 
+                    hysteresis.warnings.append(f"Significant VT2 hysteresis: {diff:.0f}W")
+                    result.analysis_notes.append(f"Hysteresis VT2: {diff:+.0f}W")
+            
+            result.hysteresis = hysteresis
+
+    # 2. Classic Step Analysis (Legacy fallback + SmO2) - using FULL dataframe
+    # SmO2 Analysis usually assumes the whole step steps structure
     
     total_duration = df[time_column].max() - df[time_column].min()
-    num_steps = int(total_duration / max(step_duration_sec, 1)) # avoid div by 0
+    num_steps = int(total_duration / max(step_duration_sec, 1))
     
-    # We need step_data for SmO2
     step_data = []
     if num_steps >= 3:
         start_time = df[time_column].min()

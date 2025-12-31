@@ -2,7 +2,7 @@ import streamlit as st
 import plotly.graph_objects as go
 import pandas as pd
 from scipy import stats
-from modules.calculations.thresholds import detect_vt_transition_zone
+from modules.calculations.thresholds import analyze_step_test
 
 def render_vent_tab(target_df, training_notes, uploaded_file_name):
     st.header("Analiza Progu Wentylacyjnego (VT1 / VT2 Detection)")
@@ -26,25 +26,27 @@ def render_vent_tab(target_df, training_notes, uploaded_file_name):
     # Format czasu
     target_df['time_str'] = pd.to_datetime(target_df['time'], unit='s').dt.strftime('%H:%M:%S')
 
-    # 2. DETEKCJA AUTOMATYCZNA (Sliding Window)
-    # Uruchamiamy nową detekcję na całym pliku
-    vt1_zone, vt2_zone = detect_vt_transition_zone(
+    # 2. DETEKCJA AUTOMATYCZNA (Complex Phase Analysis)
+    # Use full analyze_step_test to get hysteresis data
+    result = analyze_step_test(
         target_df, 
-        window_duration=60, 
-        step_size=5,
-        ve_column='tymeventilation',
         power_column='watts',
-        hr_column='hr' if 'hr' in target_df.columns else 'time', # Fallback hack if no HR
+        ve_column='tymeventilation',
+        hr_column='hr' if 'hr' in target_df.columns else None,
         time_column='time'
     )
+    
+    vt1_zone = result.vt1_zone
+    vt2_zone = result.vt2_zone
+    hysteresis = result.hysteresis
 
-    # Wyświetlenie wyników automatycznych (Na górze)
-    st.subheader("🤖 Automatyczna Detekcja Stref (Sliding Window)")
+    # Wyświetlenie wyników automatycznych (Primary - Increasing Load)
+    st.subheader("🤖 Automatyczna Detekcja Stref (Ramp Up)")
     
     col_z1, col_z2 = st.columns(2)
     with col_z1:
         if vt1_zone:
-            st.success(f"**VT1 Zone:** {vt1_zone.range_watts[0]:.0f} - {vt1_zone.range_watts[1]:.0f} W")
+            st.success(f"**VT1 Zone (Up):** {vt1_zone.range_watts[0]:.0f} - {vt1_zone.range_watts[1]:.0f} W")
             st.caption(f"Confidence: {vt1_zone.confidence:.0%}")
             if vt1_zone.range_hr:
                 st.caption(f"HR: {vt1_zone.range_hr[0]:.0f}-{vt1_zone.range_hr[1]:.0f} bpm")
@@ -53,12 +55,37 @@ def render_vent_tab(target_df, training_notes, uploaded_file_name):
 
     with col_z2:
         if vt2_zone:
-            st.error(f"**VT2 Zone:** {vt2_zone.range_watts[0]:.0f} - {vt2_zone.range_watts[1]:.0f} W")
+            st.error(f"**VT2 Zone (Up):** {vt2_zone.range_watts[0]:.0f} - {vt2_zone.range_watts[1]:.0f} W")
             st.caption(f"Confidence: {vt2_zone.confidence:.0%}")
             if vt2_zone.range_hr:
                 st.caption(f"HR: {vt2_zone.range_hr[0]:.0f}-{vt2_zone.range_hr[1]:.0f} bpm")
         else:
             st.info("VT2 Zone: Nie wykryto (brak wyraźnego przejścia slope 0.15)")
+            
+    # Hysteresis Information
+    if hysteresis and (hysteresis.vt1_dec_zone or hysteresis.vt2_dec_zone):
+        with st.expander("📉 Analiza Histerezy (Ramp Down vs Up)", expanded=True):
+            h_col1, h_col2 = st.columns(2)
+            with h_col1:
+                if hysteresis.vt1_dec_zone:
+                    st.markdown(f"**VT1 (Down):** {hysteresis.vt1_dec_zone.range_watts[0]:.0f} - {hysteresis.vt1_dec_zone.range_watts[1]:.0f} W")
+                    if hysteresis.vt1_shift_watts is not None:
+                         shift = hysteresis.vt1_shift_watts
+                         color = "red" if shift < -15 else "green"
+                         st.markdown(f"Shift: **:{color}[{shift:+.0f} W]**")
+            with h_col2:
+                 if hysteresis.vt2_dec_zone:
+                    st.markdown(f"**VT2 (Down):** {hysteresis.vt2_dec_zone.range_watts[0]:.0f} - {hysteresis.vt2_dec_zone.range_watts[1]:.0f} W")
+                    if hysteresis.vt2_shift_watts is not None:
+                         shift = hysteresis.vt2_shift_watts
+                         color = "red" if shift < -15 else "green"
+                         st.markdown(f"Shift: **:{color}[{shift:+.0f} W]**")
+            
+            if hysteresis.warnings:
+                for w in hysteresis.warnings:
+                    st.warning(f"⚠️ {w}")
+            else:
+                st.info("Brak istotnej histerezy (<20W). Fizjologia stabilna.")
 
     st.markdown("---")
 
@@ -113,7 +140,7 @@ def render_vent_tab(target_df, training_notes, uploaded_file_name):
 
     st.info("💡 **ANALIZA MANUALNA:** Zaznacz obszar na wykresie poniżej (kliknij i przeciągnij), aby sprawdzić nachylenie lokalne.")
 
-        # Opcjonalne: ręczne wprowadzenie czasu (dla precyzji)
+
     def parse_time_to_seconds(t_str):
         try:
             parts = list(map(int, t_str.split(':')))
@@ -212,29 +239,46 @@ def render_vent_tab(target_df, training_notes, uploaded_file_name):
             ))
 
             # === WIZUALIZACJA STREF (ZONES) ===
-            # Rysujemy prostokąty dla wykrytych stref (jeśli moc odpowiada tym strefom, konwertujemy na czas - trudne na wykresie czasu)
-            # Zamiast mapować moc na czas (co jest trudne bo moc może falować), lepiej by było gdyby detect_vt_transition_zone zwracało też czas.
-            # Ale detect_vt_transition_zone zwraca waty. W step teście waty rosną liniowo, więc można zmapować.
-            # Dla bezpieczeństwa (nie wiemy czy to step test) - po prostu wyświetlmy strefy jako horyzontalne pasy na osi Mocy (prawa oś)
             
+            # VT1 Primary (Green)
             if vt1_zone:
-                # Pasek na osi Y2 (Moc)
                 fig_vent.add_hrect(
                     y0=vt1_zone.range_watts[0], y1=vt1_zone.range_watts[1],
                     fillcolor="green", opacity=0.15,
                     layer="below", line_width=0,
-                    yref="y2",  # Referencja do prawej osi
-                    annotation_text="VT1 Zone", annotation_position="top left"
+                    yref="y2",
+                    annotation_text=f"VT1 Up ({vt1_zone.range_watts[0]:.0f}-{vt1_zone.range_watts[1]:.0f}W)", annotation_position="top left"
                 )
-                
+            
+            # VT2 Primary (Red)
             if vt2_zone:
                 fig_vent.add_hrect(
                     y0=vt2_zone.range_watts[0], y1=vt2_zone.range_watts[1],
                     fillcolor="red", opacity=0.15,
                     layer="below", line_width=0,
                     yref="y2",
-                    annotation_text="VT2 Zone", annotation_position="top left"
+                    annotation_text=f"VT2 Up ({vt2_zone.range_watts[0]:.0f}-{vt2_zone.range_watts[1]:.0f}W)", annotation_position="top left"
                 )
+            
+            # Hysteresis Zones (Decreasing) - Dashed/Ghost
+            if hysteresis:
+                if hysteresis.vt1_dec_zone:
+                    fig_vent.add_hrect(
+                       y0=hysteresis.vt1_dec_zone.range_watts[0], y1=hysteresis.vt1_dec_zone.range_watts[1],
+                       fillcolor="blue", opacity=0.05, # Very faint
+                       layer="below", line_width=1, line_dash="dot", line_color="blue",
+                       yref="y2",
+                       annotation_text="VT1 Down", annotation_position="bottom right"
+                    )
+
+                if hysteresis.vt2_dec_zone:
+                    fig_vent.add_hrect(
+                       y0=hysteresis.vt2_dec_zone.range_watts[0], y1=hysteresis.vt2_dec_zone.range_watts[1],
+                       fillcolor="purple", opacity=0.05,
+                       layer="below", line_width=1, line_dash="dot", line_color="purple",
+                       yref="y2",
+                       annotation_text="VT2 Down", annotation_position="bottom right"
+                    )
 
             # Zaznaczenie manualne
             fig_vent.add_vrect(x0=startsec, x1=endsec, fillcolor="orange", opacity=0.1, layer="below", annotation_text="MANUAL", annotation_position="top left")
@@ -251,7 +295,7 @@ def render_vent_tab(target_df, training_notes, uploaded_file_name):
                 ))
 
             fig_vent.update_layout(
-                title="Dynamika Wentylacji vs Moc (z wykrytymi strefami VT)",
+                title="Dynamika Wentylacji vs Moc (z analiża histerezy)",
                 xaxis_title="Czas",
                 yaxis=dict(title=dict(text="Wentylacja (L/min)", font=dict(color="#ffa15a"))),
                 yaxis2=dict(title=dict(text="Moc (W)", font=dict(color="#1f77b4")), overlaying='y', side='right', showgrid=False),
@@ -282,22 +326,24 @@ def render_vent_tab(target_df, training_notes, uploaded_file_name):
             # 6. TEORIA ODDECHOWA
             with st.expander("🫁 TEORIA: Płynne Strefy Przejścia vs Pojedynczy Punkt", expanded=False):
                 st.markdown("""
-                ### Dlaczego Strefy a nie Punkty?
+                ### Dynamiczna Analiza Histerezy
                 
-                Tradycyjna fizjologia szuka "punktu" (np. 300W), ale organizm to nie maszyna cyfrowa. 
-                Przemiany metaboliczne dzieją się w **strefach przejścia**.
+                System analizuje fazę **wzrostu obciążenia (Ramp Up)** oraz fazę **regeneracji/spadku (Ramp Down)** niezależnie.
+                
+                #### 🔄 Histereza (Przesunięcie)
+                * Jeśli Twój próg wentylacyjny (VT) na zmęczeniu pojawia się przy **niższej mocy** (np. VT1 spada z 210W do 180W), oznacza to nagromadzenie długu tlenowego i zmęczenie OUN.
+                * Duże przesunięcie (>20W) w dół sugeruje słabą **Durability** (wytrzymałość metaboliczną).
+                * Brak przesunięcia oznacza doskonałą, stabilną homeostazę.
                 
                 #### 🟢 Strefa VT1 (Aerobic Transition)
-                * To zakres mocy, gdzie zaczynasz angażować więcej włókien typu IIa.
-                * Oddech przyspiesza, ale jest to zmiana płynna.
-                * Nasz algorytm szuka momentu, gdzie Slope (nachylenie VE) wchodzi w zakres **0.035 - 0.065**.
+                * Zakres mocy, gdzie zaczynasz angażować więcej włókien typu IIa.
+                * Slope VE (nachylenie) wchodzi w zakres **0.035 - 0.065**.
                 
                 #### 🔴 Strefa VT2 (Compensation/Anaerobic)
-                * Zakres mocy, gdzie buforowanie przestaje działać.
-                * To tutaj tracisz kontrolę nad oddechem (Hyperventilation).
-                * Szukamy momentu, gdzie Slope wchodzi w zakres **0.13 - 0.17**.
+                * Utrata kontroli oddechowej.
+                * Slope VE wchodzi w zakres **0.13 - 0.17**.
                 
-                **Interval Confidence:** Im węższa strefa i wyższe "Confidence", tym bardziej wyraźny był Twój próg. Szeroka strefa oznacza powolną, rozmytą reakcję organizmu.
+                **Interval Confidence:** Im węższa strefa i wyższe "Confidence", tym bardziej wyraźny był Twój próg.
                 """)
     else:
         st.warning("Brak danych w tym zakresie.")

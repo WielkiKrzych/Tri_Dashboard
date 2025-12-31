@@ -1,10 +1,52 @@
+import os
+from pathlib import Path
+from dotenv import load_dotenv
+
+# Load environment variables from .env file if it exists
+load_dotenv()
+
+# Base directory
+BASE_DIR = Path(__file__).parent.parent
+
 class Config:
-    SMOOTH_WINDOW = 30
-    SMOOTH_WINDOW_SHORT = 5
-    COLOR_POWER = '#00cc96'
-    COLOR_HR = '#ef553b'
-    COLOR_SMO2 = '#ab63fa'
-    COLOR_VE = '#ffa15a'
-    COLOR_RR = '#19d3f3'
-    COLOR_THB = '#e377c2'
-    COLOR_TORQUE = '#e377c2'
+    # --- Application Settings ---
+    APP_TITLE = os.getenv("APP_TITLE", "Pro Athlete Dashboard")
+    APP_ICON = os.getenv("APP_ICON", "⚡")
+    APP_LAYOUT = os.getenv("APP_LAYOUT", "wide")
+    CSS_FILE = os.getenv("CSS_FILE", "style.css")
+
+    # --- Analysis Parameters ---
+    ROLLING_WINDOW_5MIN = int(os.getenv("ROLLING_WINDOW_5MIN", "300"))
+    ROLLING_WINDOW_30S = int(os.getenv("ROLLING_WINDOW_30S", "30"))
+    ROLLING_WINDOW_60S = int(os.getenv("ROLLING_WINDOW_60S", "60"))
+    
+    # Constants for smoothing (legacy support)
+    SMOOTH_WINDOW = int(os.getenv("SMOOTH_WINDOW", "30"))
+    SMOOTH_WINDOW_SHORT = int(os.getenv("SMOOTH_WINDOW_SHORT", "5"))
+
+    # Filtering & Resampling
+    RESAMPLE_THRESHOLD = int(os.getenv("RESAMPLE_THRESHOLD", "10000"))
+    RESAMPLE_STEP = int(os.getenv("RESAMPLE_STEP", "5"))
+    MIN_WATTS_ACTIVE = int(os.getenv("MIN_WATTS_ACTIVE", "10"))
+    MIN_HR_ACTIVE = int(os.getenv("MIN_HR_ACTIVE", "40"))
+    MIN_RECORDS_FOR_ROLLING = int(os.getenv("MIN_RECORDS_FOR_ROLLING", "30"))
+    MIN_DF_LENGTH = int(os.getenv("MIN_DF_LENGTH", "10"))
+
+    # --- ML Settings ---
+    MODEL_FILE = os.getenv("MODEL_FILE", "cycling_brain_weights.npz")
+    HISTORY_FILE = os.getenv("HISTORY_FILE", "brain_evolution_history.json")
+    ML_EPOCHS = int(os.getenv("ML_EPOCHS", "200"))
+    ML_LEARNING_RATE = float(os.getenv("ML_LEARNING_RATE", "0.02"))
+
+    # --- Database ---
+    DB_NAME = os.getenv("DB_NAME", "training_history.db")
+    DB_PATH = BASE_DIR / DB_NAME
+
+    # --- UI Colors ---
+    COLOR_POWER = os.getenv("COLOR_POWER", '#00cc96')
+    COLOR_HR = os.getenv("COLOR_HR", '#ef553b')
+    COLOR_SMO2 = os.getenv("COLOR_SMO2", '#ab63fa')
+    COLOR_VE = os.getenv("COLOR_VE", '#ffa15a')
+    COLOR_RR = os.getenv("COLOR_RR", '#19d3f3')
+    COLOR_THB = os.getenv("COLOR_THB", '#e377c2')
+    COLOR_TORQUE = os.getenv("COLOR_TORQUE", '#e377c2')

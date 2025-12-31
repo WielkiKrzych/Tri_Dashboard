@@ -6,6 +6,7 @@ Handles DataFrame validation logic for uploaded training files.
 
 import pandas as pd
 from typing import Tuple
+from modules.config import Config
 
 
 def validate_dataframe(df: pd.DataFrame) -> Tuple[bool, str]:
@@ -14,7 +15,7 @@ def validate_dataframe(df: pd.DataFrame) -> Tuple[bool, str]:
     Checks for:
     - Non-empty DataFrame
     - At least one data column (watts, heartrate, cadence, smo2, power)
-    - Minimum number of records (10)
+    - Minimum number of records (configurable)
     
     Args:
         df: DataFrame to validate
@@ -32,7 +33,7 @@ def validate_dataframe(df: pd.DataFrame) -> Tuple[bool, str]:
     if not has_data:
         return False, f"Brak wymaganych kolumn danych. Oczekiwane: {data_cols}"
     
-    if len(df) < 10:
-        return False, f"Za mało danych ({len(df)} rekordów). Minimum: 10."
+    if len(df) < Config.MIN_DF_LENGTH:
+        return False, f"Za mało danych ({len(df)} rekordów). Minimum: {Config.MIN_DF_LENGTH}."
     
     return True, ""

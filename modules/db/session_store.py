@@ -8,6 +8,7 @@ from datetime import datetime, date
 from typing import List, Optional, Dict, Any
 from dataclasses import dataclass, asdict
 import json
+from modules.config import Config
 
 
 @dataclass
@@ -38,14 +39,11 @@ class SessionRecord:
     extra_metrics: str = "{}"
 
 
-DB_PATH = Path(__file__).parent.parent.parent / "training_history.db"
-
-
 class SessionStore:
     """SQLite-based session storage with CRUD operations."""
     
     def __init__(self, db_path: Optional[Path] = None):
-        self.db_path = db_path or DB_PATH
+        self.db_path = db_path or Config.DB_PATH
         self._init_db()
     
     def _init_db(self) -> None:

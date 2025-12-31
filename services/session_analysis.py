@@ -11,18 +11,19 @@ Handles all session-level metrics calculations including:
 import pandas as pd
 import numpy as np
 from typing import Tuple, Dict, Any
+from modules.config import Config
 
 # ============================================================
-# CONSTANTS - Extracted from app.py for reusability
+# Re-exporting constants for backward compatibility
 # ============================================================
-ROLLING_WINDOW_5MIN = 300  # 5 minutes in seconds
-ROLLING_WINDOW_30S = 30    # 30 seconds
-ROLLING_WINDOW_60S = 60    # 60 seconds for SmO2 smoothing
-RESAMPLE_THRESHOLD = 10000  # Resample if more than this many rows
-RESAMPLE_STEP = 5          # Take every Nth row
-MIN_WATTS_ACTIVE = 10      # Minimum watts for "active" data
-MIN_HR_ACTIVE = 40         # Minimum HR for "active" data
-MIN_RECORDS_FOR_ROLLING = 30  # Minimum records for rolling calculations
+ROLLING_WINDOW_5MIN = Config.ROLLING_WINDOW_5MIN
+ROLLING_WINDOW_30S = Config.ROLLING_WINDOW_30S
+ROLLING_WINDOW_60S = Config.ROLLING_WINDOW_60S
+RESAMPLE_THRESHOLD = Config.RESAMPLE_THRESHOLD
+RESAMPLE_STEP = Config.RESAMPLE_STEP
+MIN_WATTS_ACTIVE = Config.MIN_WATTS_ACTIVE
+MIN_HR_ACTIVE = Config.MIN_HR_ACTIVE
+MIN_RECORDS_FOR_ROLLING = Config.MIN_RECORDS_FOR_ROLLING
 
 
 def calculate_header_metrics(df: pd.DataFrame, cp: float) -> Tuple[float, float, float]:
@@ -37,10 +38,10 @@ def calculate_header_metrics(df: pd.DataFrame, cp: float) -> Tuple[float, float,
     Returns:
         Tuple of (NP, IF, TSS)
     """
-    if 'watts' not in df.columns or len(df) < MIN_RECORDS_FOR_ROLLING:
+    if 'watts' not in df.columns or len(df) < Config.MIN_RECORDS_FOR_ROLLING:
         return 0.0, 0.0, 0.0
     
-    rolling_30s = df['watts'].rolling(window=ROLLING_WINDOW_30S, min_periods=1).mean()
+    rolling_30s = df['watts'].rolling(window=Config.ROLLING_WINDOW_30S, min_periods=1).mean()
     np_val = np.power(np.mean(np.power(rolling_30s, 4)), 0.25)
     
     if pd.isna(np_val):
@@ -89,7 +90,7 @@ def calculate_extended_metrics(
         metrics['carbs_total'] = estimate_carbs_burned(df, vt1_watts, vt2_watts)
         
         # VO2max estimation
-        mmp_5m = df['watts'].rolling(ROLLING_WINDOW_5MIN).mean().max()
+        mmp_5m = df['watts'].rolling(Config.ROLLING_WINDOW_5MIN).mean().max()
         if not pd.isna(mmp_5m) and rider_weight > 0:
             metrics['vo2_max_est'] = (10.8 * mmp_5m / rider_weight) + 7
         else:
@@ -112,7 +113,7 @@ def calculate_extended_metrics(
     metrics['avg_pp'] = 0
     
     if 'watts' in df.columns and 'heartrate' in df.columns:
-        mask = (df['watts'] > MIN_WATTS_ACTIVE) & (df['heartrate'] > MIN_HR_ACTIVE)
+        mask = (df['watts'] > Config.MIN_WATTS_ACTIVE) & (df['heartrate'] > Config.MIN_HR_ACTIVE)
         if mask.sum() > 0:
             hr_values = df.loc[mask, 'heartrate']
             watts_values = df.loc[mask, 'watts']
@@ -134,7 +135,7 @@ def apply_smo2_smoothing(df: pd.DataFrame) -> pd.DataFrame:
     """
     if 'smo2' in df.columns:
         df['smo2_smooth_ultra'] = df['smo2'].rolling(
-            window=ROLLING_WINDOW_60S, center=True, min_periods=1
+            window=Config.ROLLING_WINDOW_60S, center=True, min_periods=1
         ).mean()
     return df
 
@@ -148,6 +149,6 @@ def resample_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     Returns:
         Resampled DataFrame if size > threshold, otherwise original
     """
-    if len(df) > RESAMPLE_THRESHOLD:
-        return df.iloc[::RESAMPLE_STEP, :].copy()
+    if len(df) > Config.RESAMPLE_THRESHOLD:
+        return df.iloc[::Config.RESAMPLE_STEP, :].copy()
     return df

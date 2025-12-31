@@ -155,13 +155,13 @@ def cleanup_session_state() -> None:
             del st.session_state[key]
 
 
-st.set_page_config(page_title="Pro Athlete Dashboard", layout="wide", page_icon="⚡")
+st.set_page_config(page_title=Config.APP_TITLE, layout=Config.APP_LAYOUT, page_icon=Config.APP_ICON)
 
 def load_css(file_name):
     with open(file_name) as f:
         st.markdown(f'<style>{f.read()}</style>', unsafe_allow_html=True)
 
-load_css('style.css')
+load_css(Config.CSS_FILE)
 
 # Inicjalizacja notatek
 training_notes = TrainingNotes()

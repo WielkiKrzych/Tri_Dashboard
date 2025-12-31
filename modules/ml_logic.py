@@ -5,6 +5,7 @@ import logging
 import numpy as np
 from abc import ABC, abstractmethod
 from typing import Optional, Tuple, List, Any
+from modules.config import Config
 
 logger = logging.getLogger(__name__)
 
@@ -66,8 +67,8 @@ try:
 except ImportError:
     pass
 
-MODEL_FILE = "cycling_brain_weights.npz"
-HISTORY_FILE = "brain_evolution_history.json"
+MODEL_FILE = Config.MODEL_FILE
+HISTORY_FILE = Config.HISTORY_FILE
 
 if MLX_AVAILABLE:
     class PhysioNet(nn.Module):
@@ -206,7 +207,7 @@ if MLX_AVAILABLE:
         Y = mx.array(y_np)
         return X, Y
 
-    def train_cycling_brain(df, epochs: int = 200, 
+    def train_cycling_brain(df, epochs: int = Config.ML_EPOCHS, 
                             callback: Optional[TrainingCallback] = None,
                             training_zones: Optional[List[Tuple[str, int]]] = None):
         """Trenuje model predykcji HR na podstawie mocy i kadencji.
@@ -234,7 +235,7 @@ if MLX_AVAILABLE:
         loaded = load_model(model, MODEL_FILE, callback)
         
         def mse_loss(pred, target): return mx.mean((pred - target) ** 2)
-        optimizer = optim.Adam(learning_rate=0.02)
+        optimizer = optim.Adam(learning_rate=Config.ML_LEARNING_RATE)
         def train_step(model, X, y):
             loss = mse_loss(model(X), y)
             return loss

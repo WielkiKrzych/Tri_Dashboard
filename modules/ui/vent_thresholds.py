@@ -236,17 +236,20 @@ def render_vent_thresholds_tab(target_df, training_notes, uploaded_file_name, cp
             if is_vt1 or is_vt2:
                 # Get step info
                 power = step.get('avg_power', 0)
-                hr = step.get('avg_hr', 0)
+                if power is None: power = 0
+                hr = step.get('avg_hr')
                 end_time = step.get('end_time', 0)  # Use end of step for marker
                 
                 label = "VT1" if is_vt1 else "VT2"
                 color = "#ffa15a" if is_vt1 else "#ef553b"
                 
+                hr_str = f"{int(hr)}" if hr is not None else "--"
+                
                 # Add Vertical Line Marker at End of Step
                 fig_thresh.add_vline(
                     x=end_time,
                     line=dict(color=color, width=2, dash="dash"),
-                    annotation_text=f"<b>{label}</b><br>{int(power)}W @ {int(hr)} bpm",
+                    annotation_text=f"<b>{label}</b><br>{int(power)}W @ {hr_str} bpm",
                     annotation_position="top left",
                     annotation_font=dict(color=color, size=12),
                     layer="above"

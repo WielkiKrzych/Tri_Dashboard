@@ -14,6 +14,7 @@ Ten pakiet grupuje funkcje obliczeniowe według odpowiedzialności:
 - data_processing.py: Przetwarzanie danych
 - async_runner.py: Async calculation wrappers
 - polars_adapter.py: Polars/Pandas interoperability
+- repeatability.py: Repeatability and stability analysis
 
 Dla wstecznej kompatybilności, wszystkie funkcje są re-eksportowane z tego modułu.
 """
@@ -111,6 +112,14 @@ from .thresholds import (
     SensitivityResult,
 )
 
+from .repeatability import (
+    calculate_cv,
+    calculate_sem,
+    classify_reproducibility,
+    calculate_repeatability_metrics,
+    compare_session_to_baseline,
+)
+
 # Async runner exports
 from .async_runner import (
     run_in_thread,
@@ -202,6 +211,12 @@ __all__ = [
     'StepTestResult',
     'HysteresisResult',
     'SensitivityResult',
+    # Repeatability
+    'calculate_cv',
+    'calculate_sem',
+    'classify_reproducibility',
+    'calculate_repeatability_metrics',
+    'compare_session_to_baseline',
     # Data Processing
     'process_data',
     'ensure_pandas',

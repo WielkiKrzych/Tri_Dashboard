@@ -1,78 +1,79 @@
 # Tri_Dashboard: Zaawansowana Platforma Analizy Fizjologicznej
 
 ## Cel
-Tri_Dashboard to specjalistyczna platforma analityczna zaprojektowana dla naukowców sportowych oraz elitarnych trenerów. Wykracza poza standardowe metryki, oferując **probabilistyczne modelowanie fizjologiczne**.
+Tri_Dashboard to specjalistyczna platforma analityczna zaprojektowana dla naukowców sportowych oraz trenerów. Oferuje **probabilistyczne modelowanie fizjologiczne** z naciskiem na surowe dane i przejrzystą interpretację.
 
-Kluczowe moduły:
-- **Analiza Wentylacyjna (VT)**: Detekcja stref VT1/VT2 z analizą histerezy ("Ramp Up" vs "Ramp Down") i badaniem wrażliwości (Sensitivity Analysis).
-- **Progi SmO2 (NIRS)**: Analiza kinetyki mięśniowej z uwzględnieniem kontekstu (np. "Mechanical Occlusion" vs "Metabolic Demand").
-- **Reliability Engine**: System "strażnika jakości", który blokuje analizę w przypadku wykrycia błędów protokołu (np. nieliniowy ramp test) lub szumu sygnałowego.
-- **Automated Coach**: Silnik interpretacji tłumaczący wyniki ("Slow Recovery Kinetics") na konkretne zalecenia treningowe ("Zone 2 Base").
+## Kluczowe Moduły
 
-## Przegląd Architektury
-Aplikacja wykorzystuje modularną **Architekturę Zorientowaną na Usługi (SOA)** w ramach monolitycznego kodu.
+### 🫁 Analiza Wentylacyjna (VT)
+- Detekcja stref **VT1/VT2** z analizą histerezy ("Ramp Up" vs "Ramp Down").
+- **Sensitivity Analysis**: Sprawdza stabilność wyników przy różnych parametrach wygładzania.
+- **Reliability Score**: Ostrzeżenia przy niestabilnych wynikach.
+
+### 💪 Analiza SmO2 (NIRS)
+- Wyświetla **surowe wartości SmO2** (bez normalizacji).
+- **Narzędzia Manualne**: Zaznaczanie interwałów, metryki (Śr. SmO2, Trend Slope), linia trendu.
+- **Analiza Kontekstu**: Algorytm wyjaśnia *dlaczego* SmO2 spada (Demand, Occlusion, Delivery Limit).
+- **Lag Analysis**: Mierzy opóźnienie reakcji SmO2/HR względem zmiany mocy.
+
+### 🛡️ Reliability Engine
+System "Gatekeeper" blokujący analizę przy:
+- Błędnym protokole (np. jazda stała zamiast Ramp Test).
+- Niskiej jakości sygnału (dropout, szum).
+
+### 🧠 Automated Coach
+Silnik interpretacji tłumaczący wyniki na zalecenia treningowe:
+- **Diagnoza**: "Aerobic Deficiency", "Slow Recovery Kinetics".
+- **Recepta**: "Zone 2 Base Building", "Short-Rest Intervals".
+
+## Architektura
 
 ```mermaid
 graph TD
     UI["Frontend (Streamlit)"] --> Quality["Reliability Check"]
-    Quality --> Analysis["Logic Engine (Calculations)"]
+    Quality --> Analysis["Logic Engine"]
     
-    subgraph "Moduły Naukowe"
-        Analysis --> Thresholds["VT/LT Thresholds"]
-        Analysis --> Kinetics["SmO2 Kinetics"]
-        Analysis --> Interpret["Interpretation Engine"]
+    subgraph "Moduły"
+        Analysis --> VT["VT Detection"]
+        Analysis --> SmO2["SmO2 Kinetics"]
+        Analysis --> Interpret["Interpretation"]
     end
     
-    Interpret --> Coach["Automated Coach UI"]
+    Interpret --> Coach["Coach UI"]
 ```
-
-## Funkcjonalności
-
-### 1. Robust VT Detection (Analiza Progów)
-Zamiast "jednego punktu", system wyznacza **Strefy Pewności (Confidence Zones)**.
-- **Histereza**: Porównuje moce progowe podczas narastania (skupienie) i opadania (zmęczenie/recovery).
-- **Sensitivity Analysis**: Uruchamia algorytm na różnych oknach wygładzania. Jeśli wynik jest niestabilny, użytkownik otrzymuje ostrzeżenie "Low Reliability".
-
-### 2. SmO2 Context & Lag
-Algorytm nie patrzy tylko na spadek tlenu, ale wyjaśnia **DLACZEGO** on nastąpił:
-- **Delivery Limitation**: Serce nie nadąża (Płaskie SmO2 przy rosnącym HR).
-- **Utilization Issue**: Mięsień nie pobiera tlenu mimo dostępności.
-- **Mechanical Occlusion**: Zbyt niska kadencja blokuje przepływ ("Grinding").
-- **Lag Analysis**: Mierzy opóźnienie czasowe (w sekundach) między zmianą mocy a reakcją SmO2/HR.
-
-### 3. Reliability & Warning System
-System "Gatekeeper". Jeśli wgrasz plik ze stałą jazdą i nazwiesz go "Ramp Test", system to wykryje (Slope < 0.05 W/s) i **zablokuje** detekcję progów, chroniąc przed fałszywymi wynikami.
-
-### 4. Interpretation Engine
-Moduł "Trenera":
-- **Diagnoza**: "Profil Diesel" (Wysokie VT1, Niskie VLamax).
-- **Recepta**: "Trening Polaryzacyjny: Dodaj interwały VO2max".
 
 ## Instrukcja Instalacji
 
-### Wymagania Wstępne
-- Python 3.10 lub nowszy
-- Menedżer pakietów `pip`
+### Wymagania
+- Python 3.10+
+- `pip`
 
 ### Instalacja
-1.  Sklonuj repozytorium:
-    ```bash
-    git clone https://github.com/WielkiKrzych/Tri_Dashboard.git
-    cd tri_dashboard
-    ```
-2.  Zainstaluj zależności:
-    ```bash
-    pip install -e .[dev]
-    ```
+```bash
+git clone https://github.com/WielkiKrzych/Tri_Dashboard.git
+cd Tri_Dashboard
+pip install -e .[dev]
+```
 
-### Uruchomienie Dashboardu
+### Uruchomienie
 ```bash
 streamlit run app.py
 ```
-Dostęp pod adresem `http://localhost:8501`.
+Dostęp: `http://localhost:8501`
 
 ## Użycie
-1. **Wgraj Plik**: Obsługuje `.fit`, `.tcx`, `.csv` (Garmin, Wahoo, TrainRed).
-2. **Sprawdź Jakość**: Zobacz "Reliability Score" w podsumowaniu.
-3. **Analizuj**: Przejdź do zakładki "SmO2" lub "Ventilation" aby zobaczyć wykresy z zaznaczonymi strefami niepewności.
-4. **Wnioski**: Przeczytaj sekcję "Automated Coach" na dole strony głównej.
+1. **Wgraj Plik**: `.fit`, `.tcx`, `.csv` (Garmin, Wahoo, TrainRed).
+2. **Sprawdź Jakość**: Reliability Score w nagłówku.
+3. **Analizuj SmO2/VT**: Zaznacz interwały na wykresie, zobacz Trend Slope.
+4. **Przeczytaj Wnioski**: Sekcja "Automated Coach".
+
+## Struktura Katalogów
+```
+Tri_Dashboard/
+├── app.py                 # Główna aplikacja Streamlit
+├── modules/
+│   ├── calculations/      # Logika naukowa (thresholds, kinetics, quality)
+│   └── ui/                # Komponenty UI (vent.py, smo2.py, coach.py)
+├── services/              # Warstwa usług (walidacja, orkiestracja)
+└── tests/                 # Testy jednostkowe i weryfikacyjne
+```

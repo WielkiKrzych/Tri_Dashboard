@@ -438,5 +438,9 @@ def render_smo2_tab(target_df, training_notes, uploaded_file_name):
                 fig_thb.update_layout(title="Total Hemoglobin (tHb)", height=300)
                 st.plotly_chart(fig_thb, use_container_width=True)
                 
-            # Raw Data Table
-            st.dataframe(interval_data[['time_str', 'watts', 'smo2', 'hr', 'cadence']].head(100))
+            # Raw Data Table (Dynamically selected columns)
+            available_cols = [c for c in ['time_str', 'watts', 'smo2', 'hr', 'cadence', 'thb'] if c in interval_data.columns]
+            if available_cols:
+                st.dataframe(interval_data[available_cols].head(100))
+            else:
+                st.caption("Brak danych do wyświetlenia.")

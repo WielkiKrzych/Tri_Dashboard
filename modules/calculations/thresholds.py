@@ -654,20 +654,20 @@ def detect_smo2_from_steps(
     power_column: str = 'watts',
     hr_column: str = 'hr',
     time_column: str = 'time',
-    smo2_t1_slope_threshold: float = -0.005, # User defined boundary
-    smo2_t2_slope_threshold: float = -0.005  # Same boundary, different side
+    smo2_t1_slope_threshold: float = -0.01,
+    smo2_t2_slope_threshold: float = -0.02
 ) -> StepSmO2Result:
     """
     Detect SmO2 thresholds:
-    - Skip first step
-    - Split steps into halves
-    - T2 (AnT): First point where slope < -0.005
-    - T1 (AeT): The point immediately preceding T2 (Last point where slope > -0.005)
+    - Skip first two steps
+    - Use whole steps (180s)
+    - LT1: First step (after index 2) where slope < -0.01
+    - LT2: Next step after LT1 where slope < -0.02
     """
     result = StepSmO2Result()
     
-    if not step_range or not step_range.is_valid or len(step_range.steps) < 2:
-        result.notes.append("Insufficient steps for SmO2 detection")
+    if not step_range or not step_range.is_valid or len(step_range.steps) < 3:
+        result.notes.append("Insufficient steps for SmO2 detection (need > 2)")
         return result
     
     if smo2_column not in df.columns:
@@ -676,86 +676,66 @@ def detect_smo2_from_steps(
     
     has_hr = hr_column in df.columns
     
-    # 1. Collect analysis for all sub-steps
-    all_substeps = []
+    # 1. Collect analysis for whole steps
+    all_steps = []
     
-    for step in step_range.steps[1:]: # Skip Step 1
+    # User: Skip first two steps
+    for step in step_range.steps[2:]: 
         step_mask = (df[time_column] >= step.start_time) & (df[time_column] < step.end_time)
-        full_step_data = df[step_mask]
+        step_data = df[step_mask]
         
-        if len(full_step_data) < 10:
+        if len(step_data) < 10:
             continue
             
-        mid_time = step.start_time + (step.end_time - step.start_time) / 2
-        halves = [
-            (full_step_data[full_step_data[time_column] < mid_time], 1),
-            (full_step_data[full_step_data[time_column] >= mid_time], 2)
-        ]
+        slope, _, _ = calculate_slope(step_data[time_column], step_data[smo2_column])
         
-        for part_data, part_num in halves:
-            if len(part_data) < 5: continue
-            
-            slope, _, _ = calculate_slope(part_data[time_column], part_data[smo2_column])
-            
-            avg_power = part_data[power_column].mean()
-            avg_hr = part_data[hr_column].mean() if has_hr else None
-            avg_smo2 = part_data[smo2_column].mean()
-            
-            info = {
-                'step_number': step.step_number,
-                'sub_step': part_num,
-                'start_time': part_data[time_column].min(),
-                'end_time': part_data[time_column].max(),
-                'avg_power': round(avg_power, 0),
-                'avg_hr': round(avg_hr, 0) if avg_hr else None,
-                'avg_smo2': round(avg_smo2, 1),
-                'slope': round(slope, 5),
-                'is_t1': False,
-                'is_t2': False
-            }
-            all_substeps.append(info)
+        avg_power = step_data[power_column].mean()
+        avg_hr = step_data[hr_column].mean() if has_hr else None
+        avg_smo2 = step_data[smo2_column].mean()
+        
+        info = {
+            'step_number': step.step_number,
+            'sub_step': 0, # Whole step
+            'start_time': step_data[time_column].min(),
+            'end_time': step_data[time_column].max(),
+            'avg_power': round(avg_power, 0),
+            'avg_hr': round(avg_hr, 0) if avg_hr else None,
+            'avg_smo2': round(avg_smo2, 1),
+            'slope': round(slope, 5),
+            'is_t1': False,
+            'is_t2': False
+        }
+        all_steps.append(info)
             
     # 2. Identify Thresholds sequentially
-    t2_index = -1
+    lt1_found = False
+    lt1_idx = -1
     
-    # Find T2: First item with slope < -0.005
-    for i, item in enumerate(all_substeps):
-        if item['slope'] < -0.005:
-            t2_index = i
+    # Find LT1: First item with slope < -0.01
+    for i, item in enumerate(all_steps):
+        if item['slope'] < -0.01:
+            item['is_t1'] = True
+            result.smo2_1_watts = item['avg_power']
+            result.smo2_1_hr = item['avg_hr']
+            result.smo2_1_step_number = item['step_number']
+            result.smo2_1_slope = item['slope']
+            lt1_found = True
+            lt1_idx = i
             break
             
-    if t2_index != -1:
-        # Found T2
-        t2_item = all_substeps[t2_index]
-        t2_item['is_t2'] = True
-        result.smo2_2_watts = t2_item['avg_power']
-        result.smo2_2_hr = t2_item['avg_hr']
-        result.smo2_2_step_number = t2_item['step_number']
-        result.smo2_2_slope = t2_item['slope']
-        
-        # T1 is the item immediately before T2 (if exists)
-        if t2_index > 0:
-            t1_item = all_substeps[t2_index - 1]
-            # Verify T1 condition? User said "LT1 ... > -0.005".
-            # If the previous step satisfies this (which it must, otherwise it would have been picked as T2 earlier), mark it.
-            # Exception: What if checking i=0 and it fails? Then T2 is first. No T1.
-            t1_item['is_t1'] = True
-            result.smo2_1_watts = t1_item['avg_power']
-            result.smo2_1_hr = t1_item['avg_hr']
-            result.smo2_1_step_number = t1_item['step_number']
-            result.smo2_1_slope = t1_item['slope']
-    else:
-        # No T2 found (never dropped below -0.005)
-        # Maybe whole test is T1? Or T1 is the last step?
-        # Let's mark the last step as T1 if it meets condition
-        if all_substeps:
-             last_item = all_substeps[-1]
-             if last_item['slope'] > -0.005: 
-                 last_item['is_t1'] = True # End of aerobic test
-                 result.smo2_1_watts = last_item['avg_power']
-                 result.smo2_1_hr = last_item['avg_hr']
+    if lt1_found:
+        # Find LT2: NEXT item with slope < -0.02
+        for i in range(lt1_idx + 1, len(all_steps)):
+            item = all_steps[i]
+            if item['slope'] < -0.02:
+                item['is_t2'] = True
+                result.smo2_2_watts = item['avg_power']
+                result.smo2_2_hr = item['avg_hr']
+                result.smo2_2_step_number = item['step_number']
+                result.smo2_2_slope = item['slope']
+                break
 
-    result.step_analysis = all_substeps
+    result.step_analysis = all_steps
     return result
 
 

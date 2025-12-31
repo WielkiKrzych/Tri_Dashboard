@@ -82,6 +82,7 @@ class StepTestResult:
     vt2_hr: Optional[float] = None
     steps_analyzed: int = 0
     analysis_notes: List[str] = field(default_factory=list)
+    step_ve_analysis: List[dict] = field(default_factory=list)  # Per-step VE slope data
 
 
 def calculate_slope(time_series: pd.Series, value_series: pd.Series) -> Tuple[float, float, float]:
@@ -808,8 +809,8 @@ def analyze_step_test(
                     power_column=power_column,
                     hr_column=hr_column,
                     time_column=time_column,
-                    vt1_slope_threshold=0.05,
-                    vt2_slope_threshold=0.12
+                    vt1_slope_threshold=0.15,
+                    vt2_slope_threshold=0.10
                 )
                 
                 # Set results from step-based detection
@@ -822,8 +823,7 @@ def analyze_step_test(
                     result.analysis_notes.append(note)
                 
                 # Store step analysis for UI display
-                if hasattr(result, 'step_ve_analysis'):
-                    result.step_ve_analysis = vt_result.step_analysis
+                result.step_ve_analysis = vt_result.step_analysis
         else:
             # No valid step test detected - fall back to legacy peak-based segmentation
             notes = step_range.notes if step_range else ["Nie znaleziono prawidłowego testu schodkowego"]

@@ -78,6 +78,44 @@ def render_vent_thresholds_tab(target_df, training_notes, uploaded_file_name, cp
             
             if result.steps_analyzed > 0:
                 st.metric("Liczba wykrytych stopni", result.steps_analyzed)
+            
+            # Show VE slope table for each step
+            if result.step_ve_analysis:
+                st.markdown("### 📊 VE Slope per step (debug)")
+                import pandas as pd
+                step_df = pd.DataFrame(result.step_ve_analysis)
+                
+                # Format columns
+                if 've_slope' in step_df.columns:
+                    step_df['ve_slope'] = step_df['ve_slope'].apply(lambda x: f"{x:.4f}")
+                if 'avg_power' in step_df.columns:
+                    step_df['avg_power'] = step_df['avg_power'].apply(lambda x: f"{x:.0f}W")
+                if 'avg_hr' in step_df.columns:
+                    step_df['avg_hr'] = step_df['avg_hr'].apply(lambda x: f"{x:.0f}" if pd.notna(x) else "-")
+                if 'avg_ve' in step_df.columns:
+                    step_df['avg_ve'] = step_df['avg_ve'].apply(lambda x: f"{x:.1f}")
+                
+                # Add VT markers
+                if 'is_vt1' in step_df.columns:
+                    step_df['VT'] = step_df.apply(
+                        lambda r: '🟠 VT1' if r.get('is_vt1') else ('🔴 VT2' if r.get('is_vt2') else ''), 
+                        axis=1
+                    )
+                
+                # Rename columns for display
+                step_df = step_df.rename(columns={
+                    'step_number': 'Step',
+                    'avg_power': 'Power',
+                    'avg_hr': 'HR',
+                    'avg_ve': 'VE',
+                    've_slope': 'Slope (L/s)'
+                })
+                
+                # Select columns to show
+                cols_to_show = ['Step', 'Power', 'HR', 'VE', 'Slope (L/s)', 'VT']
+                cols_available = [c for c in cols_to_show if c in step_df.columns]
+                
+                st.dataframe(step_df[cols_available], hide_index=True)
 
     # Wyświetlenie wyników automatycznych
     st.subheader("🤖 Wykryte Progi Wentylacyjne")

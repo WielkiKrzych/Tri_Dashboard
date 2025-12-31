@@ -102,10 +102,26 @@ def render_manual_thresholds_tab(target_df, training_notes, uploaded_file_name, 
             return target_df.loc[idx, 'time']
         return None
 
-    vt1_hr_manual = find_hr_for_power(manual_vt1)
-    vt2_hr_manual = find_hr_for_power(manual_vt2)
+    vt1_hr_est = find_hr_for_power(manual_vt1)
+    vt2_hr_est = find_hr_for_power(manual_vt2)
     vt1_time_manual = find_time_for_power(manual_vt1)
     vt2_time_manual = find_time_for_power(manual_vt2)
+
+    # Now add secondary manual inputs
+    st.markdown("---")
+    col_inpa, col_inpb = st.columns(2)
+    
+    with col_inpa:
+        st.caption("Dodatkowe parametry VT1")
+        manual_vt1_hr = st.number_input("VT1 HR (bpm)", min_value=0, max_value=250, value=int(vt1_hr_est) if vt1_hr_est else 0, step=1, key="vt1_hr")
+        manual_vt1_ve = st.number_input("VT1 VE (L/min)", min_value=0.0, max_value=300.0, value=float(result.vt1_ve) if result.vt1_ve else 0.0, step=1.0, key="vt1_ve")
+        manual_vt1_br = st.number_input("VT1 Oddechy (BR/min)", min_value=0, max_value=120, value=int(result.vt1_br) if result.vt1_br else 0, step=1, key="vt1_br")
+
+    with col_inpb:
+        st.caption("Dodatkowe parametry VT2")
+        manual_vt2_hr = st.number_input("VT2 HR (bpm)", min_value=0, max_value=250, value=int(vt2_hr_est) if vt2_hr_est else 0, step=1, key="vt2_hr")
+        manual_vt2_ve = st.number_input("VT2 VE (L/min)", min_value=0.0, max_value=300.0, value=float(result.vt2_ve) if result.vt2_ve else 0.0, step=1.0, key="vt2_ve")
+        manual_vt2_br = st.number_input("VT2 Oddechy (BR/min)", min_value=0, max_value=120, value=int(result.vt2_br) if result.vt2_br else 0, step=1, key="vt2_br")
 
     st.markdown("---")
     st.subheader("🎯 Wybrane Progi (Manualne)")
@@ -119,7 +135,9 @@ def render_manual_thresholds_tab(target_df, training_notes, uploaded_file_name, 
             <div style="padding:15px; border-radius:8px; border:2px solid #ffa15a; background-color: #222;">
                 <h3 style="margin:0; color: #ffa15a;">VT1 (AeT)</h3>
                 <h1 style="margin:5px 0; font-size:2.5em;">{int(manual_vt1)} W</h1>
-                {f'<p style="margin:0; color:#aaa;"><b>HR (est):</b> {int(vt1_hr_manual)} bpm</p>' if vt1_hr_manual else ''}
+                {f'<p style="margin:0; color:#aaa;"><b>HR:</b> {int(manual_vt1_hr)} bpm</p>' if manual_vt1_hr > 0 else (f'<p style="margin:0; color:#aaa;"><b>HR (est):</b> {int(vt1_hr_est)} bpm</p>' if vt1_hr_est else '')}
+                {f'<p style="margin:0; color:#aaa;"><b>VE:</b> {manual_vt1_ve:.1f} L/min</p>' if manual_vt1_ve > 0 else ''}
+                {f'<p style="margin:0; color:#aaa;"><b>Oddechy:</b> {int(manual_vt1_br)} BR/min</p>' if manual_vt1_br > 0 else ''}
             </div>
             """, unsafe_allow_html=True)
         else:
@@ -132,7 +150,9 @@ def render_manual_thresholds_tab(target_df, training_notes, uploaded_file_name, 
             <div style="padding:15px; border-radius:8px; border:2px solid #ef553b; background-color: #222;">
                 <h3 style="margin:0; color: #ef553b;">VT2 (AnT)</h3>
                 <h1 style="margin:5px 0; font-size:2.5em;">{int(manual_vt2)} W</h1>
-                {f'<p style="margin:0; color:#aaa;"><b>HR (est):</b> {int(vt2_hr_manual)} bpm</p>' if vt2_hr_manual else ''}
+                {f'<p style="margin:0; color:#aaa;"><b>HR:</b> {int(manual_vt2_hr)} bpm</p>' if manual_vt2_hr > 0 else (f'<p style="margin:0; color:#aaa;"><b>HR (est):</b> {int(vt2_hr_est)} bpm</p>' if vt2_hr_est else '')}
+                {f'<p style="margin:0; color:#aaa;"><b>VE:</b> {manual_vt2_ve:.1f} L/min</p>' if manual_vt2_ve > 0 else ''}
+                {f'<p style="margin:0; color:#aaa;"><b>Oddechy:</b> {int(manual_vt2_br)} BR/min</p>' if manual_vt2_br > 0 else ''}
             </div>
             """, unsafe_allow_html=True)
         else:

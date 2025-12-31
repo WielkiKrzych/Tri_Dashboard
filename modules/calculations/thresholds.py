@@ -563,8 +563,8 @@ def detect_vt_from_steps(
     if skip_stage:
         result.notes.append(f"Skipped first spike > 0.1 at Step {skip_stage['step_number']} (Slope: {skip_slope:.4f})")
 
-    # Phase 2: Find VT1 (> 0.05)
-    vt1_next_idx, vt1_slope, vt1_stage = search_for_threshold(start_idx_vt1, 0.05)
+    # Phase 2: Find VT1
+    vt1_next_idx, vt1_slope, vt1_stage = search_for_threshold(start_idx_vt1, vt1_slope_threshold)
     
     vt1_found = False
     if vt1_stage:
@@ -579,9 +579,9 @@ def detect_vt_from_steps(
     else:
         result.notes.append("VT1 not found (no slope > 0.05 after skip)")
 
-    # Phase 3: Find VT2 (> 0.15)
+    # Phase 3: Find VT2
     start_idx_vt2 = vt1_next_idx if vt1_found else start_idx_vt1
-    vt2_next_idx, vt2_slope, vt2_stage = search_for_threshold(start_idx_vt2, 0.15)
+    vt2_next_idx, vt2_slope, vt2_stage = search_for_threshold(start_idx_vt2, vt2_slope_threshold)
     
     if vt2_stage:
          if not vt1_found or (vt2_stage['avg_power'] > result.vt1_watts):
@@ -1004,8 +1004,8 @@ def analyze_step_test(
                     power_column=power_column,
                     hr_column=hr_column,
                     time_column=time_column,
-                    vt1_slope_threshold=0.13,
-                    vt2_slope_threshold=0.10
+                    vt1_slope_threshold=0.05,
+                    vt2_slope_threshold=0.08
                 )
                 
                 # Set results from step-based detection

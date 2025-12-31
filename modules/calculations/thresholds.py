@@ -555,37 +555,33 @@ def detect_vt_from_steps(
         
         return None, None, None
 
-    # --- VT1: PEAK METHOD ---
-    vt1_next_idx = 0
+    # --- VT DETECTION SEQUENCE ---
+    
+    # Phase 1: Skip first trend > 0.1
+    skip_next_idx, skip_slope, skip_stage = search_for_threshold(0, 0.10)
+    start_idx_vt1 = skip_next_idx if skip_stage else 0
+    if skip_stage:
+        result.notes.append(f"Skipped first spike > 0.1 at Step {skip_stage['step_number']} (Slope: {skip_slope:.4f})")
+
+    # Phase 2: Find VT1 (> 0.05)
+    vt1_next_idx, vt1_slope, vt1_stage = search_for_threshold(start_idx_vt1, 0.05)
+    
     vt1_found = False
-    
-    vt1_peak_data, notes = detect_vt1_peaks_heuristic(df, time_column, ve_column)
-    result.notes.extend(notes)
-    
-    if vt1_peak_data:
+    if vt1_stage:
         vt1_found = True
-        result.vt1_watts = round(vt1_peak_data['avg_power'], 0)
-        result.vt1_hr = round(vt1_peak_data['avg_hr'], 0)
-        result.vt1_ve = round(vt1_peak_data['avg_ve'], 1)
-        result.vt1_ve_slope = round(vt1_peak_data['slope'], 4)
-        
-        if br_column:
-             pvt_mask = (df[time_column] >= vt1_peak_data['start_time']) & (df[time_column] <= vt1_peak_data['end_time'])
-             result.vt1_br = round(df.loc[pvt_mask, br_column].mean(), 0)
-
-        # Map to steps for VT2 search
-        end_time = vt1_peak_data['end_time']
-        for i, s in enumerate(stages):
-            if s['end_time'] >= end_time:
-                vt1_next_idx = i + 1
-                result.vt1_step_number = s['step_number']
-                break
+        result.vt1_watts = round(vt1_stage['avg_power'], 0)
+        result.vt1_hr = round(vt1_stage['avg_hr'], 0) if vt1_stage['avg_hr'] else None
+        result.vt1_ve = round(vt1_stage['avg_ve'], 1)
+        result.vt1_br = round(vt1_stage['avg_br'], 0) if vt1_stage['avg_br'] else None
+        result.vt1_ve_slope = round(vt1_slope, 4)
+        result.vt1_step_number = vt1_stage['step_number']
+        result.notes.append(f"VT1 found at Step {vt1_stage['step_number']} (Slope: {vt1_slope:.4f})")
     else:
-        result.notes.append("VT1 Peak-to-Peak: Not found or Slope <= 0.05")
+        result.notes.append("VT1 not found (no slope > 0.05 after skip)")
 
-    # --- VT2: RECURSIVE SCAN ---
-    start_idx_vt2 = vt1_next_idx if vt1_found else 0
-    vt2_next_idx, vt2_slope, vt2_stage = search_for_threshold(start_idx_vt2, 0.05)
+    # Phase 3: Find VT2 (> 0.15)
+    start_idx_vt2 = vt1_next_idx if vt1_found else start_idx_vt1
+    vt2_next_idx, vt2_slope, vt2_stage = search_for_threshold(start_idx_vt2, 0.15)
     
     if vt2_stage:
          if not vt1_found or (vt2_stage['avg_power'] > result.vt1_watts):
@@ -595,11 +591,11 @@ def detect_vt_from_steps(
             result.vt2_br = round(vt2_stage['avg_br'], 0) if vt2_stage['avg_br'] else None
             result.vt2_ve_slope = round(vt2_slope, 4)
             result.vt2_step_number = vt2_stage['step_number']
-            result.notes.append(f"VT2 (Recursive): Found at Step {vt2_stage['step_number']} (Slope: {vt2_slope:.4f})")
+            result.notes.append(f"VT2 found at Step {vt2_stage['step_number']} (Slope: {vt2_slope:.4f})")
          else:
             result.notes.append(f"Ignored VT2 candidate at {vt2_stage['avg_power']}W (<= VT1)")
     else:
-        result.notes.append("VT2 not found (no subsequent slope > 0.05)")
+        result.notes.append("VT2 not found (no slope > 0.15)")
 
     # UI Debug Table Data
     result.step_analysis = [
@@ -610,6 +606,7 @@ def detect_vt_from_steps(
             'avg_ve': s['avg_ve'],
             'avg_br': s['avg_br'],
             've_slope': s['ve_slope'],
+            'is_skipped': skip_stage and s['step_number'] == skip_stage['step_number'],
             'is_vt1': vt1_found and s['step_number'] == result.vt1_step_number,
             'is_vt2': vt2_stage and s['step_number'] == result.vt2_step_number
         }

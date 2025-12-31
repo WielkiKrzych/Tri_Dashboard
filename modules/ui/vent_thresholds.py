@@ -112,7 +112,7 @@ def render_vent_thresholds_tab(target_df, training_notes, uploaded_file_name, cp
                 # Add VT markers
                 if 'is_vt1' in step_df.columns:
                     step_df['VT'] = step_df.apply(
-                        lambda r: '🟠 VT1' if r.get('is_vt1') else ('🔴 VT2' if r.get('is_vt2') else ''), 
+                        lambda r: '⚪ Skipped' if r.get('is_skipped') else ('🟠 VT1' if r.get('is_vt1') else ('🔴 VT2' if r.get('is_vt2') else '')), 
                         axis=1
                     )
                 

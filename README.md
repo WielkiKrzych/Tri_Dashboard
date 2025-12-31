@@ -12,26 +12,26 @@ Aplikacja wykorzystuje modularną **Architekturę Zorientowaną na Usługi (SOA)
 
 ```mermaid
 graph TD
-    UI[Frontend (Streamlit)] --> Layout[Menedżer Układu/Motywu]
-    Layout --> App[Orkiestrator Aplikacji]
-    App --> Services[Warstwa Usług]
+    UI["Frontend (Streamlit)"] --> Layout["Menedżer Układu/Motywu"]
+    Layout --> App["Orkiestrator Aplikacji"]
+    App --> Services["Warstwa Usług"]
     
-    subgraph Logika Rdzenia
-        Services --> Validation[Walidacja Danych]
-        Services --> Analysis[Metryki Sesji]
-        Services --> Orch[Orkiestrator]
+    subgraph "Logika Rdzenia"
+        Services --> Validation["Walidacja Danych"]
+        Services --> Analysis["Metryki Sesji"]
+        Services --> Orch["Orkiestrator"]
     end
     
-    subgraph Moduły Naukowe
-        Analysis --> Calc[modules.calculations]
-        Calc --> WPrime[Bilans W']
-        Calc --> Power[Moc/PDC]
-        Calc --> Reform[Modele Fizjologiczne]
+    subgraph "Moduły Naukowe"
+        Analysis --> Calc["modules.calculations"]
+        Calc --> WPrime["Bilans W'"]
+        Calc --> Power["Moc/PDC"]
+        Calc --> Reform["Modele Fizjologiczne"]
     end
     
-    subgraph Trwałość Danych
-        Orch --> SQLite[(Magazyn Sesji)]
-        Orch --> Config[Konfiguracja/Env]
+    subgraph "Trwałość Danych"
+        Orch --> SQLite[("Magazyn Sesji")]
+        Orch --> Config["Konfiguracja/Env"]
     end
 ```
 

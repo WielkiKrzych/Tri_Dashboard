@@ -2,165 +2,54 @@ import streamlit as st
 import plotly.graph_objects as go
 import pandas as pd
 from scipy import stats
-from modules.calculations.thresholds import analyze_step_test
-from modules.calculations.quality import check_step_test_protocol
+from modules.calculations.quality import check_signal_quality
 
 def render_vent_tab(target_df, training_notes, uploaded_file_name):
-    st.header("Analiza Progu Wentylacyjnego (VT1 / VT2 Detection)")
-    st.markdown("Analiza dynamiki oddechu. Szukamy nieliniowych przyrostów wentylacji (VE) względem mocy.")
+    """Analiza wentylacji dla dowolnego treningu - struktura jak SmO2."""
+    st.header("Analiza Wentylacji (VE & Breathing Rate)")
+    st.markdown("Analiza dynamiki oddechu dla dowolnego treningu. Szukaj anomalii w wentylacji i częstości oddechów.")
 
     # 1. Przygotowanie danych
     if target_df is None or target_df.empty:
-        st.error("Brak danych.")
+        st.error("Brak danych. Najpierw wgraj plik w sidebar.")
         st.stop()
 
-    if 'time' not in target_df.columns or 'tymeventilation' not in target_df.columns:
-        st.error("Brak danych wentylacji (tymeventilation) lub czasu!")
+    if 'time' not in target_df.columns:
+        st.error("Brak kolumny 'time' w danych!")
+        st.stop()
+        
+    if 'tymeventilation' not in target_df.columns:
+        st.error("Brak danych wentylacji (tymeventilation)!")
         st.stop()
 
-    # Wygładzanie (VE jest szumiące, dajemy 10s smooth)
+    # Wygładzanie
     if 'watts_smooth_5s' not in target_df.columns and 'watts' in target_df.columns:
         target_df['watts_smooth_5s'] = target_df['watts'].rolling(window=5, center=True).mean()
-    target_df['ve_smooth'] = target_df['tymeventilation'].rolling(window=10, center=True).mean()
-    target_df['rr_smooth'] = target_df['tymebreathrate'].rolling(window=10, center=True).mean() if 'tymebreathrate' in target_df else 0
-    
-    # Format czasu
+    if 've_smooth' not in target_df.columns:
+        target_df['ve_smooth'] = target_df['tymeventilation'].rolling(window=10, center=True).mean()
+    if 'tymebreathrate' in target_df.columns and 'rr_smooth' not in target_df.columns:
+        target_df['rr_smooth'] = target_df['tymebreathrate'].rolling(window=10, center=True).mean()
+        
     target_df['time_str'] = pd.to_datetime(target_df['time'], unit='s').dt.strftime('%H:%M:%S')
 
-    # --- Quality Check: Protocol Compliance ---
-    proto_check = check_step_test_protocol(target_df)
-    
-    if not proto_check['is_valid']:
-        st.warning("⚠️ **Wykryto Problemy z Protokołem Testu**")
-        for issue in proto_check['issues']:
-            st.error(issue)
-        st.markdown("Analiza progów (VT/LT) może być **niewiarygodna** lub niemożliwa. Zalecany jest Test Stopniowany (Ramp Test).")
-        if not st.checkbox("Wymuś analizę mimo błędów protokołu"):
-            st.stop()
-    else:
-        st.success("✅ Protokół Testu Stopniowanego: Poprawny (Liniowy Wzrost Obciążenia)")
-    # --- End Quality Check ---
+    # Check Quality
+    qual_res = check_signal_quality(target_df['tymeventilation'], "VE", (0, 300))
+    if not qual_res['is_valid']:
+        st.warning(f"⚠️ **Niska Jakość Sygnału VE (Score: {qual_res['score']})**")
+        for issue in qual_res['issues']:
+            st.caption(f"❌ {issue}")
 
-    # 2. DETEKCJA AUTOMATYCZNA (Full Analysis with Sensitivity)
-    result = analyze_step_test(
-        target_df, 
-        power_column='watts',
-        ve_column='tymeventilation',
-        hr_column='hr' if 'hr' in target_df.columns else None,
-        time_column='time'
-    )
-    
-    vt1_zone = result.vt1_zone
-    vt2_zone = result.vt2_zone
-    hysteresis = result.hysteresis
-    sensitivity = result.sensitivity
-
-    # Wyświetlenie wyników automatycznych (Primary - Increasing Load)
-    st.subheader("🤖 Automatyczna Detekcja Stref (Ramp Up)")
-    
-    col_z1, col_z2 = st.columns(2)
-    
-    # --- VT1 CARD ---
-    with col_z1:
-        if vt1_zone:
-            # Calculate variability range from sensitivity or heuristic
-            var_w = sensitivity.vt1_variability_watts if sensitivity else 10.0
-            range_low = vt1_zone.range_watts[0] - (var_w/2)
-            range_high = vt1_zone.range_watts[1] + (var_w/2)
-            
-            # Determine Confidence
-            confidence_level = "LOW"
-            if sensitivity:
-                if sensitivity.vt1_stability_score > 0.8: confidence_level = "HIGH"
-                elif sensitivity.vt1_stability_score > 0.5: confidence_level = "MEDIUM"
-            
-            conf_color = {"HIGH": "green", "MEDIUM": "orange", "LOW": "red"}.get(confidence_level, "grey")
-
-            st.markdown(f"""
-            <div style="padding:10px; border-radius:5px; border:1px solid #333; background-color: #222;">
-                <h3 style="margin:0; color: #ffa15a;">VT1 Zone</h3>
-                <h2 style="margin:0;">{int(range_low)}-{int(range_high)} W</h2>
-                <div style="margin-top:5px;">
-                    <span style="background-color:{conf_color}; color:white; padding:2px 6px; border-radius:4px; font-size:0.8em;">
-                        {confidence_level} CONFIDENCE
-                    </span>
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
-            
-            if vt1_zone.range_hr:
-                st.caption(f"Est. Heart Rate: {vt1_zone.range_hr[0]:.0f}-{vt1_zone.range_hr[1]:.0f} bpm")
-        else:
-            st.info("VT1: Nie wykryto")
-
-    # --- VT2 CARD ---
-    with col_z2:
-        if vt2_zone:
-            var_w = sensitivity.vt2_variability_watts if sensitivity else 10.0
-            range_low = vt2_zone.range_watts[0] - (var_w/2)
-            range_high = vt2_zone.range_watts[1] + (var_w/2)
-            
-            confidence_level = "LOW"
-            if sensitivity:
-                if sensitivity.vt2_stability_score > 0.8: confidence_level = "HIGH"
-                elif sensitivity.vt2_stability_score > 0.5: confidence_level = "MEDIUM"
-                
-            conf_color = {"HIGH": "green", "MEDIUM": "orange", "LOW": "red"}.get(confidence_level, "grey")
-
-            st.markdown(f"""
-            <div style="padding:10px; border-radius:5px; border:1px solid #333; background-color: #222;">
-                <h3 style="margin:0; color: #ef553b;">VT2 Zone</h3>
-                <h2 style="margin:0;">{int(range_low)}-{int(range_high)} W</h2>
-                <div style="margin-top:5px;">
-                    <span style="background-color:{conf_color}; color:white; padding:2px 6px; border-radius:4px; font-size:0.8em;">
-                        {confidence_level} CONFIDENCE
-                    </span>
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
-            
-            if vt2_zone.range_hr:
-                st.caption(f"Est. Heart Rate: {vt2_zone.range_hr[0]:.0f}-{vt2_zone.range_hr[1]:.0f} bpm")
-        else:
-            st.info("VT2: Nie wykryto")
-            
-    # Hysteresis Information
-    if hysteresis and (hysteresis.vt1_dec_zone or hysteresis.vt2_dec_zone):
-        with st.expander("📉 Analiza Histerezy (Ramp Down vs Up)", expanded=False):
-            h_col1, h_col2 = st.columns(2)
-            with h_col1:
-                if hysteresis.vt1_dec_zone:
-                    st.markdown(f"**VT1 (Down):** {hysteresis.vt1_dec_zone.range_watts[0]:.0f} - {hysteresis.vt1_dec_zone.range_watts[1]:.0f} W")
-                    if hysteresis.vt1_shift_watts is not None:
-                         shift = hysteresis.vt1_shift_watts
-                         color = "red" if shift < -15 else "green"
-                         st.markdown(f"Shift: **:{color}[{shift:+.0f} W]**")
-            with h_col2:
-                 if hysteresis.vt2_dec_zone:
-                    st.markdown(f"**VT2 (Down):** {hysteresis.vt2_dec_zone.range_watts[0]:.0f} - {hysteresis.vt2_dec_zone.range_watts[1]:.0f} W")
-                    if hysteresis.vt2_shift_watts is not None:
-                         shift = hysteresis.vt2_shift_watts
-                         color = "red" if shift < -15 else "green"
-                         st.markdown(f"Shift: **:{color}[{shift:+.0f} W]**")
-            
-            if hysteresis.warnings:
-                for w in hysteresis.warnings:
-                    st.warning(f"⚠️ {w}")
-
-    st.markdown("---")
-
-    # 3. Interfejs Manualny (START -> KONIEC)
-    # Inicjalizacja session_state dla zaznaczenia
+    # Inicjalizacja session_state
     if 'vent_start_sec' not in st.session_state:
-            st.session_state.vent_start_sec = 600  # 10 minut domyślnie
+        st.session_state.vent_start_sec = 600
     if 'vent_end_sec' not in st.session_state:
-            st.session_state.vent_end_sec = 1200  # 20 minut domyślnie
-            
+        st.session_state.vent_end_sec = 1200
+
     # ===== NOTATKI VENTILATION =====
     with st.expander("📝 Dodaj Notatkę do tej Analizy", expanded=False):
         note_col1, note_col2 = st.columns([1, 2])
         with note_col1:
-            note_time_vent = st.number_input(
+            note_time = st.number_input(
                 "Czas (min)", 
                 min_value=0.0, 
                 max_value=float(len(target_df)/60) if len(target_df) > 0 else 60.0,
@@ -169,24 +58,24 @@ def render_vent_tab(target_df, training_notes, uploaded_file_name):
                 key="vent_note_time"
             )
         with note_col2:
-            note_text_vent = st.text_input(
+            note_text = st.text_input(
                 "Notatka",
                 key="vent_note_text",
-                placeholder="Np. 'Próg beztlenowy', 'VE jump', 'Spłycenie oddechu'"
+                placeholder="Np. 'VE jump', 'Spłycenie oddechu', 'Hiperwentylacja'"
             )
         
         if st.button("➕ Dodaj Notatkę", key="vent_add_note"):
-            if note_text_vent:
-                training_notes.add_note(uploaded_file_name, note_time_vent, "ventilation", note_text_vent)
-                st.success(f"✅ Notatka: {note_text_vent} @ {note_time_vent:.1f} min")
+            if note_text:
+                training_notes.add_note(uploaded_file_name, note_time, "ventilation", note_text)
+                st.success(f"✅ Notatka: {note_text} @ {note_time:.1f} min")
             else:
                 st.warning("Wpisz tekst notatki!")
 
-    # Wyświetl istniejące notatki Ventilation
-    existing_notes_vent = training_notes.get_notes_for_metric(uploaded_file_name, "ventilation")
-    if existing_notes_vent:
+    # Wyświetl istniejące notatki
+    existing_notes = training_notes.get_notes_for_metric(uploaded_file_name, "ventilation")
+    if existing_notes:
         st.subheader("📋 Notatki Wentylacji")
-        for idx, note in enumerate(existing_notes_vent):
+        for idx, note in enumerate(existing_notes):
             col_note, col_del = st.columns([4, 1])
             with col_note:
                 st.info(f"⏱️ **{note['time_minute']:.1f} min** | {note['text']}")
@@ -196,10 +85,9 @@ def render_vent_tab(target_df, training_notes, uploaded_file_name):
                     st.rerun()
 
     st.markdown("---")
-    # ===== KONIEC NOTATEK VENTILATION =====
 
+    # ===== ANALIZA MANUALNA =====
     st.info("💡 **ANALIZA MANUALNA:** Zaznacz obszar na wykresie poniżej (kliknij i przeciągnij), aby sprawdzić nachylenie lokalne.")
-
 
     def parse_time_to_seconds(t_str):
         try:
@@ -212,196 +100,308 @@ def render_vent_tab(target_df, training_notes, uploaded_file_name):
         return None
 
     with st.expander("🔧 Ręczne wprowadzenie zakresu czasowego (opcjonalne)", expanded=False):
-            col_inp_1, col_inp_2 = st.columns(2)
-            with col_inp_1:
-                manual_start = st.text_input("Start Interwału (hh:mm:ss)", value="01:00:00", key="vent_manual_start")
-            with col_inp_2:
-                manual_end = st.text_input("Koniec Interwału (hh:mm:ss)", value="01:20:00", key="vent_manual_end")
+        col_inp_1, col_inp_2 = st.columns(2)
+        with col_inp_1:
+            manual_start = st.text_input("Start Interwału (hh:mm:ss)", value="00:10:00", key="vent_manual_start")
+        with col_inp_2:
+            manual_end = st.text_input("Koniec Interwału (hh:mm:ss)", value="00:20:00", key="vent_manual_end")
 
-            if st.button("Zastosuj ręczny zakres", key="btn_vent_manual"):
-                manual_start_sec = parse_time_to_seconds(manual_start)
-                manual_end_sec = parse_time_to_seconds(manual_end)
-                if manual_start_sec is not None and manual_end_sec is not None:
-                    st.session_state.vent_start_sec = manual_start_sec
-                    st.session_state.vent_end_sec = manual_end_sec
-                    st.success(f"✅ Zaktualizowano zakres: {manual_start} - {manual_end}")
+        if st.button("Zastosuj ręczny zakres", key="btn_vent_manual"):
+            manual_start_sec = parse_time_to_seconds(manual_start)
+            manual_end_sec = parse_time_to_seconds(manual_end)
+            if manual_start_sec is not None and manual_end_sec is not None:
+                st.session_state.vent_start_sec = manual_start_sec
+                st.session_state.vent_end_sec = manual_end_sec
+                st.success(f"✅ Zaktualizowano zakres: {manual_start} - {manual_end}")
 
-        # Użyj wartości z session_state
+    # Użyj wartości z session_state
     startsec = st.session_state.vent_start_sec
     endsec = st.session_state.vent_end_sec
+    
+    def format_time(s):
+        h = int(s // 3600)
+        m = int((s % 3600) // 60)
+        sec = int(s % 60)
+        if h > 0:
+            return f"{h:02d}:{m:02d}:{sec:02d}"
+        return f"{m:02d}:{sec:02d}"
 
+    # Wycinanie danych
+    mask = (target_df['time'] >= startsec) & (target_df['time'] <= endsec)
+    interval_data = target_df.loc[mask]
+
+    if not interval_data.empty and endsec > startsec:
+        duration_sec = int(endsec - startsec)
         
-        # 3. Wycinanie
-    mask_v = (target_df['time'] >= startsec) & (target_df['time'] <= endsec)
-    interval_v = target_df.loc[mask_v]
+        # Obliczenia
+        avg_watts = interval_data['watts'].mean() if 'watts' in interval_data.columns else 0
+        avg_ve = interval_data['tymeventilation'].mean()
+        avg_rr = interval_data['tymebreathrate'].mean() if 'tymebreathrate' in interval_data.columns else 0
+        
+        # Trend (Slope) dla VE
+        if len(interval_data) > 1:
+            slope_ve, intercept_ve, _, _, _ = stats.linregress(interval_data['time'], interval_data['tymeventilation'])
+            trend_desc = f"{slope_ve:.4f} L/s"
+        else:
+            slope_ve = 0; intercept_ve = 0; trend_desc = "N/A"
 
-    if not interval_v.empty:
-            # 4. Obliczenia
-            avg_w = interval_v['watts'].mean()
-            avg_ve = interval_v['tymeventilation'].mean()
-            avg_rr = interval_v['tymebreathrate'].mean() if 'tymebreathrate' in interval_v else 0
-            
-            # Trend (Slope) dla VE
-            if len(interval_v) > 1:
-                slope_ve, intercept_ve, _, _, _ = stats.linregress(interval_v['time'], interval_v['tymeventilation'])
-                trend_desc_ve = f"{slope_ve:.4f} L/s"
-            else:
-                slope_ve = 0; intercept_ve = 0; trend_desc_ve = "N/A"
+        # Metryki Manualne
+        st.subheader(f"METRYKI MANUALNE: {format_time(startsec)} - {format_time(endsec)} ({duration_sec}s)")
+        
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric("Śr. Moc", f"{avg_watts:.0f} W")
+        m2.metric("Śr. VE", f"{avg_ve:.1f} L/min")
+        m3.metric("Śr. BR", f"{avg_rr:.1f} /min")
+        
+        # Kolorowanie trendu (pozytywny = wzrost VE = potencjalnie próg)
+        trend_color = "inverse" if slope_ve > 0.05 else "normal"
+        m4.metric("Trend VE (Slope)", trend_desc, delta=trend_desc, delta_color=trend_color)
 
-            # Formatowanie czasu dla wyświetlania
-            def fmt_time_v(seconds):
-                try:
-                    seconds = int(seconds)
-                    h = seconds // 3600
-                    m = (seconds % 3600) // 60
-                    s = seconds % 60
-                    if h > 0:
-                        return f"{h:02d}:{m:02d}:{s:02d}"
-                    else:
-                        return f"{m:02d}:{s:02d}"
-                except (ValueError, TypeError):
-                    return "-"
-            start_time_v = fmt_time_v(startsec)
-            end_time_v = fmt_time_v(endsec)
-            duration_v = int(endsec - startsec) if (endsec is not None and startsec is not None) else 0
+        # ===== WYKRES GŁÓWNY (VE + Power) =====
+        fig_vent = go.Figure()
 
-            # Metryki
-            st.subheader(f"Metryki Manualne: {start_time_v} - {end_time_v} ({duration_v}s)")
-            mv1, mv2, mv3, mv4 = st.columns(4)
-            mv1.metric("Śr. Moc", f"{avg_w:.0f} W")
-            mv2.metric("Śr. Wentylacja (VE)", f"{avg_ve:.1f} L/min")
-            mv3.metric("Częstość (RR)", f"{avg_rr:.1f} /min")
-            
-            # Kolorowanie trendu
-            trend_color = "inverse" if slope_ve > 0.1 else "normal"
-            mv4.metric("Trend VE (Slope)", trend_desc_ve, delta=trend_desc_ve, delta_color=trend_color)
+        # VE (Primary)
+        fig_vent.add_trace(go.Scatter(
+            x=target_df['time'], 
+            y=target_df['ve_smooth'],
+            customdata=target_df['time_str'],
+            mode='lines', 
+            name='VE (L/min)',
+            line=dict(color='#ffa15a', width=2),
+            hovertemplate="<b>Czas:</b> %{customdata}<br><b>VE:</b> %{y:.1f} L/min<extra></extra>"
+        ))
 
-            # 5. Wykres
-            fig_vent = go.Figure()
-
-            # Lewa Oś: Wentylacja
+        # Power (Secondary)
+        if 'watts_smooth_5s' in target_df.columns:
             fig_vent.add_trace(go.Scatter(
-                x=target_df['time'], y=target_df['ve_smooth'],
+                x=target_df['time'], 
+                y=target_df['watts_smooth_5s'],
                 customdata=target_df['time_str'],
-                mode='lines', name='VE (L/min)',
-                line=dict(color='#ffa15a', width=2),
-                hovertemplate="<b>Czas:</b> %{customdata}<br><b>VE:</b> %{y:.1f} L/min<extra></extra>"
-            ))
-
-            # Prawa Oś: Moc
-            fig_vent.add_trace(go.Scatter(
-                x=target_df['time'], y=target_df['watts_smooth_5s'],
-                customdata=target_df['time_str'],
-                mode='lines', name='Power',
+                mode='lines', 
+                name='Power',
                 line=dict(color='#1f77b4', width=1),
-                yaxis='y2', opacity=0.3,
+                yaxis='y2',
+                opacity=0.3,
                 hovertemplate="<b>Czas:</b> %{customdata}<br><b>Moc:</b> %{y:.0f} W<extra></extra>"
             ))
 
-            # === WIZUALIZACJA STREF (ZONES) ===
-            
-            # VT1 Primary (Green)
-            if vt1_zone:
-                # Add Confidence band
-                var_w = sensitivity.vt1_variability_watts if sensitivity else 10.0
-                fig_vent.add_hrect(
-                    y0=vt1_zone.range_watts[0] - (var_w/2), 
-                    y1=vt1_zone.range_watts[1] + (var_w/2),
-                    fillcolor="green", opacity=0.15,
-                    layer="below", line_width=0,
-                    yref="y2",
-                    annotation_text=f"VT1 Zone", annotation_position="top left"
-                )
-            
-            # VT2 Primary (Red)
-            if vt2_zone:
-                var_w = sensitivity.vt2_variability_watts if sensitivity else 10.0
-                fig_vent.add_hrect(
-                    y0=vt2_zone.range_watts[0] - (var_w/2), 
-                    y1=vt2_zone.range_watts[1] + (var_w/2),
-                    fillcolor="red", opacity=0.15,
-                    layer="below", line_width=0,
-                    yref="y2",
-                    annotation_text=f"VT2 Zone", annotation_position="top left"
-                )
-            
-            # Hysteresis Zones (Decreasing) - Dashed/Ghost
-            if hysteresis:
-                if hysteresis.vt1_dec_zone:
-                    fig_vent.add_hrect(
-                       y0=hysteresis.vt1_dec_zone.range_watts[0], y1=hysteresis.vt1_dec_zone.range_watts[1],
-                       fillcolor="blue", opacity=0.05, # Very faint
-                       layer="below", line_width=1, line_dash="dot", line_color="blue",
-                       yref="y2",
-                       annotation_text="VT1 (Down)", annotation_position="bottom right"
-                    )
+        # Zaznaczenie manualne
+        fig_vent.add_vrect(
+            x0=startsec, x1=endsec, 
+            fillcolor="orange", opacity=0.1, 
+            layer="below", line_width=0,
+            annotation_text="MANUAL", annotation_position="top left"
+        )
 
-                if hysteresis.vt2_dec_zone:
-                    fig_vent.add_hrect(
-                       y0=hysteresis.vt2_dec_zone.range_watts[0], y1=hysteresis.vt2_dec_zone.range_watts[1],
-                       fillcolor="purple", opacity=0.05,
-                       layer="below", line_width=1, line_dash="dot", line_color="purple",
-                       yref="y2",
-                       annotation_text="VT2 (Down)", annotation_position="bottom right"
-                    )
+        # Linia trendu VE (dla manualnego)
+        if len(interval_data) > 1:
+            trend_line = intercept_ve + slope_ve * interval_data['time']
+            fig_vent.add_trace(go.Scatter(
+                x=interval_data['time'], y=trend_line,
+                mode='lines', name='Trend VE (Man)',
+                line=dict(color='white', width=2, dash='dash'),
+                hovertemplate="<b>Trend:</b> %{y:.2f} L/min<extra></extra>"
+            ))
 
-            # Zaznaczenie manualne
-            fig_vent.add_vrect(x0=startsec, x1=endsec, fillcolor="orange", opacity=0.1, layer="below", annotation_text="MANUAL", annotation_position="top left")
+        fig_vent.update_layout(
+            title="Dynamika Wentylacji vs Moc",
+            xaxis_title="Czas",
+            yaxis=dict(title=dict(text="Wentylacja (L/min)", font=dict(color="#ffa15a"))),
+            yaxis2=dict(title=dict(text="Moc (W)", font=dict(color="#1f77b4")), overlaying='y', side='right', showgrid=False),
+            legend=dict(x=0.01, y=0.99),
+            height=500,
+            margin=dict(l=20, r=20, t=40, b=20),
+            hovermode="x unified"
+        )
+        
+        # Wykres z interaktywnym zaznaczaniem
+        selected = st.plotly_chart(fig_vent, use_container_width=True, key="vent_chart", on_select="rerun", selection_mode="box")
 
-            # Linia trendu VE (dla manualnego)
-            if len(interval_v) > 1:
-                trend_line_ve = intercept_ve + slope_ve * interval_v['time']
-                fig_vent.add_trace(go.Scatter(
-                    x=interval_v['time'], y=trend_line_ve,
-                    customdata=interval_v['time_str'],
-                    mode='lines', name='Trend VE (Man)',
-                    line=dict(color='white', width=2, dash='dash'),
-                    hovertemplate="<b>Trend:</b> %{y:.2f} L/min<extra></extra>"
+        # Obsługa zaznaczenia
+        if selected and 'selection' in selected and 'box' in selected['selection']:
+            box_data = selected['selection']['box']
+            if box_data and len(box_data) > 0:
+                x_range = box_data[0].get('x', [])
+                if len(x_range) == 2:
+                    new_start = min(x_range)
+                    new_end = max(x_range)
+                    if new_start != st.session_state.vent_start_sec or new_end != st.session_state.vent_end_sec:
+                        st.session_state.vent_start_sec = new_start
+                        st.session_state.vent_end_sec = new_end
+                        st.rerun()
+
+        # ===== LEGACY TOOLS (Surowe Dane) =====
+        with st.expander("🔧 Szczegółowa Analiza (Surowe Dane)", expanded=False):
+            st.markdown("### Surowe Dane i Korelacje")
+            
+            # Scatter Plot: VE vs Watts
+            if 'watts' in interval_data.columns:
+                interval_time_str = pd.to_datetime(interval_data['time'], unit='s').dt.strftime('%H:%M:%S')
+                
+                fig_scatter = go.Figure()
+                fig_scatter.add_trace(go.Scatter(
+                    x=interval_data['watts'], 
+                    y=interval_data['tymeventilation'],
+                    customdata=interval_time_str,
+                    mode='markers',
+                    marker=dict(size=6, color=interval_data['time'], colorscale='Viridis', showscale=True, colorbar=dict(title="Czas (s)")),
+                    name='VE vs Power',
+                    hovertemplate="<b>Czas:</b> %{customdata}<br><b>Moc:</b> %{x:.0f} W<br><b>VE:</b> %{y:.1f} L/min<extra></extra>"
                 ))
-
-            fig_vent.update_layout(
-                title="Dynamika Wentylacji vs Moc (z analiża histerezy)",
+                fig_scatter.update_layout(
+                    title="Korelacja: VE vs Moc", 
+                    xaxis_title="Power (W)", 
+                    yaxis_title="VE (L/min)", 
+                    height=400,
+                    hovermode="closest"
+                )
+                st.plotly_chart(fig_scatter, use_container_width=True)
+                
+            # Breathing Rate Visualization
+            if 'tymebreathrate' in interval_data.columns:
+                st.subheader("Częstość Oddechów (Breathing Rate)")
+                
+                interval_time_str = pd.to_datetime(interval_data['time'], unit='s').dt.strftime('%H:%M:%S')
+                
+                fig_br = go.Figure()
+                fig_br.add_trace(go.Scatter(
+                    x=interval_data['time'], 
+                    y=interval_data['tymebreathrate'], 
+                    customdata=interval_time_str,
+                    mode='lines', 
+                    name='BR',
+                    line=dict(color='#00cc96', width=2),
+                    hovertemplate="<b>Czas:</b> %{customdata}<br><b>BR:</b> %{y:.1f} /min<extra></extra>"
+                ))
+                fig_br.update_layout(
+                    title="Breathing Rate", 
+                    xaxis_title="Czas",
+                    yaxis_title="BR (/min)",
+                    height=300,
+                    hovermode="x unified"
+                )
+                st.plotly_chart(fig_br, use_container_width=True)
+            
+            # Minute Ventilation Chart
+            st.subheader("Wentylacja Minutowa (VE)")
+            
+            interval_time_str = pd.to_datetime(interval_data['time'], unit='s').dt.strftime('%H:%M:%S')
+            
+            fig_ve = go.Figure()
+            fig_ve.add_trace(go.Scatter(
+                x=interval_data['time'], 
+                y=interval_data['tymeventilation'], 
+                customdata=interval_time_str,
+                mode='lines', 
+                name='VE',
+                line=dict(color='#ffa15a', width=2),
+                hovertemplate="<b>Czas:</b> %{customdata}<br><b>VE:</b> %{y:.1f} L/min<extra></extra>"
+            ))
+            fig_ve.update_layout(
+                title="Minute Ventilation (VE)", 
                 xaxis_title="Czas",
-                yaxis=dict(title=dict(text="Wentylacja (L/min)", font=dict(color="#ffa15a"))),
-                yaxis2=dict(title=dict(text="Moc (W)", font=dict(color="#1f77b4")), overlaying='y', side='right', showgrid=False),
-                legend=dict(x=0.01, y=0.99),
-                height=500,
-                margin=dict(l=20, r=20, t=40, b=20),
+                yaxis_title="VE (L/min)",
+                height=300,
                 hovermode="x unified"
             )
-            # Wykres z interaktywnym zaznaczaniem
-            selected = st.plotly_chart(fig_vent, use_container_width=True, key="vent_chart", on_select="rerun", selection_mode="box")
+            st.plotly_chart(fig_ve, use_container_width=True)
 
-            # Obsługa zaznaczenia
-            if selected and 'selection' in selected and 'box' in selected['selection']:
-                box_data = selected['selection']['box']
-                if box_data and len(box_data) > 0:
-                    # Pobierz zakres X (czas) z zaznaczenia
-                    x_range = box_data[0].get('x', [])
-                    if len(x_range) == 2:
-                        new_start = min(x_range)
-                        new_end = max(x_range)
-                        
-                        # Aktualizuj session_state
-                        if new_start != st.session_state.vent_start_sec or new_end != st.session_state.vent_end_sec:
-                            st.session_state.vent_start_sec = new_start
-                            st.session_state.vent_end_sec = new_end
-                            st.rerun()
-
-            # 6. TEORIA ODDECHOWA
-            with st.expander("🫁 TEORIA: Płynne Strefy Przejścia vs Pojedynczy Punkt", expanded=False):
-                st.markdown("""
-                ### Dynamiczna Analiza
-                
-                System stosuje:
-                1. **Sliding Window Analysis**: Skanuje okno po oknie, żeby znaleźć przejścia w nachyleniu (slope).
-                2. **Histereza**: Porównuje fazę narastania ("Up") z fazą opadania/odpoczynku ("Down").
-                3. **Sensitivity Analysis**: Uruchamia algorytm kilkukrotnie z różnymi oknami czasowymi (30s, 60s, 90s), aby sprawdzić stabilność wyniku.
-                
-                #### 🛡️ Reliability Score (Niezawodność)
-                * **HIGH**: Wynik jest stabilny niezależnie od wygładzania.
-                * **MEDIUM**: Wynik zależy nieco od parametrów.
-                * **LOW**: Duża zmienność (>15W różnicy) w zależności od okna. Sugeruje "szumiący" sygnał lub nietypową fizjologię.
-                """)
     else:
-        st.warning("Brak danych w tym zakresie.")
+        st.warning("Brak danych w wybranym zakresie.")
+
+    # ===== TEORIA =====
+    with st.expander("🫁 TEORIA: Interpretacja Wentylacji", expanded=False):
+        st.markdown("""
+        ## Co oznacza Wentylacja (VE)?
+        
+        **VE (Minute Ventilation)** to objętość powietrza wdychanego/wydychanego na minutę.
+        Mierzona przez sensory oddechowe np. **CORE, Tyme Wear, Garmin HRM-Pro (estymacja)**.
+        
+        | Parametr | Opis | Jednostka |
+        |----------|------|-----------|
+        | **VE** | Wentylacja minutowa | L/min |
+        | **BR / RR** | Częstość oddechów | oddechy/min |
+        | **VT** | Objętość oddechowa (VE/BR) | L |
+        
+        ---
+        
+        ## Strefy VE i ich znaczenie
+        
+        | VE (L/min) | Interpretacja | Typ wysiłku |
+        |------------|---------------|-------------|
+        | **20-40** | Spokojny oddech | Recovery, rozgrzewka |
+        | **40-80** | Umiarkowany wysiłek | Tempo, Sweet Spot |
+        | **80-120** | Intensywny wysiłek | Threshold, VO2max |
+        | **> 120** | Maksymalny wysiłek | Sprint, test wyczerpania |
+        
+        ---
+        
+        ## Trend VE (Slope) - Co oznacza nachylenie?
+        
+        | Trend | Wartość | Interpretacja |
+        |-------|---------|---------------|
+        | 🟢 **Stabilny** | ~ 0 | Steady state, VE odpowiada obciążeniu |
+        | 🟡 **Łagodny wzrost** | 0.01-0.05 | Normalna adaptacja do wysiłku |
+        | 🔴 **Gwałtowny wzrost** | > 0.05 | Możliwy próg wentylacyjny (VT1/VT2) |
+        
+        ---
+        
+        ## BR (Breathing Rate) - Częstość oddechów
+        
+        **BR** odzwierciedla strategię oddechową:
+        
+        - **⬆️ Wzrost BR przy stałej VE**: Płytszy oddech, możliwe zmęczenie przepony
+        - **⬇️ Spadek BR przy stałej VE**: Głębszy oddech, lepsza efektywność
+        - **➡️ Stabilny BR**: Optymalna strategia oddechowa
+        
+        ### Praktyczny przykład:
+        - **VE=100, BR=30**: Objętość oddechowa = 3.3L (głęboki oddech)
+        - **VE=100, BR=50**: Objętość oddechowa = 2.0L (płytki oddech - nieefektywne!)
+        
+        ---
+        
+        ## Zastosowania Treningowe VE
+        
+        ### 1️⃣ Detekcja Progów (VT1, VT2)
+        - **VT1 (Próg tlenowy)**: Pierwszy nieliniowy skok VE względem mocy
+        - **VT2 (Próg beztlenowy)**: Drugi, gwałtowniejszy skok VE
+        - 🔗 Użyj zakładki **"Ventilation - Progi"** do automatycznej detekcji
+        
+        ### 2️⃣ Kontrola Intensywności
+        - Jeśli VE rośnie szybciej niż moc → zbliżasz się do progu
+        - Stabilna VE przy stałej mocy → jesteś w strefie tlenowej
+        
+        ### 3️⃣ Efektywność Oddechowa
+        - Optymalna częstość BR: 20-40 oddechów/min
+        - Powyżej 50/min: możliwe zmęczenie, stres, lub panika
+        
+        ### 4️⃣ Detekcja Zmęczenia
+        - **BR rośnie przy spadku VE**: Zmęczenie przepony
+        - **VE fluktuuje chaotycznie**: Możliwe odwodnienie lub hipoglikemia
+        
+        ---
+        
+        ## Korelacja VE vs Moc
+        
+        Wykres scatter pokazuje zależność między mocą a wentylacją:
+        
+        - **Liniowa zależność**: Normalna odpowiedź fizjologiczna
+        - **Punkt załamania**: Próg wentylacyjny (VT)
+        - **Stroma krzywa**: Niska wydolność, szybkie zadyszenie
+        
+        ### Kolor punktów (czas):
+        - **Wczesne punkty (ciemne)**: Początek treningu
+        - **Późne punkty (jasne)**: Koniec treningu, kumulacja zmęczenia
+        
+        ---
+        
+        ## Limitacje Pomiaru VE
+        
+        ⚠️ **Czynniki wpływające na dokładność:**
+        - Pozycja sensora na klatce piersiowej
+        - Oddychanie ustami vs nosem
+        - Warunki atmosferyczne (wysokość, wilgotność)
+        - Intensywność mowy podczas jazdy
+        
+        💡 **Wskazówka**: Dla dokładnej detekcji progów wykonaj Test Stopniowany (Ramp Test)!
+        """)

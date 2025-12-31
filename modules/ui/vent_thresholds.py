@@ -80,81 +80,45 @@ def render_vent_thresholds_tab(target_df, training_notes, uploaded_file_name, cp
                 st.metric("Liczba wykrytych stopni", result.steps_analyzed)
 
     # Wyświetlenie wyników automatycznych
-    st.subheader("🤖 Automatyczna Detekcja Stref (Ramp Up)")
+    st.subheader("🤖 Wykryte Progi Wentylacyjne")
     
     col_z1, col_z2 = st.columns(2)
     
     # --- VT1 CARD ---
     with col_z1:
-        if vt1_zone:
-            var_w = sensitivity.vt1_variability_watts if sensitivity else 10.0
-            range_low = vt1_zone.range_watts[0] - (var_w/2)
-            range_high = vt1_zone.range_watts[1] + (var_w/2)
-            
-            confidence_level = "LOW"
-            if sensitivity:
-                if sensitivity.vt1_stability_score > 0.8: confidence_level = "HIGH"
-                elif sensitivity.vt1_stability_score > 0.5: confidence_level = "MEDIUM"
-            
-            conf_color = {"HIGH": "green", "MEDIUM": "orange", "LOW": "red"}.get(confidence_level, "grey")
-
+        if result.vt1_watts:
             st.markdown(f"""
-            <div style="padding:10px; border-radius:5px; border:1px solid #333; background-color: #222;">
-                <h3 style="margin:0; color: #ffa15a;">VT1 Zone (Próg Tlenowy)</h3>
-                <h2 style="margin:0;">{int(range_low)}-{int(range_high)} W</h2>
-                <div style="margin-top:5px;">
-                    <span style="background-color:{conf_color}; color:white; padding:2px 6px; border-radius:4px; font-size:0.8em;">
-                        {confidence_level} CONFIDENCE
-                    </span>
-                </div>
+            <div style="padding:15px; border-radius:8px; border:2px solid #ffa15a; background-color: #222;">
+                <h3 style="margin:0; color: #ffa15a;">VT1 (Próg Tlenowy)</h3>
+                <h1 style="margin:5px 0; font-size:2.5em;">{int(result.vt1_watts)} W</h1>
+                {f'<p style="margin:0; color:#aaa;"><b>HR:</b> {int(result.vt1_hr)} bpm</p>' if result.vt1_hr else ''}
             </div>
             """, unsafe_allow_html=True)
             
-            if vt1_zone.range_hr:
-                st.caption(f"Est. Heart Rate: {vt1_zone.range_hr[0]:.0f}-{vt1_zone.range_hr[1]:.0f} bpm")
-            
             # % of CP
             if cp_input > 0:
-                vt1_pct = (vt1_zone.range_watts[0] / cp_input) * 100
+                vt1_pct = (result.vt1_watts / cp_input) * 100
                 st.caption(f"~{vt1_pct:.0f}% CP")
         else:
-            st.info("VT1: Nie wykryto")
+            st.info("VT1: Nie wykryto (brak slope >= 0.05)")
 
     # --- VT2 CARD ---
     with col_z2:
-        if vt2_zone:
-            var_w = sensitivity.vt2_variability_watts if sensitivity else 10.0
-            range_low = vt2_zone.range_watts[0] - (var_w/2)
-            range_high = vt2_zone.range_watts[1] + (var_w/2)
-            
-            confidence_level = "LOW"
-            if sensitivity:
-                if sensitivity.vt2_stability_score > 0.8: confidence_level = "HIGH"
-                elif sensitivity.vt2_stability_score > 0.5: confidence_level = "MEDIUM"
-                
-            conf_color = {"HIGH": "green", "MEDIUM": "orange", "LOW": "red"}.get(confidence_level, "grey")
-
+        if result.vt2_watts:
             st.markdown(f"""
-            <div style="padding:10px; border-radius:5px; border:1px solid #333; background-color: #222;">
-                <h3 style="margin:0; color: #ef553b;">VT2 Zone (Próg Beztlenowy)</h3>
-                <h2 style="margin:0;">{int(range_low)}-{int(range_high)} W</h2>
-                <div style="margin-top:5px;">
-                    <span style="background-color:{conf_color}; color:white; padding:2px 6px; border-radius:4px; font-size:0.8em;">
-                        {confidence_level} CONFIDENCE
-                    </span>
-                </div>
+            <div style="padding:15px; border-radius:8px; border:2px solid #ef553b; background-color: #222;">
+                <h3 style="margin:0; color: #ef553b;">VT2 (Próg Beztlenowy)</h3>
+                <h1 style="margin:5px 0; font-size:2.5em;">{int(result.vt2_watts)} W</h1>
+                {f'<p style="margin:0; color:#aaa;"><b>HR:</b> {int(result.vt2_hr)} bpm</p>' if result.vt2_hr else ''}
             </div>
             """, unsafe_allow_html=True)
             
-            if vt2_zone.range_hr:
-                st.caption(f"Est. Heart Rate: {vt2_zone.range_hr[0]:.0f}-{vt2_zone.range_hr[1]:.0f} bpm")
-            
             # % of CP
             if cp_input > 0:
-                vt2_pct = (vt2_zone.range_watts[0] / cp_input) * 100
+                vt2_pct = (result.vt2_watts / cp_input) * 100
                 st.caption(f"~{vt2_pct:.0f}% CP")
         else:
-            st.info("VT2: Nie wykryto")
+            st.info("VT2: Nie wykryto (brak slope >= 0.12)")
 
     st.markdown("---")
 

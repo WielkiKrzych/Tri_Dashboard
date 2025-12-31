@@ -340,6 +340,129 @@ def detect_step_test_range(
     )
 
 
+@dataclass
+class StepVTResult:
+    """Result of step-by-step VT detection - returns exact values, not ranges."""
+    vt1_watts: Optional[float] = None
+    vt1_hr: Optional[float] = None
+    vt1_step_number: Optional[int] = None
+    vt1_ve_slope: Optional[float] = None
+    
+    vt2_watts: Optional[float] = None
+    vt2_hr: Optional[float] = None
+    vt2_step_number: Optional[int] = None
+    vt2_ve_slope: Optional[float] = None
+    
+    step_analysis: List[dict] = field(default_factory=list)
+    notes: List[str] = field(default_factory=list)
+
+
+def detect_vt_from_steps(
+    df: pd.DataFrame,
+    step_range: StepTestRange,
+    ve_column: str = 'tymeventilation',
+    power_column: str = 'watts',
+    hr_column: str = 'hr',
+    time_column: str = 'time',
+    vt1_slope_threshold: float = 0.05,  # VE slope threshold for VT1
+    vt2_slope_threshold: float = 0.12   # VE slope threshold for VT2
+) -> StepVTResult:
+    """
+    Detect VT1 and VT2 by analyzing VE slope on each detected step.
+    
+    Algorithm:
+    1. For each step, calculate VE slope (VE change per second)
+    2. When slope first exceeds VT1 threshold (0.05) -> VT1 found
+    3. Continue searching, when slope exceeds VT2 threshold (0.12) -> VT2 found
+    4. Return exact power and HR values at those steps
+    
+    Args:
+        df: Full dataframe with VE data
+        step_range: Detected steps from detect_step_test_range
+        ve_column: Column name for ventilation
+        vt1_slope_threshold: Slope threshold for VT1 (default 0.05 L/min/s)
+        vt2_slope_threshold: Slope threshold for VT2 (default 0.12 L/min/s)
+    
+    Returns:
+        StepVTResult with exact VT1 and VT2 watt/HR values
+    """
+    result = StepVTResult()
+    
+    if not step_range or not step_range.is_valid or len(step_range.steps) < 3:
+        result.notes.append("Insufficient steps for VT detection (need at least 3)")
+        return result
+    
+    if ve_column not in df.columns:
+        result.notes.append(f"Missing VE column: {ve_column}")
+        return result
+    
+    has_hr = hr_column in df.columns
+    
+    # Analyze each step
+    step_analysis = []
+    vt1_found = False
+    
+    for step in step_range.steps:
+        # Get data for this step
+        mask = (df[time_column] >= step.start_time) & (df[time_column] < step.end_time)
+        step_data = df[mask]
+        
+        if len(step_data) < 10:
+            continue
+        
+        # Calculate VE slope for this step
+        ve_slope, ve_intercept, ve_std_err = calculate_slope(
+            step_data[time_column], 
+            step_data[ve_column]
+        )
+        
+        # Get average values for this step
+        avg_power = step_data[power_column].mean()
+        avg_hr = step_data[hr_column].mean() if has_hr else None
+        avg_ve = step_data[ve_column].mean()
+        
+        step_info = {
+            'step_number': step.step_number,
+            'avg_power': round(avg_power, 0),
+            'avg_hr': round(avg_hr, 0) if avg_hr else None,
+            'avg_ve': round(avg_ve, 1),
+            've_slope': round(ve_slope, 4),
+            'is_vt1': False,
+            'is_vt2': False
+        }
+        
+        # Check for VT1 (first time slope exceeds threshold)
+        if not vt1_found and ve_slope >= vt1_slope_threshold:
+            vt1_found = True
+            result.vt1_watts = round(avg_power, 0)
+            result.vt1_hr = round(avg_hr, 0) if avg_hr else None
+            result.vt1_step_number = step.step_number
+            result.vt1_ve_slope = round(ve_slope, 4)
+            step_info['is_vt1'] = True
+            result.notes.append(f"VT1 @ Step {step.step_number}: {avg_power:.0f}W (slope={ve_slope:.4f})")
+        
+        # Check for VT2 (after VT1, when slope exceeds higher threshold)
+        elif vt1_found and result.vt2_watts is None and ve_slope >= vt2_slope_threshold:
+            result.vt2_watts = round(avg_power, 0)
+            result.vt2_hr = round(avg_hr, 0) if avg_hr else None
+            result.vt2_step_number = step.step_number
+            result.vt2_ve_slope = round(ve_slope, 4)
+            step_info['is_vt2'] = True
+            result.notes.append(f"VT2 @ Step {step.step_number}: {avg_power:.0f}W (slope={ve_slope:.4f})")
+        
+        step_analysis.append(step_info)
+    
+    result.step_analysis = step_analysis
+    
+    # Add summary notes
+    if not vt1_found:
+        result.notes.append(f"VT1 not found (no step with slope >= {vt1_slope_threshold})")
+    if vt1_found and result.vt2_watts is None:
+        result.notes.append(f"VT2 not found (no step with slope >= {vt2_slope_threshold})")
+    
+    return result
+
+
 def segment_load_phases(
     df: pd.DataFrame, 
     power_col: str = 'watts',
@@ -607,6 +730,32 @@ def analyze_step_test(
             result.analysis_notes.append(f"✅ Wykryto test schodkowy: {len(step_range.steps)} stopni")
             for note in step_range.notes:
                 result.analysis_notes.append(f"  • {note}")
+            
+            # NEW: Use step-based VT detection (primary method)
+            if has_ve:
+                vt_result = detect_vt_from_steps(
+                    df, 
+                    step_range,
+                    ve_column=ve_column,
+                    power_column=power_column,
+                    hr_column=hr_column,
+                    time_column=time_column,
+                    vt1_slope_threshold=0.05,
+                    vt2_slope_threshold=0.12
+                )
+                
+                # Set results from step-based detection
+                result.vt1_watts = vt_result.vt1_watts
+                result.vt1_hr = vt_result.vt1_hr
+                result.vt2_watts = vt_result.vt2_watts
+                result.vt2_hr = vt_result.vt2_hr
+                
+                for note in vt_result.notes:
+                    result.analysis_notes.append(note)
+                
+                # Store step analysis for UI display
+                if hasattr(result, 'step_ve_analysis'):
+                    result.step_ve_analysis = vt_result.step_analysis
         else:
             # No valid step test detected - fall back to legacy peak-based segmentation
             notes = step_range.notes if step_range else ["Nie znaleziono prawidłowego testu schodkowego"]
@@ -614,8 +763,8 @@ def analyze_step_test(
                 result.analysis_notes.append(f"⚠️ {note}")
             result.analysis_notes.append("Używanie detekcji opartej na szczycie mocy (legacy)")
         
-    # 1. Sliding Window Analysis for VT with Hysteresis
-    if has_ve and has_power:
+    # Fallback: Sliding Window Analysis for VT (only if step detection didn't work)
+    if has_ve and has_power and result.vt1_watts is None:
         # Segment data (use detected test range or full data)
         df_inc, df_dec = segment_load_phases(df_test, power_col=power_column, time_col=time_column)
         
@@ -638,13 +787,13 @@ def analyze_step_test(
             result.vt1_watts = (vt1_inc.range_watts[0] + vt1_inc.range_watts[1]) / 2
             if vt1_inc.range_hr:
                 result.vt1_hr = (vt1_inc.range_hr[0] + vt1_inc.range_hr[1]) / 2
-            result.analysis_notes.append(f"VT1 (Inc): {vt1_inc.range_watts[0]:.0f}-{vt1_inc.range_watts[1]:.0f}W")
+            result.analysis_notes.append(f"VT1 (Legacy): {vt1_inc.range_watts[0]:.0f}-{vt1_inc.range_watts[1]:.0f}W")
         
         if vt2_inc:
             result.vt2_watts = (vt2_inc.range_watts[0] + vt2_inc.range_watts[1]) / 2
             if vt2_inc.range_hr:
                 result.vt2_hr = (vt2_inc.range_hr[0] + vt2_inc.range_hr[1]) / 2
-            result.analysis_notes.append(f"VT2 (Inc): {vt2_inc.range_watts[0]:.0f}-{vt2_inc.range_watts[1]:.0f}W")
+            result.analysis_notes.append(f"VT2 (Legacy): {vt2_inc.range_watts[0]:.0f}-{vt2_inc.range_watts[1]:.0f}W")
 
         # Analyze Decreasing Phase (Secondary/Hysteresis)
         vt1_dec = None

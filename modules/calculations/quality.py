@@ -88,11 +88,13 @@ def check_signal_quality(
 
 def check_step_test_protocol(
     df: pd.DataFrame, 
-    min_step_duration_sec: int = 60
+    min_step_duration_sec: int = 120
 ) -> Dict[str, any]:
     """
-    Check if the session looks like a valid Step Test (Ramp).
+    Check if the session looks like a valid Step Test (Staircase or Ramp).
     Reliable VT detection requires a monotonic increase in load.
+    
+    Uses the new step detection algorithm to validate staircase protocols.
     
     Args:
         df: DataFrame with 'time' and 'watts'.
@@ -106,42 +108,64 @@ def check_step_test_protocol(
          
     issues = []
     
-    # 1. Check Linearity (R²)
-    # Resample to 1s to avoid high freq noise affecting simple linregress too much?
+    # First, try to detect step test pattern using the new algorithm
+    from modules.calculations.thresholds import detect_step_test_range
+    
+    step_range = detect_step_test_range(
+        df, 
+        power_column='watts', 
+        time_column='time',
+        min_step_duration=min_step_duration_sec,
+        max_step_duration=300,  # 5 min max
+        min_power_increment=15,
+        max_power_increment=40,
+        min_steps=4
+    )
+    
+    # If step test detected, it's valid
+    if step_range and step_range.is_valid:
+        return {
+            "is_valid": True,
+            "issues": [],
+            "protocol_type": "staircase",
+            "steps_detected": len(step_range.steps),
+            "power_range": (step_range.min_power, step_range.max_power),
+            "notes": step_range.notes
+        }
+    
+    # Fallback: Check for continuous Ramp (linear increase)
     # Simple linear regression on the whole file
     slope, intercept, r_value, p_value, std_err = stats.linregress(df['time'], df['watts'])
     r_squared = r_value ** 2
     
     # Protocol: Monotonic Ramp = Positive Slope, High R2
     # Ramp should be at least ~3-5W per minute (0.05 W/s).
-    if slope <= 0.05:
-        issues.append(f"Power slope too low ({slope:.3f} W/s). Not a Ramp Test.")
+    if slope >= 0.05 and r_squared >= 0.5:
         return {
-            "is_valid": False, 
-            "issues": issues, 
-            "slope": round(slope, 3), 
+            "is_valid": True,
+            "issues": [],
+            "protocol_type": "continuous_ramp",
+            "slope": round(slope, 3),
             "r_squared": round(r_squared, 2)
         }
+    
+    # Neither pattern detected - provide info from step detection
+    if step_range:
+        issues.extend(step_range.notes)
+    else:
+        issues.append(f"Power slope too low ({slope:.3f} W/s). Not a Ramp Test.")
         
-    if r_squared < 0.6: # Allow some variation (warmup, recovery) but main trend must be ramp
-        # Check if maybe it's cleaner without warmup/cooldown?
-        # But generally, a step test is dominated by the ramp.
+    if r_squared < 0.5:
         issues.append(f"Power profile is not linear (R²={r_squared:.2f}). Irregular load.")
         
-    # 2. Check for Stability (Steps) vs Ramp
-    # This is harder without step detection logic. 
-    # But if R² is low, it's likely interval or steady ride.
-    
-    # 3. Check Range
+    # Check Range
     p_max = df['watts'].max()
     p_min = df['watts'].min()
     if (p_max - p_min) < 50:
          issues.append("Power range too small (<50W) for threshold detection.")
          
-    is_valid = len(issues) == 0
-    
     return {
-        "is_valid": is_valid,
+        "is_valid": False,
         "issues": issues,
         "r_squared": round(r_squared, 2),
         "slope": round(slope, 2)

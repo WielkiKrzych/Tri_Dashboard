@@ -1,97 +1,97 @@
-# Tri_Dashboard: Advanced Physiological Analysis Platform
+# Tri_Dashboard: Zaawansowana Platforma Analizy Fizjologicznej
 
-## Purpose
-Tri_Dashboard is a specialized analytics platform designed for sports scientists and elite coaches. It goes beyond standard power duration curves to provide deep insights into:
-- **W' Balance & Reconstitution**: Modeling anaerobic work capacity depletion and recovery.
-- **Muscle Oxygenation (SmO2)**: Analysis of NIRS data (Moxy/TrainRed) to identify physiological breakpoints.
-- **VO2 Kinetics**: Estimation of O2 deficit and aerobic contribution.
-- **Fatigue Resistance**: Quantification of durability (FRI) and cardiac drift.
+## Cel
+Tri_Dashboard to specjalistyczna platforma analityczna zaprojektowana dla naukowców sportowych oraz elitarnych trenerów. Wykracza poza standardowe krzywe mocy (PDC), zapewniając głęboki wgląd w:
+- **Bilans i Regenerację W' (W' Balance & Reconstitution)**: Modelowanie wyczerpywania i odnowy beztlenowej zdolności do pracy.
+- **Oksygenację Mięśni (SmO2)**: Analiza danych NIRS (Moxy/TrainRed) w celu identyfikacji progów fizjologicznych.
+- **Kinetykę VO2**: Szacowanie deficytu tlenowego i udziału przemian tlenowych.
+- **Odporność na Zmęczenie (Fatigue Resistance)**: Ilościowa ocena wytrzymałości (FRI - Fatigue Resistance Index) oraz dryfu tętna (cardiac drift).
 
-## Architecture Overview
-The application follows a modular **Service-Oriented Architecture (SOA)** within a monolithic codebase, separating scientific logic from presentation.
+## Przegląd Architektury
+Aplikacja wykorzystuje modularną **Architekturę Zorientowaną na Usługi (SOA)** w ramach monolitycznego kodu, oddzielając logikę naukową od warstwy prezentacji.
 
 ```mermaid
 graph TD
-    UI[Frontend (Streamlit)] --> Layout[Layout/Theme Manager]
-    Layout --> App[App Orchestrator]
-    App --> Services[Services Layer]
+    UI[Frontend (Streamlit)] --> Layout[Menedżer Układu/Motywu]
+    Layout --> App[Orkiestrator Aplikacji]
+    App --> Services[Warstwa Usług]
     
-    subgraph Core Logic
-        Services --> Validation[Data Validation]
-        Services --> Analysis[Session Metrics]
-        Services --> Orch[Orchestrator]
+    subgraph Logika Rdzenia
+        Services --> Validation[Walidacja Danych]
+        Services --> Analysis[Metryki Sesji]
+        Services --> Orch[Orkiestrator]
     end
     
-    subgraph Scientific Modules
+    subgraph Moduły Naukowe
         Analysis --> Calc[modules.calculations]
-        Calc --> WPrime[W' Balance]
-        Calc --> Power[Power/PDC]
-        Calc --> Reform[Physiology Models]
+        Calc --> WPrime[Bilans W']
+        Calc --> Power[Moc/PDC]
+        Calc --> Reform[Modele Fizjologiczne]
     end
     
-    subgraph Data Persistence
-        Orch --> SQLite[(Session Store)]
-        Orch --> Config[Config/Env]
+    subgraph Trwałość Danych
+        Orch --> SQLite[(Magazyn Sesji)]
+        Orch --> Config[Konfiguracja/Env]
     end
 ```
 
-## Data Flow
-1.  **Ingestion**: Files (CSV/FIT/TCX converted) are loaded via `modules.utils.load_data`.
-2.  **Validation**: `services.data_validation` enforces schema integrity, types, and range limits.
-3.  **Processing**: 
-    -   Data is normalized to a standard schema (`watts`, `heartrate`, `smo2`, `time`).
-    -   Resampling occurs if high-frequency noise is detected.
-4.  **Analysis**:
-    -   **Metrics**: TSS, NP, IF calculated via Coggan's formulas.
-    -   **Models**: W' bal (Integral), CP, and VO2max estimates are computed.
-5.  **Persistence**: valid sessions are indexed in `data/training_history.db`.
+## Przepływ Danych
+1.  **Ingestia**: Pliki (CSV/FIT/TCX przekonwertowane) są ładowane przez `modules.utils.load_data`.
+2.  **Walidacja**: `services.data_validation` wymusza integralność schematu, typy danych oraz limity zakresów.
+3.  **Przetwarzanie**:
+    -   Dane są normalizowane do standardowego schematu (`watts` - moc, `heartrate` - tętno, `smo2`, `time` - czas).
+    -   Jeżeli wykryty zostanie szum o wysokiej częstotliwości, następuje resampling.
+4.  **Analiza**:
+    -   **Metryki**: TSS, NP, IF obliczane według formuł Coggana.
+    -   **Modele**: Obliczane są bilans W' (całka), CP (Moc Krytyczna) oraz szacunkowe VO2max.
+5.  **Zapis**: Prawidłowe sesje są indeksowane w `data/training_history.db`.
 
-## Setup Instructions
+## Instrukcja Instalacji
 
-### Prerequisites
-- Python 3.10 or higher
-- `pip` package manager
+### Wymagania Wstępne
+- Python 3.10 lub nowszy
+- Menedżer pakietów `pip`
 
-### Installation
-1.  Clone the repository:
+### Instalacja
+1.  Sklonuj repozytorium:
     ```bash
-    git clone https://github.com/your-org/tri_dashboard.git
+    git clone https://github.com/WielkiKrzych/Tri_Dashboard.git
     cd tri_dashboard
     ```
-2.  Install dependencies:
+2.  Zainstaluj zależności:
     ```bash
     pip install -e .[dev]
     ```
-3.  Initialize the database:
+3.  Zainicjalizuj bazę danych:
     ```bash
     python init_db.py
     ```
 
-### Configuration
-Create a `.env` file to override defaults (optional):
+### Konfiguracja
+Utwórz plik `.env`, aby nadpisać ustawienia domyślne (opcjonalne):
 ```ini
-APP_TITLE="Lab Analytics"
+APP_TITLE="Analizy Laboratoryjne"
 CP_DEFAULT=300
 W_PRIME_DEFAULT=20000
 DB_NAME="lab_data.db"
 ```
 
-## Example Usage
+## Przykłady Użycia
 
-### Running the Dashboard
+### Uruchomienie Dashboardu
 ```bash
 streamlit run app.py
 ```
-Access the interface at `http://localhost:8501`.
+Dostęp do interfejsu pod adresem `http://localhost:8501`.
 
-### Batch Import
-To process a folder of historical CSV files:
-1.  Place files in `treningi_csv/`.
-2.  Open **Analytics > Import** tab.
-3.  Click **Import All** to run the batch processor.
+### Import Masowy
+Aby przetworzyć folder z historycznymi plikami CSV:
+1.  Umieść pliki w folderze `treningi_csv/`.
+2.  Otwórz zakładkę **Analytics > Import** (Analizy > Import).
+3.  Kliknij **Import All** (Importuj Wszystkie), aby uruchomić procesor wsadowy.
 
-### Manual Analysis
-The platform enables comparative analysis of:
-- **Intervals**: Auto-detection of work/recovery intervals.
-- **Desaturation**: SmO2 slopes during high-intensity efforts.
-- **Decoupling**: Aerobic efficiency (Pa:HR) drift over long durations.
+### Analiza Manualna
+Platforma umożliwia analizę porównawczą:
+- **Interwały**: Automatyczne wykrywanie odcinków pracy i regeneracji.
+- **Desaturacja**: Nachylenie krzywej SmO2 podczas wysiłków o wysokiej intensywności.
+- **Rozsprzężenie (Decoupling)**: Dryf efektywności tlenowej (Pa:HR) w długim czasie trwania wysiłku.

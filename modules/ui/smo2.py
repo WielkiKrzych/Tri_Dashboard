@@ -13,8 +13,8 @@ from modules.calculations.kinetics import (
 from modules.calculations.quality import check_signal_quality
 
 def render_smo2_tab(target_df, training_notes, uploaded_file_name):
-    st.header("Analiza Kinetyki SmO2 (State & Lag)")
-    st.markdown("Analiza stanów fizjologicznych, opóźnień (lag) oraz kontekstu obciążenia.")
+    st.header("Analiza SmO2 (Oksygenacja Mięśniowa)")
+    st.markdown("Analiza surowych danych SmO2, trendów i kontekstu obciążenia.")
 
     if target_df is None or target_df.empty:
         st.error("Brak danych. Najpierw wgraj plik w sidebar.")
@@ -23,30 +23,26 @@ def render_smo2_tab(target_df, training_notes, uploaded_file_name):
     if 'time' not in target_df.columns:
         st.error("Brak kolumny 'time' w danych!")
         st.stop()
+        
+    if 'smo2' not in target_df.columns:
+        st.error("Brak kolumny 'smo2' w danych!")
+        st.stop()
 
-    # Ensure smoothed columns exist if not already present
-    if 'smo2' in target_df.columns:
-        # Check Quality
-        qual_res = check_signal_quality(target_df['smo2'], "SmO2", (0, 100))
-        if not qual_res['is_valid']:
-            st.warning(f"⚠️ **Niska Jakość Sygnału SmO2 (Score: {qual_res['score']})**")
-            for issue in qual_res['issues']:
-                st.caption(f"❌ {issue}")
-            # Could mask metrics here
-
+    # Ensure smoothed columns exist
     if 'watts_smooth_5s' not in target_df.columns and 'watts' in target_df.columns:
         target_df['watts_smooth_5s'] = target_df['watts'].rolling(window=5, center=True).mean()
-    if 'smo2_smooth' not in target_df.columns and 'smo2' in target_df.columns:
+    if 'smo2_smooth' not in target_df.columns:
         target_df['smo2_smooth'] = target_df['smo2'].rolling(window=5, center=True).mean()
-        
-    # NORMALIZE SmO2 for Session
-    if 'smo2_norm' not in target_df.columns and 'smo2_smooth' in target_df.columns:
-        target_df['smo2_norm'] = normalize_smo2_series(target_df['smo2_smooth']) * 100.0 # Scale to 0-100% relative
         
     target_df['time_str'] = pd.to_datetime(target_df['time'], unit='s').dt.strftime('%H:%M:%S')
     
-    col_inp1, col_inp2 = st.columns(2)
-    
+    # Check Quality
+    qual_res = check_signal_quality(target_df['smo2'], "SmO2", (0, 100))
+    if not qual_res['is_valid']:
+        st.warning(f"⚠️ **Niska Jakość Sygnału SmO2 (Score: {qual_res['score']})**")
+        for issue in qual_res['issues']:
+            st.caption(f"❌ {issue}")
+
     # Inicjalizacja session_state
     if 'smo2_start_sec' not in st.session_state:
         st.session_state.smo2_start_sec = 600
@@ -93,323 +89,215 @@ def render_smo2_tab(target_df, training_notes, uploaded_file_name):
                     st.rerun()
 
     st.markdown("---")
-    # ===== KONIEC NOTATEK SmO2 =====
 
-    st.info("Algorytm wykrywa stany fizjologiczne (Gantt) oraz analizuje zaznaczony fragment.")
+    # ===== STATE TIMELINE GANTT (Advanced) =====
+    with st.expander("📊 Oś Czasu Stanów Fizjologicznych (State Timeline)", expanded=False):
+        timeline = generate_state_timeline(target_df, window_size_sec=30, step_sec=10)
+        
+        if timeline:
+            fig_gantt = go.Figure()
+            color_map = {
+                "RECOVERY": "green", "STEADY_STATE": "blue", "NON_STEADY": "orange",
+                "FATIGUE": "red", "RAMP_UP": "purple", "UNKNOWN": "grey"
+            }
+            for segment in timeline:
+                fig_gantt.add_trace(go.Bar(
+                    x=[segment['end'] - segment['start']], y=["State"], base=[segment['start']],
+                    orientation='h', marker=dict(color=color_map.get(segment['state'], 'grey')),
+                    name=segment['state'],
+                    hovertemplate=f"<b>{segment['state']}</b><br>Conf: {segment['confidence']:.2f}<extra></extra>",
+                    showlegend=False
+                ))
+            for state, color in color_map.items():
+                 fig_gantt.add_trace(go.Bar(x=[0], y=["State"], marker=dict(color=color), name=state, visible='legendonly'))
+            fig_gantt.update_layout(title="Przebieg Treningu", xaxis_title="Czas (s)", barmode='stack', height=150, margin=dict(l=20, r=20, t=30, b=20), showlegend=True)
+            st.plotly_chart(fig_gantt, use_container_width=True)
+
+    st.markdown("---")
     
-    # ===== STATE TIMELINE GANTT =====
-    # Generate timeline if not in cache (could cache later) or just compute fast
-    if 'smo2' in target_df.columns:
-        with st.expander("📊 Oś Czasu Stanów Fizjologicznych (State Timeline)", expanded=False):
-            # Compute timeline
-            timeline = generate_state_timeline(target_df, window_size_sec=30, step_sec=10)
-            
-            if timeline:
-                fig_gantt = go.Figure()
-                
-                # Colors based on state
-                color_map = {
-                    "RECOVERY": "green",
-                    "STEADY_STATE": "blue",
-                    "NON_STEADY": "orange",
-                    "FATIGUE": "red",
-                    "RAMP_UP": "purple",
-                    "UNKNOWN": "grey"
-                }
+    # ===== ANALIZA MANUALNA (jak w Wentylacji) =====
+    st.info("💡 **ANALIZA MANUALNA:** Zaznacz obszar na wykresie poniżej (kliknij i przeciągnij), aby sprawdzić nachylenie lokalne.")
 
-                for segment in timeline:
-                    # Parse start/end to datetime for Plotly Gantt usually, or use linear x
-                    # Using Bar chart (horizontal) or Shapes
-                    
-                    fig_gantt.add_trace(go.Bar(
-                        x=[segment['end'] - segment['start']],
-                        y=["State"],
-                        base=[segment['start']],
-                        orientation='h',
-                        marker=dict(color=color_map.get(segment['state'], 'grey')),
-                        name=segment['state'],
-                        hovertemplate=f"<b>{segment['state']}</b><br>Conf: {segment['confidence']:.2f}<extra></extra>",
-                        showlegend=False
-                    ))
-                
-                # Deduplicate legend items manually if desired, but here we hide legend for clutter
-                # Add Legend manually?
-                for state, color in color_map.items():
-                     fig_gantt.add_trace(go.Bar(x=[0], y=["State"], marker=dict(color=color), name=state, visible='legendonly'))
+    def parse_time_to_seconds(t_str):
+        try:
+            parts = list(map(int, t_str.split(':')))
+            if len(parts) == 3: return parts[0]*3600 + parts[1]*60 + parts[2]
+            if len(parts) == 2: return parts[0]*60 + parts[1]
+            if len(parts) == 1: return parts[0]
+        except (ValueError, AttributeError):
+            return None
+        return None
 
-                fig_gantt.update_layout(
-                    title="Przebieg Treningu (Physiological States)",
-                    xaxis_title="Czas (s)",
-                    barmode='stack', # Stack keeps them in single line
-                    height=150,
-                    margin=dict(l=20, r=20, t=30, b=20),
-                    showlegend=True
-                )
-                st.plotly_chart(fig_gantt, use_container_width=True)
+    with st.expander("🔧 Ręczne wprowadzenie zakresu czasowego (opcjonalne)", expanded=False):
+        col_inp_1, col_inp_2 = st.columns(2)
+        with col_inp_1:
+            manual_start = st.text_input("Start Interwału (hh:mm:ss)", value="00:10:00", key="smo2_manual_start")
+        with col_inp_2:
+            manual_end = st.text_input("Koniec Interwału (hh:mm:ss)", value="00:20:00", key="smo2_manual_end")
 
+        if st.button("Zastosuj ręczny zakres", key="btn_smo2_manual"):
+            manual_start_sec = parse_time_to_seconds(manual_start)
+            manual_end_sec = parse_time_to_seconds(manual_end)
+            if manual_start_sec is not None and manual_end_sec is not None:
+                st.session_state.smo2_start_sec = manual_start_sec
+                st.session_state.smo2_end_sec = manual_end_sec
+                st.success(f"✅ Zaktualizowano zakres: {manual_start} - {manual_end}")
 
     # Użyj wartości z session_state
     startsec = st.session_state.smo2_start_sec
     endsec = st.session_state.smo2_end_sec
     
-    # Parsowanie czasu
     def format_time(s):
         h = int(s // 3600)
         m = int((s % 3600) // 60)
         sec = int(s % 60)
-        return f"{h}:{m:02d}:{sec:02d}"
+        if h > 0:
+            return f"{h:02d}:{m:02d}:{sec:02d}"
+        return f"{m:02d}:{sec:02d}"
 
-    if startsec is not None and endsec is not None:
-        if endsec > startsec:
-            duration_sec = endsec - startsec
-            
-            mask = (target_df['time'] >= startsec) & (target_df['time'] <= endsec)
-            interval_data = target_df.loc[mask]
+    # Wycinanie danych
+    mask = (target_df['time'] >= startsec) & (target_df['time'] <= endsec)
+    interval_data = target_df.loc[mask]
 
-            if not interval_data.empty:
-                avg_watts = interval_data['watts'].mean() if 'watts' in interval_data.columns else 0
-                avg_norm = interval_data['smo2_norm'].mean() if 'smo2_norm' in interval_data.columns else 0
-                
-                # Trend Classification & Context
-                is_recovery = False
-                resat_result = {}
-                lag_results = {}
-                
-                if len(interval_data) > 30 and 'smo2_norm' in interval_data.columns:
-                    # 1. Detect Base SmO2 Trend
-                    trend_res = detect_smo2_trend(interval_data['time'], interval_data['smo2_norm'])
-                    slope = trend_res['slope']
-                    trend_cat = trend_res['category']
-                    
-                    # 2. Check for Recovery Mode
-                    if "Reoxygenation" in trend_cat:
-                        is_recovery = True
-                        resat_result = calculate_resaturation_metrics(interval_data['time'], interval_data['smo2_norm'])
-                        context_res = classify_smo2_context(interval_data, trend_res)
-                    else:
-                        # 3. Classify Context (Why?) if not recovery
-                        context_res = classify_smo2_context(interval_data, trend_res)
-                    
-                    cause = context_res.get('cause', 'Unknown')
-                    explanation = context_res.get('explanation', '')
-                    c_type = context_res.get('type', 'normal')
-                    
-                    # 4. Lag Analysis (Cross-Correlation)
-                    lag_results = analyze_temporal_sequence(interval_data)
-                    
-                else:
-                    trend_res = {}
-                    slope = 0
-                    trend_cat = "N/A"
-                    cause = "N/A"
-                    explanation = ""
-                    c_type = "normal"
-
-                st.subheader(f"Metryki: {format_time(startsec)} - {format_time(endsec)}")
-                
-                # Check Quality for Visual Styles
-                opacity_style = ""
-                if 'smo2_norm' in interval_data.columns:
-                     q_check = check_signal_quality(interval_data['smo2_norm'], "SmO2") 
-                     if q_check['score'] < 0.5:
-                         st.warning("⚠️ Low Signal Quality - Metrics dimmed")
-                         opacity_style = "opacity: 0.5;"
-
-                # Dynamic Metric Layout based on context
-                if is_recovery:
-                    # RECOVERY MODE UI
-                    c1, c2, c3, c4 = st.columns(4)
-                    
-                    c1.markdown(f"""
-                    <div style="{opacity_style} text-align:center;">
-                        <h4 style="margin:0; color:grey;">State</h4>
-                        <h2 style="margin:0; color:#2ecc71;">RECOVERY</h2>
-                        <p style="margin:0;">Re-oxygenation Phase</p>
-                    </div>
-                    """, unsafe_allow_html=True)
-                    
-                    c2.metric("T½ (Half-Rec)", f"{resat_result.get('t_half', 0):.1f}s")
-                    
-                    tau = resat_result.get('tau_est', 0)
-                    score = resat_result.get('recovery_score', 0)
-                    c3.metric("Est. Tau", f"{tau:.1f}s", delta=f"Score: {score:.0f}", delta_color="normal")
-                    
-                    rate = resat_result.get('resat_rate', 0) * 100 
-                    c4.metric("Resat Rate", f"{rate:.1f}%/s")
-                    
-                else:
-                    # STANDARD CONTEXT UI
-                    c1, c2, c3, c4 = st.columns(4)
-                    
-                    c1.metric("Avg Power", f"{avg_watts:.0f} W", f"{interval_data['cadence'].mean():.0f} rpm")
-                    
-                    # Visual Trend Arrow
-                    arrow = "→"
-                    if slope > 0.05: arrow = "↗"
-                    elif slope > 0.1: arrow = "⬆"
-                    elif slope < -0.05: arrow = "↘"
-                    elif slope < -0.1: arrow = "⬇"
-                    
-                    c2.markdown(f"""
-                    <div style="{opacity_style} text-align:center;">
-                        <h4 style="margin:0; color:grey;">Trend</h4>
-                        <h1 style="margin:0;">{arrow}</h1>
-                        <small>{slope:.4f}/s</small>
-                    </div>
-                    """, unsafe_allow_html=True)
-                    
-                    # Context Badge
-                    badge_color = "grey"
-                    if c_type == 'mechanical': badge_color = "#e67e22" # Orange
-                    elif c_type == 'limit': badge_color = "#e74c3c" # Red
-                    elif c_type == 'warning': badge_color = "#c0392b" # Dark Red
-                    elif c_type == 'normal': badge_color = "#27ae60" # Green
-                    
-                    c3.markdown(f"""
-                    <div style="{opacity_style} text-align:center; padding:5px;">
-                        <h4 style="margin:0; color:grey;">Context</h4>
-                        <span style="background-color:{badge_color}; color:white; padding:4px 8px; border-radius:4px; font-weight:bold;">
-                            {cause}
-                        </span>
-                    </div>
-                    """, unsafe_allow_html=True)
-                        
-                    c4.metric("Rel SmO2", f"{avg_norm:.1f}%")
-
-                    if explanation:
-                        st.caption(f"💡 **Analysis:** {explanation}")
-                            
-                # ===== LAG ANALYSIS VISUALIZATION =====
-                if lag_results:
-                    with st.expander("⏱️ Analiza Opóźnień (Kinetyska Sekwencja)", expanded=False):
-                        st.markdown("Opóźnienie reakcji względem zmiany obciążenia (Moc = 0s).")
-                        
-                        lag_hr = lag_results.get('hr_lag', 0)
-                        lag_smo2 = lag_results.get('smo2_lag', 0)
-                        
-                        lag_col1, lag_col2 = st.columns([1, 1])
-                        
-                        # Visualization of timeline
-                        # Simple ASCII or metrics
-                        lag_col1.metric("SmO2 Lag", f"{lag_smo2:.1f} s", 
-                                        delta="OK" if lag_smo2 < 40 else "Slow", 
-                                        delta_color="inverse" if lag_smo2 > 40 else "normal")
-                        lag_col2.metric("HR Lag", f"{lag_hr:.1f} s",
-                                        delta="Lagging Indicator" if lag_hr > 60 else "OK",
-                                        delta_color="inverse" if lag_hr > 60 else "normal")
-                        
-                        # Timeline visualization
-                        fig_lag = go.Figure()
-                        
-                        metrics = ['Power (Trigger)', 'SmO2 Response', 'HR Response']
-                        lags = [0, lag_smo2, lag_hr]
-                        colors = ['blue', 'red', 'lightgreen']
-                        
-                        fig_lag.add_trace(go.Bar(
-                            y=metrics,
-                            x=lags,
-                            orientation='h',
-                            marker_color=colors,
-                            text=[f"{l:.1f}s" for l in lags],
-                            textposition='auto'
-                        ))
-                        
-                        fig_lag.update_layout(
-                            title="Sekwencja Czasowa Reakcji (Time to Response)",
-                            xaxis_title="Opóźnienie (s)",
-                            height=200,
-                            margin=dict(l=20, r=20, t=30, b=20)
-                        )
-                        st.plotly_chart(fig_lag, use_container_width=True)
-
-                fig_smo2 = go.Figure()
-
-                # Add Normalized Trace (Primary)
-                if 'smo2_norm' in target_df.columns:
-                    fig_smo2.add_trace(go.Scatter(
-                        x=target_df['time'], 
-                        y=target_df['smo2_norm'],
-                        customdata=target_df['time_str'],
-                        mode='lines', 
-                        name='Relative SmO2 (Norm)',
-                        line=dict(color='#FF4B4B', width=3), # Bold Red
-                        hovertemplate="<b>Czas:</b> %{customdata}<br><b>Rel SmO2:</b> %{y:.1f}%<extra></extra>"
-                    ))
-
-                fig_smo2.add_trace(go.Scatter(
-                    x=target_df['time'], 
-                    y=target_df['watts_smooth_5s'],
-                    customdata=target_df['time_str'],
-                    mode='lines', 
-                    name='Power',
-                    line=dict(color='#1f77b4', width=1),
-                    yaxis='y2',
-                    opacity=0.3,
-                    hovertemplate="<b>Czas:</b> %{customdata}<br><b>Moc:</b> %{y:.0f} W<extra></extra>"
-                ))
-                
-                # Add Cadence trace to see grinding
-                if 'cadence' in target_df.columns:
-                     fig_smo2.add_trace(go.Scatter(
-                        x=target_df['time'], 
-                        y=target_df['cadence'],
-                        customdata=target_df['time_str'],
-                        mode='lines', 
-                        name='Cadence',
-                        line=dict(color='orange', width=1, dash='dot'),
-                        yaxis='y3',
-                        visible='legendonly',
-                        hovertemplate="<b>Czas:</b> %{customdata}<br><b>RPM:</b> %{y:.0f}<extra></extra>"
-                    ))
-
-                fig_smo2.add_vrect(
-                    x0=startsec, x1=endsec,
-                    fillcolor="blue" if is_recovery else "green", opacity=0.1,
-                    layer="below", line_width=0,
-                    annotation_text="RECOVERY" if is_recovery else "LOADING", annotation_position="top left"
-                )
-
-                fig_smo2.update_layout(
-                    title="Analiza Relatywna SmO2 (Context & Recovery)",
-                    xaxis_title="Czas",
-                    yaxis=dict(title="Relative SmO2 (%)", range=[0, 100]),
-                    yaxis2=dict(title="Power (W)", overlaying='y', side='right', showgrid=False),
-                    yaxis3=dict(title="RPM", overlaying='y', side='right', anchor='free', position=1.0, showgrid=False, range=[0, 150]),
-                    legend=dict(x=0.01, y=0.99),
-                    height=500,
-                    margin=dict(l=20, r=20, t=40, b=20),
-                    hovermode="x unified"
-                )
-                
-                # Wykres z interaktywnym zaznaczaniem
-                selected = st.plotly_chart(fig_smo2, use_container_width=True, key="smo2_chart", on_select="rerun", selection_mode="box")
-
-                # Obsługa zaznaczenia
-                if selected and 'selection' in selected and 'box' in selected['selection']:
-                    box_data = selected['selection']['box']
-                    if box_data and len(box_data) > 0:
-                        # Pobierz zakres X (czas) z zaznaczenia
-                        x_range = box_data[0].get('x', [])
-                        if len(x_range) == 2:
-                            new_start = min(x_range)
-                            new_end = max(x_range)
-                            
-                            # Aktualizuj session_state
-                            if new_start != st.session_state.smo2_start_sec or new_end != st.session_state.smo2_end_sec:
-                                st.session_state.smo2_start_sec = new_start
-                                st.session_state.smo2_end_sec = new_end
-                                st.rerun()
-                                
-            else:
-                st.warning("Brak danych w wybranym zakresie.")
+    if not interval_data.empty and endsec > startsec:
+        duration_sec = int(endsec - startsec)
         
-        # --- LEGACY TOOLS: Detailed Analysis ---
-        st.markdown("---")
+        # Obliczenia
+        avg_watts = interval_data['watts'].mean() if 'watts' in interval_data.columns else 0
+        avg_smo2 = interval_data['smo2'].mean()
+        avg_thb = interval_data['thb'].mean() if 'thb' in interval_data.columns else None
+        
+        # Trend (Slope) dla SmO2
+        if len(interval_data) > 1:
+            slope_smo2, intercept_smo2, _, _, _ = stats.linregress(interval_data['time'], interval_data['smo2'])
+            trend_desc = f"{slope_smo2:.4f} %/s"
+        else:
+            slope_smo2 = 0; intercept_smo2 = 0; trend_desc = "N/A"
+
+        # Metryki Manualne
+        st.subheader(f"METRYKI MANUALNE: {format_time(startsec)} - {format_time(endsec)} ({duration_sec}s)")
+        
+        if avg_thb is not None:
+            m1, m2, m3, m4 = st.columns(4)
+        else:
+            m1, m2, m3, m4 = st.columns(4)
+            
+        m1.metric("Śr. Moc", f"{avg_watts:.0f} W")
+        m2.metric("Śr. SmO2", f"{avg_smo2:.1f} %")
+        
+        if avg_thb is not None:
+            m3.metric("Śr. THb", f"{avg_thb:.2f} g/dL")
+        else:
+            cadence = interval_data['cadence'].mean() if 'cadence' in interval_data.columns else 0
+            m3.metric("Śr. Kadencja", f"{cadence:.0f} rpm")
+        
+        # Kolorowanie trendu
+        trend_color = "inverse" if slope_smo2 < -0.01 else "normal"
+        m4.metric("Trend SmO2 (Slope)", trend_desc, delta=trend_desc, delta_color=trend_color)
+
+        # ===== WYKRES GŁÓWNY (SUROWE SmO2) =====
+        fig_smo2 = go.Figure()
+
+        # SmO2 (Primary - RAW values)
+        fig_smo2.add_trace(go.Scatter(
+            x=target_df['time'], 
+            y=target_df['smo2_smooth'],
+            customdata=target_df['time_str'],
+            mode='lines', 
+            name='SmO2 (%)',
+            line=dict(color='#FF4B4B', width=2),
+            hovertemplate="<b>Czas:</b> %{customdata}<br><b>SmO2:</b> %{y:.1f}%<extra></extra>"
+        ))
+
+        # Power (Secondary)
+        if 'watts_smooth_5s' in target_df.columns:
+            fig_smo2.add_trace(go.Scatter(
+                x=target_df['time'], 
+                y=target_df['watts_smooth_5s'],
+                customdata=target_df['time_str'],
+                mode='lines', 
+                name='Power',
+                line=dict(color='#1f77b4', width=1),
+                yaxis='y2',
+                opacity=0.3,
+                hovertemplate="<b>Czas:</b> %{customdata}<br><b>Moc:</b> %{y:.0f} W<extra></extra>"
+            ))
+
+        # Zaznaczenie manualne
+        fig_smo2.add_vrect(
+            x0=startsec, x1=endsec, 
+            fillcolor="orange", opacity=0.1, 
+            layer="below", line_width=0,
+            annotation_text="MANUAL", annotation_position="top left"
+        )
+
+        # Linia trendu SmO2 (dla manualnego)
+        if len(interval_data) > 1:
+            trend_line = intercept_smo2 + slope_smo2 * interval_data['time']
+            fig_smo2.add_trace(go.Scatter(
+                x=interval_data['time'], y=trend_line,
+                mode='lines', name='Trend SmO2 (Man)',
+                line=dict(color='white', width=2, dash='dash'),
+                hovertemplate="<b>Trend:</b> %{y:.2f}%<extra></extra>"
+            ))
+
+        fig_smo2.update_layout(
+            title="Dynamika SmO2 vs Moc (Surowe Wartości)",
+            xaxis_title="Czas",
+            yaxis=dict(title=dict(text="SmO2 (%)", font=dict(color="#FF4B4B"))),
+            yaxis2=dict(title=dict(text="Moc (W)", font=dict(color="#1f77b4")), overlaying='y', side='right', showgrid=False),
+            legend=dict(x=0.01, y=0.99),
+            height=500,
+            margin=dict(l=20, r=20, t=40, b=20),
+            hovermode="x unified"
+        )
+        
+        # Wykres z interaktywnym zaznaczaniem
+        selected = st.plotly_chart(fig_smo2, use_container_width=True, key="smo2_chart", on_select="rerun", selection_mode="box")
+
+        # Obsługa zaznaczenia
+        if selected and 'selection' in selected and 'box' in selected['selection']:
+            box_data = selected['selection']['box']
+            if box_data and len(box_data) > 0:
+                x_range = box_data[0].get('x', [])
+                if len(x_range) == 2:
+                    new_start = min(x_range)
+                    new_end = max(x_range)
+                    if new_start != st.session_state.smo2_start_sec or new_end != st.session_state.smo2_end_sec:
+                        st.session_state.smo2_start_sec = new_start
+                        st.session_state.smo2_end_sec = new_end
+                        st.rerun()
+                        
+        # ===== ADVANCED CONTEXT ANALYSIS =====
+        with st.expander("🧠 Zaawansowana Analiza Kontekstu", expanded=False):
+            if len(interval_data) > 30:
+                trend_res = detect_smo2_trend(interval_data['time'], interval_data['smo2'])
+                context_res = classify_smo2_context(interval_data, trend_res)
+                
+                cause = context_res.get('cause', 'Unknown')
+                explanation = context_res.get('explanation', '')
+                c_type = context_res.get('type', 'normal')
+                
+                st.markdown(f"**Trend:** {trend_res.get('category', 'N/A')}")
+                st.markdown(f"**Przyczyna (Inferred):** {cause}")
+                if explanation:
+                    st.info(f"💡 {explanation}")
+                    
+                # Lag Analysis
+                lag_results = analyze_temporal_sequence(interval_data)
+                if lag_results:
+                    st.markdown("---")
+                    st.markdown("**Opóźnienia (Lag):**")
+                    lag_hr = lag_results.get('hr_lag', 0)
+                    lag_smo2 = lag_results.get('smo2_lag', 0)
+                    st.caption(f"SmO2 Lag: {lag_smo2:.1f}s | HR Lag: {lag_hr:.1f}s")
+
+        # ===== LEGACY TOOLS =====
         with st.expander("🔧 Szczegółowa Analiza (Legacy Tools)", expanded=False):
-            st.markdown("### Surowe Dane i Korelacje (Old View)")
+            st.markdown("### Surowe Dane i Korelacje")
             
             # Scatter Plot: SmO2 vs Watts
-            if 'watts' in interval_data.columns and 'smo2' in interval_data.columns:
+            if 'watts' in interval_data.columns:
                 fig_scatter = go.Figure()
                 fig_scatter.add_trace(go.Scatter(
                     x=interval_data['watts'], 
@@ -418,29 +306,36 @@ def render_smo2_tab(target_df, training_notes, uploaded_file_name):
                     marker=dict(size=5, color=interval_data['time'], colorscale='Viridis', showscale=True),
                     name='SmO2 vs Power'
                 ))
-                fig_scatter.update_layout(
-                    title="Korelacja: SmO2 vs Moc",
-                    xaxis_title="Power (W)",
-                    yaxis_title="SmO2 (%)",
-                    height=400
-                )
+                fig_scatter.update_layout(title="Korelacja: SmO2 vs Moc", xaxis_title="Power (W)", yaxis_title="SmO2 (%)", height=400)
                 st.plotly_chart(fig_scatter, use_container_width=True)
                 
-            # THb Visualization (if available)
+            # THb Visualization
             if 'thb' in interval_data.columns:
                 st.subheader("Hemoglobina Całkowita (THb)")
                 fig_thb = go.Figure()
-                fig_thb.add_trace(go.Scatter(
-                    x=interval_data['time'], y=interval_data['thb'],
-                    mode='lines', name='THb',
-                    line=dict(color='purple')
-                ))
+                fig_thb.add_trace(go.Scatter(x=interval_data['time'], y=interval_data['thb'], mode='lines', name='THb', line=dict(color='purple')))
                 fig_thb.update_layout(title="Total Hemoglobin (tHb)", height=300)
                 st.plotly_chart(fig_thb, use_container_width=True)
                 
-            # Raw Data Table (Dynamically selected columns)
-            available_cols = [c for c in ['time_str', 'watts', 'smo2', 'hr', 'cadence', 'thb'] if c in interval_data.columns]
+            # Raw Data Table
+            available_cols = [c for c in ['time_str', 'watts', 'smo2', 'thb', 'hr', 'cadence'] if c in interval_data.columns]
             if available_cols:
                 st.dataframe(interval_data[available_cols].head(100))
-            else:
-                st.caption("Brak danych do wyświetlenia.")
+
+    else:
+        st.warning("Brak danych w wybranym zakresie.")
+
+    # ===== TEORIA =====
+    with st.expander("🫁 TEORIA: Interpretacja SmO2", expanded=False):
+        st.markdown("""
+        ### Co oznacza SmO2?
+        
+        - **SmO2** = Saturacja tlenu w mięśniu (Muscle Oxygen Saturation).
+        - Mierzona przez sensory NIRS (np. Moxy, TrainRed).
+        - Zakres typowy: **30% - 80%** (zależnie od sensora i umiejscowienia).
+        
+        #### Trend SmO2 (Slope)
+        * **Negatywny (< 0)**: Desaturacja - mięsień zużywa więcej tlenu niż dostaje.
+        * **Zerowy (~0)**: Równowaga zużycie/dostawa.
+        * **Pozytywny (> 0)**: Reoxygenacja - recovery, zmniejszenie obciążenia.
+        """)

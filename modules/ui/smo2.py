@@ -2,11 +2,11 @@ import streamlit as st
 import plotly.graph_objects as go
 import pandas as pd
 from scipy import stats
-from modules.calculations.kinetics import normalize_smo2_series, detect_smo2_trend
+from modules.calculations.kinetics import normalize_smo2_series, detect_smo2_trend, classify_smo2_context
 
 def render_smo2_tab(target_df, training_notes, uploaded_file_name):
-    st.header("Analiza Kinetyki SmO2 (Relative Trends)")
-    st.markdown("Analiza relatywna zmian saturacji mięśniowej. Ignorujemy wartości absolutne na rzecz trendów i normalizacji.")
+    st.header("Analiza Kinetyki SmO2 (Context-Aware)")
+    st.markdown("Zaawansowana analiza biorąca pod uwagę kontekst: Moc, Kadencję i Tętno.")
 
     if target_df is None or target_df.empty:
         st.error("Brak danych. Najpierw wgraj plik w sidebar.")
@@ -22,7 +22,7 @@ def render_smo2_tab(target_df, training_notes, uploaded_file_name):
     if 'smo2_smooth' not in target_df.columns and 'smo2' in target_df.columns:
         target_df['smo2_smooth'] = target_df['smo2'].rolling(window=5, center=True).mean()
         
-    # NORMALIZE SmO2 for Session (This is the new feature!)
+    # NORMALIZE SmO2 for Session
     if 'smo2_norm' not in target_df.columns and 'smo2_smooth' in target_df.columns:
         target_df['smo2_norm'] = normalize_smo2_series(target_df['smo2_smooth']) * 100.0 # Scale to 0-100% relative
         
@@ -78,41 +78,19 @@ def render_smo2_tab(target_df, training_notes, uploaded_file_name):
     st.markdown("---")
     # ===== KONIEC NOTATEK SmO2 =====
 
-    st.info("💡 **ANALIZA MANUALNA:** Zaznacz obszar na wykresie poniżej, aby obliczyć trend względny.")
-
-    # Opcjonalne: ręczne wprowadzenie czasu (dla precyzji)
-    def parse_time_to_seconds(t_str):
-        try:
-            parts = list(map(int, t_str.split(':')))
-            if len(parts) == 3: return parts[0]*3600 + parts[1]*60 + parts[2]
-            if len(parts) == 2: return parts[0]*60 + parts[1]
-            if len(parts) == 1: return parts[0]
-        except (ValueError, AttributeError):
-            return None
-        return None
-
-    with st.expander("🔧 Ręczne wprowadzenie zakresu czasowego (opcjonalne)", expanded=False):
-        col_inp1, col_inp2 = st.columns(2)
-        with col_inp1:
-            manual_start = st.text_input("Start Interwału (hh:mm:ss)", value="01:00:00", key="smo2_manual_start")
-        with col_inp2:
-            manual_end = st.text_input("Koniec Interwału (hh:mm:ss)", value="01:20:00", key="smo2_manual_end")
-        
-        if st.button("Zastosuj ręczny zakres"):
-            manual_start_sec = parse_time_to_seconds(manual_start)
-            manual_end_sec = parse_time_to_seconds(manual_end)
-            if manual_start_sec is not None and manual_end_sec is not None:
-                st.session_state.smo2_start_sec = manual_start_sec
-                st.session_state.smo2_end_sec = manual_end_sec
-                st.success(f"✅ Zaktualizowano zakres: {manual_start} - {manual_end}")
+    st.info("💡 **ANALIZA SYTUACYJNA:** Zaznacz obszar na wykresie. Algorytm spróbuje odgadnąć PRZYCZYNĘ zmian SmO2 (np. niska kadencja, wzrost mocy, utrata wydajności).")
 
     # Użyj wartości z session_state
     startsec = st.session_state.smo2_start_sec
     endsec = st.session_state.smo2_end_sec
-
-    start_time_str = st.session_state.get('smo2_manual_start', "01:00:00")
-    nd_time_str = st.session_state.get('smo2_manual_end', "01:20:00")
     
+    # Parsowanie czasu
+    def format_time(s):
+        h = int(s // 3600)
+        m = int((s % 3600) // 60)
+        sec = int(s % 60)
+        return f"{h}:{m:02d}:{sec:02d}"
+
     if startsec is not None and endsec is not None:
         if endsec > startsec:
             duration_sec = endsec - startsec
@@ -125,40 +103,52 @@ def render_smo2_tab(target_df, training_notes, uploaded_file_name):
                 avg_smo2 = interval_data['smo2'].mean() if 'smo2' in interval_data.columns else 0
                 avg_norm = interval_data['smo2_norm'].mean() if 'smo2_norm' in interval_data.columns else 0
                 
-                # Trend Detection (Relative)
+                # Trend Classification & Context
                 if len(interval_data) > 10 and 'smo2_norm' in interval_data.columns:
+                    # 1. Detect Base SmO2 Trend
                     trend_res = detect_smo2_trend(interval_data['time'], interval_data['smo2_norm'])
                     slope = trend_res['slope']
                     trend_cat = trend_res['category']
-                    trend_desc = trend_res['description']
+                    
+                    # 2. Classify Context (Why?)
+                    context_res = classify_smo2_context(interval_data, trend_res)
+                    cause = context_res.get('cause', 'Unknown')
+                    explanation = context_res.get('explanation', '')
+                    c_type = context_res.get('type', 'normal')
+                    
                 else:
                     trend_res = {}
                     slope = 0
                     trend_cat = "N/A"
-                    trend_desc = "Za mało danych"
+                    cause = "N/A"
+                    explanation = ""
+                    c_type = "normal"
 
-                st.subheader(f"Metryki dla odcinka: {start_time_str} - {nd_time_str} (Czas trwania: {duration_sec}s)")
-                m1, m2, m3, m4, m5 = st.columns(5)
-                m1.metric("Śr. Moc", f"{avg_watts:.0f} W")
-                m2.metric("Raw SmO2", f"{avg_smo2:.1f} %")
-                m3.metric("Rel SmO2", f"{avg_norm:.1f} %", help="Normalized to session Min-Max range (0-100%)")
+                st.subheader(f"Metryki: {format_time(startsec)} - {format_time(endsec)}")
                 
-                trend_color = "normal"
-                if "Deox" in trend_cat: trend_color = "inverse"
+                c1, c2, c3, c4 = st.columns(4)
+                c1.metric("Śr. Moc", f"{avg_watts:.0f} W")
+                c1.caption(f"Śr. Kadencja: {interval_data['cadence'].mean():.0f} rpm")
                 
-                m4.metric("Kinetics Trend", trend_cat, delta=None) # String metric
-                m5.metric("Slope (Rel)", f"{slope:.4f} /s", delta=trend_desc, delta_color=trend_color)
-
-                # Wyświetl wykrytą strefę
-                st.markdown("---")
-                st.markdown("### 🎯 Interpretacja Kinetyczna")
+                c2.metric("Kinetic State", trend_cat, delta=f"{slope:.4f}/s")
                 
-                if "Reox" in trend_cat or "Stable" in trend_cat:
-                     st.success(f"**{trend_cat}**\n\n{trend_desc}")
-                elif "Rapid" in trend_cat:
-                     st.error(f"**{trend_cat}**\n\n{trend_desc}")
+                # Context Metric
+                if c_type == 'mechanical':
+                    c3.metric("Przyczyna (Inferred)", f"⚙️ {cause}", delta="Sprawdź Kadencję", delta_color="inverse")
+                elif c_type == 'limit':
+                    c3.metric("Przyczyna (Inferred)", f"🛑 {cause}", delta="Limit Dostaw", delta_color="inverse")
+                elif c_type == 'warning':
+                    c3.metric("Przyczyna (Inferred)", f"⚠️ {cause}", delta="FATIGUE ALERT", delta_color="inverse")
                 else:
-                     st.warning(f"**{trend_cat}**\n\n{trend_desc}")
+                    c3.metric("Przyczyna (Inferred)", f"✅ {cause}")
+                    
+                c4.metric("Rel SmO2", f"{avg_norm:.1f} %")
+
+                if explanation:
+                    if c_type in ['mechanical', 'limit', 'warning']:
+                        st.warning(f"**Wyjaśnienie Algorytmu:** {explanation}")
+                    else:
+                        st.info(f"**Wyjaśnienie Algorytmu:** {explanation}")
 
                 fig_smo2 = go.Figure()
 
@@ -174,19 +164,6 @@ def render_smo2_tab(target_df, training_notes, uploaded_file_name):
                         hovertemplate="<b>Czas:</b> %{customdata}<br><b>Rel SmO2:</b> %{y:.1f}%<extra></extra>"
                     ))
 
-                # Add Absolute Trace (Secondary/Muted)
-                if 'smo2_smooth' in target_df.columns:
-                    fig_smo2.add_trace(go.Scatter(
-                        x=target_df['time'], 
-                        y=target_df['smo2_smooth'],
-                        customdata=target_df['time_str'],
-                        mode='lines', 
-                        name='Raw SmO2 (Abs)',
-                        line=dict(color='gray', width=1, dash='dot'), # Faint
-                        visible='legendonly', # Hide by default to reduce clutter
-                        hovertemplate="<b>Czas:</b> %{customdata}<br><b>Raw SmO2:</b> %{y:.1f}%<extra></extra>"
-                    ))
-
                 fig_smo2.add_trace(go.Scatter(
                     x=target_df['time'], 
                     y=target_df['watts_smooth_5s'],
@@ -198,6 +175,20 @@ def render_smo2_tab(target_df, training_notes, uploaded_file_name):
                     opacity=0.3,
                     hovertemplate="<b>Czas:</b> %{customdata}<br><b>Moc:</b> %{y:.0f} W<extra></extra>"
                 ))
+                
+                # Add Cadence trace to see grinding
+                if 'cadence' in target_df.columns:
+                     fig_smo2.add_trace(go.Scatter(
+                        x=target_df['time'], 
+                        y=target_df['cadence'],
+                        customdata=target_df['time_str'],
+                        mode='lines', 
+                        name='Cadence',
+                        line=dict(color='orange', width=1, dash='dot'),
+                        yaxis='y3',
+                        visible='legendonly',
+                        hovertemplate="<b>Czas:</b> %{customdata}<br><b>RPM:</b> %{y:.0f}<extra></extra>"
+                    ))
 
                 fig_smo2.add_vrect(
                     x0=startsec, x1=endsec,
@@ -205,32 +196,13 @@ def render_smo2_tab(target_df, training_notes, uploaded_file_name):
                     layer="below", line_width=0,
                     annotation_text="ANALIZA", annotation_position="top left"
                 )
-                
-                # Draw Linear Slope on Normalized Data
-                if len(interval_data) > 10 and 'smo2_norm' in interval_data.columns:
-                     # Calculate linear fit for normalized data to show slope visually
-                     slope_n, intercept_n, _, _, _ = stats.linregress(interval_data['time'], interval_data['smo2_norm'])
-                     trend_line = intercept_n + slope_n * interval_data['time']
-                     
-                     if slope_n < -0.01: color = "red"
-                     elif slope_n > 0.01: color = "green"
-                     else: color = "white"
-                     
-                     fig_smo2.add_trace(go.Scatter(
-                        x=interval_data['time'], 
-                        y=trend_line,
-                        customdata=interval_data['time_str'],
-                        mode='lines', 
-                        name='Trend (Rel)',
-                        line=dict(color=color, width=3, dash='dash'),
-                        hovertemplate="<b>Czas:</b> %{customdata}<br><b>Trend:</b> %{y:.1f}%<extra></extra>"
-                    ))
 
                 fig_smo2.update_layout(
-                    title="Analiza Relatywna SmO2 (Normalized 0-100%)",
+                    title="Analiza Relatywna SmO2 (Context Aware)",
                     xaxis_title="Czas",
                     yaxis=dict(title="Relative SmO2 (%)", range=[0, 100]),
                     yaxis2=dict(title="Power (W)", overlaying='y', side='right', showgrid=False),
+                    yaxis3=dict(title="RPM", overlaying='y', side='right', anchor='free', position=1.0, showgrid=False, range=[0, 150]),
                     legend=dict(x=0.01, y=0.99),
                     height=500,
                     margin=dict(l=20, r=20, t=40, b=20),
@@ -255,77 +227,6 @@ def render_smo2_tab(target_df, training_notes, uploaded_file_name):
                                 st.session_state.smo2_start_sec = new_start
                                 st.session_state.smo2_end_sec = new_end
                                 st.rerun()
-
-                # --- PĘTLA HISTEREZY (SmO2 vs WATTS) ---
-                st.divider()
-                st.subheader("🔄 Pętla Histerezy (Relatywna)")
-            
-                if 'watts_smooth_5s' in interval_data.columns and 'smo2_norm' in interval_data.columns:
-                    
-                    fig_hyst = go.Figure()
-
-                    fig_hyst.add_trace(go.Scatter(
-                        x=interval_data['watts_smooth_5s'],
-                        y=interval_data['smo2_norm'],
-                        mode='markers+lines',
-                        name='Histereza',
-                        marker=dict(
-                            size=6,
-                            color=interval_data['time'], 
-                            colorscale='Plasma',
-                            showscale=True,
-                            colorbar=dict(title="Upływ Czasu", tickmode="array", ticktext=["Start", "Koniec"], tickvals=[interval_data['time'].min(), interval_data['time'].max()])
-                        ),
-                        line=dict(color='rgba(255,255,255,0.3)', width=1), # Cienka linia łącząca
-                        hovertemplate="<b>Moc:</b> %{x:.0f} W<br><b>Rel SmO2:</b> %{y:.1f}%<extra></extra>"
-                    ))
-
-                    start_pt = interval_data.iloc[0]
-                    end_pt = interval_data.iloc[-1]
-
-                    fig_hyst.add_annotation(
-                        x=start_pt['watts_smooth_5s'], y=start_pt['smo2_norm'],
-                        text="START", showarrow=True, arrowhead=2, ax=0, ay=-40, bgcolor="green"
-                    )
-                    fig_hyst.add_annotation(
-                        x=end_pt['watts_smooth_5s'], y=end_pt['smo2_norm'],
-                        text="META", showarrow=True, arrowhead=2, ax=0, ay=-40, bgcolor="red"
-                    )
-
-                    fig_hyst.update_layout(
-                        template="plotly_dark",
-                        title="Kinetyka Tlenowa: Relacja Moc vs Znormalizowane SmO2",
-                        xaxis_title="Moc [W]",
-                        yaxis_title="Rel SmO2 [%]",
-                        height=600,
-                        margin=dict(l=20, r=20, t=40, b=20),
-                        hovermode="closest"
-                    )
-
-                    c_h1, c_h2 = st.columns([3, 1])
-                    with c_h1:
-                        st.plotly_chart(fig_hyst, use_container_width=True)
-                    
-                    with c_h2:
-                        st.info("""
-                        **📚 Zmiana Paradygmatu!**
-                        
-                        Używamy teraz **relatywnego SmO2** (0-100% dla tej sesji).
-                        
-                        * **Dlaczego?** Sensory MOXY/Humon mają różną kalibrację. To, czy masz 60% czy 40% absolutnie, nie ma znaczenia.
-                        * **Co się liczy?** Jak bardzo spalasz tlen względem swojego **minimum sesyjnego**.
-                        
-                        **Interpretacja:**
-                        * **Spadek krzywej:** Desaturacja (Przewaga zużycia)
-                        * **Płasko:** Równowaga (Steady State)
-                        * **Wzrost:** Regeneracja (Resynteza)
-                        """)
-                else:
-                    st.warning("Brakuje wygładzonych danych mocy lub SmO2 dla tego interwału.")
-                    
+                                
             else:
-                st.warning("Brak danych w wybranym zakresie. Sprawdź poprawność wpisanego czasu.")
-        else:
-            st.error("Czas zakończenia musi być późniejszy niż czas rozpoczęcia!")
-    else:
-        st.warning("Wprowadź poprawne czasy w formacie h:mm:ss (np. 0:10:00).")
+                st.warning("Brak danych w wybranym zakresie.")

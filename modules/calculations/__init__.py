@@ -92,6 +92,7 @@ from .kinetics import (
     detect_smo2_breakpoints,
     normalize_smo2_series,
     detect_smo2_trend,
+    classify_smo2_context,
 )
 
 from .thresholds import (
@@ -181,6 +182,7 @@ __all__ = [
     'detect_smo2_breakpoints',
     'normalize_smo2_series',
     'detect_smo2_trend',
+    'classify_smo2_context',
     # Thresholds (MCP)
     'detect_vt_transition_zone',
     'analyze_step_test',

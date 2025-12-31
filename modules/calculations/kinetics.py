@@ -4,6 +4,7 @@ VO2/SmO2 Kinetics Module.
 Implements kinetics analysis for oxygen consumption and muscle oxygenation.
 Inspired by INSCYD O2 Deficit and academic VO2 kinetics research.
 Refactored to support Relative SmO2 analysis (normalization and trend classification).
+Includes Context-Aware Analysis (Power/HR/Cadence fusion).
 """
 import numpy as np
 import pandas as pd
@@ -62,10 +63,6 @@ def detect_smo2_trend(
     
     # Classification thresholds (assuming %/s for raw, or unit/s for norm)
     # If raw SmO2 (0-100), slope is %/s.
-    # Typical physiological range:
-    # Stable: -0.01 to +0.01 %/s
-    # Deox: < -0.01 %/s
-    # Reox: > +0.01 %/s
     
     category = "Stable"
     description = "Equilibrium (Steady State)"
@@ -94,15 +91,114 @@ def detect_smo2_trend(
     }
 
 
-def _mono_exponential(t: np.ndarray, a: float, tau: float, td: float) -> np.ndarray:
-    """Mono-exponential model: y = a * (1 - exp(-(t-td)/tau))
+def classify_smo2_context(
+    df_window: pd.DataFrame,
+    smo2_trend_result: Dict[str, any]
+) -> Dict[str, str]:
+    """
+    Infer the physiological cause of the SmO2 trend using concurrent signals.
     
     Args:
-        t: Time array
-        a: Amplitude (steady-state value)
-        tau: Time constant
-        td: Time delay
+        df_window: DataFrame with 'time', 'watts', 'hr', 'cadence' (optional)
+        smo2_trend_result: Result from detect_smo2_trend
+        
+    Returns:
+        Dict with 'cause', 'explanation', 'confidence'
     """
+    category = smo2_trend_result.get('category', '')
+    slope_smo2 = smo2_trend_result.get('slope', 0)
+    
+    if "Insufficient" in category:
+        return {"cause": "Unknown", "explanation": "Insufficient data"}
+
+    # Calculate trends for other metrics
+    time = df_window['time']
+    
+    # Power Trend
+    if 'watts' in df_window.columns:
+        slope_watts, _, _, _, _ = stats.linregress(time, df_window['watts'])
+    else:
+        slope_watts = 0
+        
+    # HR Trend
+    if 'hr' in df_window.columns:
+        slope_hr, _, _, _, _ = stats.linregress(time, df_window['hr'])
+    else:
+        slope_hr = 0
+        
+    # Cadence Stats
+    avg_cadence = df_window['cadence'].mean() if 'cadence' in df_window.columns else 90
+    
+    # === HEURISTICS ===
+    
+    # 1. DEOXYGENATION CASES (Slope < -0.01)
+    if slope_smo2 < -0.01:
+        
+        # A. Mechanical Occlusion (Grinding)
+        # Low cadence + Stable/Rising Torque implies high muscle tension restricting flow
+        if avg_cadence < 65 and avg_cadence > 10: # >10 to ignore coasting
+            return {
+                "cause": "Mechanical Occlusion",
+                "explanation": f"Low cadence ({avg_cadence:.0f} rpm) creates high muscle tension, physically restricting blood flow.",
+                "type": "mechanical"
+            }
+            
+        # B. Demand Driven
+        # Power is rising significantly
+        if slope_watts > 0.5: # Rising by >0.5 W/s
+            return {
+                "cause": "Demand Driven",
+                "explanation": "Normal response to increasing power output.",
+                "type": "normal"
+            }
+            
+        # C. Efficiency Loss (Fading)
+        # Power is dropping but we are STILL desaturating? Very bad sign.
+        if slope_watts < -0.5:
+             return {
+                "cause": "Efficiency Loss",
+                "explanation": "Desaturation continues despite decreasing power. Indicates severe metabolic fatigue or decoupling.",
+                "type": "warning"
+            }
+            
+        # D. Delivery Limitation (Supply constrained)
+        # Power is steady, but we are desaturating.
+        # Check HR. If HR is flat/maxed, it might be cardiac limit.
+        if abs(slope_watts) <= 0.5:
+             return {
+                "cause": "Delivery Limitation",
+                "explanation": "Desaturation at constant power. Oxygen supply cannot meet steady demand.",
+                "type": "limit"
+            }
+            
+        return {"cause": "Metabolic Stress", "explanation": "General utilization exceeds supply.", "type": "normal"}
+
+    # 2. EQUILIBRIUM / STABLE
+    elif abs(slope_smo2) <= 0.01:
+        return {
+            "cause": "Steady State",
+            "explanation": "Oxygen supply matches demand.",
+            "type": "success"
+        }
+
+    # 3. REOXYGENATION
+    else: # > 0.01
+        if slope_watts < -0.5:
+            return {
+                "cause": "Recovery",
+                "explanation": "Normal recovery due to reduced load.",
+                "type": "success"
+            }
+        else:
+             return {
+                "cause": "Overshoot / Priming",
+                "explanation": "Supply exceeds demand despite steady/rising load (Warm-up effect).",
+                "type": "success"
+            }
+
+
+def _mono_exponential(t: np.ndarray, a: float, tau: float, td: float) -> np.ndarray:
+    """Mono-exponential model: y = a * (1 - exp(-(t-td)/tau))"""
     result = np.zeros_like(t, dtype=float)
     mask = t > td
     result[mask] = a * (1 - np.exp(-(t[mask] - td) / tau))
@@ -115,22 +211,7 @@ def fit_smo2_kinetics(
     end_idx: int,
     column: str = 'smo2'
 ) -> Optional[dict]:
-    """Fit mono-exponential model to SmO2 response.
-    
-    Analyzes how quickly SmO2 responds to a change in power.
-    The time constant (tau) indicates metabolic responsiveness:
-    - Fast tau (<20s): Quick oxygen kinetics, good aerobic system
-    - Slow tau (>40s): Sluggish response, limited oxygen delivery
-    
-    Args:
-        df: DataFrame with SmO2 and time data
-        start_idx: Start index of the analysis window
-        end_idx: End index of the analysis window
-        column: Column name for SmO2 data
-        
-    Returns:
-        Dict with fitted parameters or None if fitting fails
-    """
+    """Fit mono-exponential model to SmO2 response."""
     if column not in df.columns or 'time' not in df.columns:
         return None
     
@@ -195,14 +276,7 @@ def fit_smo2_kinetics(
 
 
 def get_tau_interpretation(tau: float) -> str:
-    """Get interpretation of SmO2 time constant (tau).
-    
-    Args:
-        tau: Time constant in seconds
-        
-    Returns:
-        Polish interpretation string
-    """
+    """Get interpretation of SmO2 time constant (tau)."""
     if tau < 15:
         return "⚡ Bardzo szybka kinetyka - doskonały system tlenowy"
     elif tau < 25:
@@ -221,20 +295,7 @@ def calculate_o2_deficit(
     interval_end: int,
     steady_state_smo2: float
 ) -> Optional[float]:
-    """Calculate oxygen deficit during interval onset.
-    
-    O2 deficit is the difference between oxygen demand and supply
-    during the initial phase of high-intensity exercise.
-    
-    Args:
-        df: DataFrame with SmO2 data
-        interval_start: Start index of interval
-        interval_end: End index (or point where steady state reached)
-        steady_state_smo2: Steady-state SmO2 value
-        
-    Returns:
-        O2 deficit as area under curve (arbitrary units)
-    """
+    """Calculate oxygen deficit during interval onset."""
     if 'smo2' not in df.columns:
         return None
     
@@ -257,19 +318,7 @@ def detect_smo2_breakpoints(
     window_size: int = 60,
     threshold: float = 0.5
 ) -> list:
-    """Detect breakpoints in SmO2 response.
-    
-    Identifies sudden changes in SmO2 that may indicate
-    metabolic threshold crossings.
-    
-    Args:
-        df: DataFrame with SmO2 data
-        window_size: Rolling window size for derivative
-        threshold: Threshold for breakpoint detection
-        
-    Returns:
-        List of indices where breakpoints occur
-    """
+    """Detect breakpoints in SmO2 response."""
     if 'smo2' not in df.columns:
         return []
     

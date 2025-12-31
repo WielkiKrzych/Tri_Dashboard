@@ -20,6 +20,16 @@ def render_vent_thresholds_tab(target_df, training_notes, uploaded_file_name, cp
         st.stop()
 
     # Wygładzanie
+    # Normalize columns first
+    target_df.columns = target_df.columns.str.lower().str.strip()
+    
+    # Handle HR aliases
+    if 'hr' not in target_df.columns:
+        for alias in ['heart_rate', 'heart rate', 'bpm', 'tętno']:
+            if alias in target_df.columns:
+                target_df.rename(columns={alias: 'hr'}, inplace=True)
+                break
+
     if 'watts_smooth_5s' not in target_df.columns and 'watts' in target_df.columns:
         target_df['watts_smooth_5s'] = target_df['watts'].rolling(window=5, center=True).mean()
     target_df['ve_smooth'] = target_df['tymeventilation'].rolling(window=10, center=True).mean()

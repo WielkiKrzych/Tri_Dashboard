@@ -82,7 +82,6 @@ def render_vent_thresholds_tab(target_df, training_notes, uploaded_file_name, cp
             # Show VE slope table for each step
             if result.step_ve_analysis:
                 st.markdown("### 📊 VE Slope per step (debug)")
-                import pandas as pd
                 step_df = pd.DataFrame(result.step_ve_analysis)
                 
                 # Format columns

@@ -84,6 +84,12 @@ class StepTestResult:
     analysis_notes: List[str] = field(default_factory=list)
     step_ve_analysis: List[dict] = field(default_factory=list)  # Per-step VE slope data
     
+    # New Fields for VT1/VT2 Metrics
+    vt1_ve: Optional[float] = None
+    vt1_br: Optional[float] = None
+    vt2_ve: Optional[float] = None
+    vt2_br: Optional[float] = None
+    
     # SmO2 Thresholds (AeT/AnT equivalent)
     smo2_1_watts: Optional[float] = None
     smo2_2_watts: Optional[float] = None
@@ -986,7 +992,14 @@ def analyze_step_test(
                 result.vt1_watts = vt_result.vt1_watts
                 result.vt1_hr = vt_result.vt1_hr
                 result.vt2_watts = vt_result.vt2_watts
+                result.vt2_watts = vt_result.vt2_watts
                 result.vt2_hr = vt_result.vt2_hr
+                
+                # Assign new VE/BR metrics
+                result.vt1_ve = vt_result.vt1_ve
+                result.vt1_br = vt_result.vt1_br
+                result.vt2_ve = vt_result.vt2_ve
+                result.vt2_br = vt_result.vt2_br
                 
                 for note in vt_result.notes:
                     result.analysis_notes.append(note)

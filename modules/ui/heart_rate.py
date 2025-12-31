@@ -17,13 +17,15 @@ def render_hr_tab(df):
     
     # Aliasy dla HR
     if 'hr' not in df_chart.columns:
-        for alias in ['heart_rate', 'heart rate', 'bpm', 'tętno']:
+        for alias in ['heart_rate', 'heart rate', 'bpm', 'tętno', 'heartrate', 'heart_rate_bpm']:
             if alias in df_chart.columns:
                 df_chart.rename(columns={alias: 'hr'}, inplace=True)
                 break
                 
     if 'hr' not in df_chart.columns:
         st.warning("⚠️ Brak danych tętna (HR) w wczytanym pliku.")
+        with st.expander("Pokaż dostępne kolumny"):
+            st.write(list(df_chart.columns))
         return
 
     # Upewnij się że time istnieje

@@ -25,7 +25,7 @@ def render_vent_thresholds_tab(target_df, training_notes, uploaded_file_name, cp
     
     # Handle HR aliases
     if 'hr' not in target_df.columns:
-        for alias in ['heart_rate', 'heart rate', 'bpm', 'tętno']:
+        for alias in ['heart_rate', 'heart rate', 'bpm', 'tętno', 'heartrate', 'heart_rate_bpm']:
             if alias in target_df.columns:
                 target_df.rename(columns={alias: 'hr'}, inplace=True)
                 break

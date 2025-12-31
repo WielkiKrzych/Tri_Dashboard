@@ -24,12 +24,21 @@ def calculate_metrics(df_pl, cp_val: float) -> dict:
     Returns:
         Dictionary with metrics
     """
+    is_empty = df_pl.empty
     cols = df_pl.columns
-    avg_watts = df_pl['watts'].mean() if 'watts' in cols else 0
-    avg_hr = df_pl['heartrate'].mean() if 'heartrate' in cols else 0
-    avg_cadence = df_pl['cadence'].mean() if 'cadence' in cols else 0
-    avg_vent = df_pl['tymeventilation'].mean() if 'tymeventilation' in cols else 0
-    avg_rr = df_pl['tymebreathrate'].mean() if 'tymebreathrate' in cols else 0
+    
+    avg_watts = df_pl['watts'].mean() if 'watts' in cols and not is_empty else 0.0
+    avg_hr = df_pl['heartrate'].mean() if 'heartrate' in cols and not is_empty else 0.0
+    avg_cadence = df_pl['cadence'].mean() if 'cadence' in cols and not is_empty else 0.0
+    avg_vent = df_pl['tymeventilation'].mean() if 'tymeventilation' in cols and not is_empty else 0.0
+    avg_rr = df_pl['tymebreathrate'].mean() if 'tymebreathrate' in cols and not is_empty else 0.0
+    
+    # Handle NaN from mean() if columns exist but are all NaN
+    avg_watts = 0.0 if pd.isna(avg_watts) else float(avg_watts)
+    avg_hr = 0.0 if pd.isna(avg_hr) else float(avg_hr)
+    avg_cadence = 0.0 if pd.isna(avg_cadence) else float(avg_cadence)
+    avg_vent = 0.0 if pd.isna(avg_vent) else float(avg_vent)
+    avg_rr = 0.0 if pd.isna(avg_rr) else float(avg_rr)
     power_hr = (avg_watts / avg_hr) if avg_hr > 0 else 0
     np_est = avg_watts * 1.05
     ef_factor = (np_est / avg_hr) if avg_hr > 0 else 0

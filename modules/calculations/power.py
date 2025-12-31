@@ -36,9 +36,10 @@ def calculate_normalized_power(df_pl: Union[pd.DataFrame, Any]) -> float:
     np_val = np.power(avg_pow4, 0.25)
     
     if pd.isna(np_val):
-        return df[col].mean()
+        mean_val = df[col].mean()
+        return 0.0 if pd.isna(mean_val) else mean_val
         
-    return np_val
+    return float(np_val)
 
 
 def calculate_pulse_power_stats(df_pl: Union[pd.DataFrame, Any]) -> Tuple[float, float, pd.DataFrame]:

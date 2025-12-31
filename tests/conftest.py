@@ -120,3 +120,40 @@ def rider_params():
         'w_prime': 20000
     }
 
+
+@pytest.fixture
+def empty_df():
+    """Empty DataFrame with required columns but no rows."""
+    return pd.DataFrame(columns=['time', 'watts', 'heartrate', 'cadence', 'smo2'])
+
+
+@pytest.fixture
+def malformed_df():
+    """DataFrame with mixed types and missing values."""
+    return pd.DataFrame({
+        'time': range(15),
+        'watts': ['100', 'nan', 200, None] + [100]*11,  # Mixed types
+        'heartrate': [120, 130, 'invalid', 150] + [140]*11,
+        'cadence': [80, 85, 90, 95] + [90]*11
+    })
+
+
+@pytest.fixture
+def nan_df():
+    """DataFrame with valid structure but NaN values."""
+    return pd.DataFrame({
+        'time': [0, 1, 2, 3, 4],
+        'watts': [100, np.nan, 200, 250, np.nan],
+        'heartrate': [120, np.nan, 140, 145, 150],
+        'cadence': [80, 80, np.nan, 90, 90]
+    })
+
+
+@pytest.fixture
+def boundary_df():
+    """DataFrame with values exactly at thresholds."""
+    return pd.DataFrame({
+        'time': [0, 60, 120, 180],
+        'watts': [199, 200, 201, 300], # Around VT1=200
+        'heartrate': [160] * 4
+    })

@@ -541,6 +541,107 @@ def detect_vt_from_steps(
     return result
 
 
+@dataclass
+class StepSmO2Result:
+    """Result of step-by-step SmO2 detection."""
+    smo2_1_watts: Optional[float] = None
+    smo2_1_hr: Optional[float] = None
+    smo2_1_step_number: Optional[int] = None
+    smo2_1_slope: Optional[float] = None
+    
+    smo2_2_watts: Optional[float] = None
+    smo2_2_hr: Optional[float] = None
+    smo2_2_step_number: Optional[int] = None
+    smo2_2_slope: Optional[float] = None
+    
+    step_analysis: List[dict] = field(default_factory=list)
+    notes: List[str] = field(default_factory=list)
+
+
+def detect_smo2_from_steps(
+    df: pd.DataFrame,
+    step_range: 'StepTestRange', # Forward ref or assumes defined above
+    smo2_column: str = 'smo2',
+    power_column: str = 'watts',
+    hr_column: str = 'hr',
+    time_column: str = 'time',
+    smo2_t1_slope_threshold: float = -0.015,  # Slope threshold for T1 (start of drop)
+    smo2_t2_slope_threshold: float = -0.060   # Slope threshold for T2 (rapid drop)
+) -> StepSmO2Result:
+    """Detect SmO2 thresholds by analyzing slope on each detected step (negative slope = desaturation)."""
+    result = StepSmO2Result()
+    
+    if not step_range or not step_range.is_valid or len(step_range.steps) < 3:
+        result.notes.append("Insufficient steps for SmO2 detection")
+        return result
+    
+    if smo2_column not in df.columns:
+        result.notes.append(f"Missing SmO2 column: {smo2_column}")
+        return result
+    
+    has_hr = hr_column in df.columns
+    
+    # Analyze each step (SKIP FIRST STEP - start from index 1)
+    step_analysis = []
+    t1_found = False
+    
+    for step in step_range.steps[1:]:  # Skip first step
+        mask = (df[time_column] >= step.start_time) & (df[time_column] < step.end_time)
+        step_data = df[mask]
+        
+        if len(step_data) < 10:
+            continue
+        
+        # Calculate SmO2 slope for this step
+        slope, intercept, std_err = calculate_slope(
+            step_data[time_column], 
+            step_data[smo2_column]
+        )
+        
+        avg_power = step_data[power_column].mean()
+        avg_hr = step_data[hr_column].mean() if has_hr else None
+        avg_smo2 = step_data[smo2_column].mean()
+        
+        step_info = {
+            'step_number': step.step_number,
+            'start_time': step.start_time,
+            'end_time': step.end_time,
+            'avg_power': round(avg_power, 0),
+            'avg_hr': round(avg_hr, 0) if avg_hr else None,
+            'avg_smo2': round(avg_smo2, 1),
+            'slope': round(slope, 4),
+            'is_t1': False,
+            'is_t2': False
+        }
+        
+        # Threshold Logic:
+        # T1: First step where slope drops below T1 threshold (e.g. < -0.015)
+        # T2: First step where slope drops below T2 threshold (e.g. < -0.060) AFTER T1
+        
+        if not t1_found:
+            if slope <= smo2_t1_slope_threshold:
+                t1_found = True
+                result.smo2_1_watts = round(avg_power, 0)
+                result.smo2_1_hr = round(avg_hr, 0) if avg_hr else None
+                result.smo2_1_step_number = step.step_number
+                result.smo2_1_slope = slope
+                step_info['is_t1'] = True
+        
+        # Search for T2 (AnT)
+        if not result.smo2_2_watts and t1_found and slope <= smo2_t2_slope_threshold:
+             if result.smo2_1_watts is None or avg_power > result.smo2_1_watts:
+                result.smo2_2_watts = round(avg_power, 0)
+                result.smo2_2_hr = round(avg_hr, 0) if avg_hr else None
+                result.smo2_2_step_number = step.step_number
+                result.smo2_2_slope = slope
+                step_info['is_t2'] = True
+        
+        step_analysis.append(step_info)
+        
+    result.step_analysis = step_analysis
+    return result
+
+
 def segment_load_phases(
     df: pd.DataFrame, 
     power_col: str = 'watts',

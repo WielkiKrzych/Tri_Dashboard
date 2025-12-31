@@ -1,7 +1,7 @@
 """
 Historical Training Importer.
 
-Batch import of CSV files from the 'Treningi CSV' folder into training_history.db.
+Batch import of CSV files from the 'treningi_csv' folder into training_history.db.
 """
 import os
 from pathlib import Path
@@ -16,7 +16,7 @@ from modules.calculations import process_data, calculate_metrics, calculate_norm
 
 
 # Default folder path
-TRAINING_FOLDER = Path(__file__).parent.parent / "Treningi CSV"
+TRAINING_FOLDER = Path(__file__).parent.parent / "treningi_csv"
 
 
 def extract_date_from_filename(filename: str) -> Optional[str]:

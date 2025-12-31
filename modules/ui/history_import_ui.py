@@ -1,7 +1,7 @@
 """
 History Import UI.
 
-UI for importing historical training files from 'Treningi CSV' folder.
+UI for importing historical training files from 'treningi_csv' folder.
 """
 import streamlit as st
 from pathlib import Path
@@ -36,7 +36,7 @@ def render_history_import_tab(cp: float = 280):
     available = get_available_files()
     
     if not available:
-        st.warning("Brak plików CSV w folderze 'Treningi CSV'.")
+        st.warning("Brak plików CSV w folderze 'treningi_csv'.")
         return
     
     # Display available files

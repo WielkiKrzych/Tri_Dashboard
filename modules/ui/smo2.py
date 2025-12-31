@@ -402,3 +402,41 @@ def render_smo2_tab(target_df, training_notes, uploaded_file_name):
                                 
             else:
                 st.warning("Brak danych w wybranym zakresie.")
+        
+        # --- LEGACY TOOLS: Detailed Analysis ---
+        st.markdown("---")
+        with st.expander("🔧 Szczegółowa Analiza (Legacy Tools)", expanded=False):
+            st.markdown("### Surowe Dane i Korelacje (Old View)")
+            
+            # Scatter Plot: SmO2 vs Watts
+            if 'watts' in interval_data.columns and 'smo2' in interval_data.columns:
+                fig_scatter = go.Figure()
+                fig_scatter.add_trace(go.Scatter(
+                    x=interval_data['watts'], 
+                    y=interval_data['smo2'],
+                    mode='markers',
+                    marker=dict(size=5, color=interval_data['time'], colorscale='Viridis', showscale=True),
+                    name='SmO2 vs Power'
+                ))
+                fig_scatter.update_layout(
+                    title="Korelacja: SmO2 vs Moc",
+                    xaxis_title="Power (W)",
+                    yaxis_title="SmO2 (%)",
+                    height=400
+                )
+                st.plotly_chart(fig_scatter, use_container_width=True)
+                
+            # THb Visualization (if available)
+            if 'thb' in interval_data.columns:
+                st.subheader("Hemoglobina Całkowita (THb)")
+                fig_thb = go.Figure()
+                fig_thb.add_trace(go.Scatter(
+                    x=interval_data['time'], y=interval_data['thb'],
+                    mode='lines', name='THb',
+                    line=dict(color='purple')
+                ))
+                fig_thb.update_layout(title="Total Hemoglobin (tHb)", height=300)
+                st.plotly_chart(fig_thb, use_container_width=True)
+                
+            # Raw Data Table
+            st.dataframe(interval_data[['time_str', 'watts', 'smo2', 'hr', 'cadence']].head(100))

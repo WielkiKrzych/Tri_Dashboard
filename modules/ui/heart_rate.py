@@ -38,30 +38,42 @@ def render_hr_tab(df):
     # ale slider na sekundach jest bardziej precyzyjny/prostszy w kodzie.
     # Dodamy formatowanie czasu w opisie.
     
-    min_time = int(df_chart['time'].min())
-    max_time = int(df_chart['time'].max())
+    # Konwersja czasu
+    def parse_time(t_str):
+        try:
+            parts = list(map(int, t_str.split(':')))
+            if len(parts) == 3: return parts[0]*3600 + parts[1]*60 + parts[2]
+            if len(parts) == 2: return parts[0]*60 + parts[1]
+            if len(parts) == 1: return parts[0]
+        except:
+            return None
+        return None
+    
+    def format_time(seconds):
+        m, s = divmod(int(seconds), 60)
+        h, m = divmod(m, 60)
+        return f"{h:02d}:{m:02d}:{s:02d}"
+
+    min_time = df_chart['time'].min()
+    max_time = df_chart['time'].max()
     
     st.markdown("#### Wybierz zakres analizy")
     
-    # Wybór trybu
-    input_mode = st.radio("Metoda wyboru zakresu:", ["Suwak", "Ręcznie (wpisz czas)"], horizontal=True)
+    c1, c2 = st.columns(2)
+    # Domyślne wartości to cały zakres
+    start_str = c1.text_input("Start (hh:mm:ss/mm:ss)", value=format_time(min_time))
+    end_str = c2.text_input("Koniec (hh:mm:ss/mm:ss)", value=format_time(max_time))
+    
+    start_s = parse_time(start_str)
+    end_s = parse_time(end_str)
+    
+    if start_s is None or end_s is None:
+        st.error("Nieprawidłowy format czasu. Użyj formatu HH:MM:SS lub MM:SS")
+        return # Stop execution until fixed
 
-    if input_mode.startswith("Suwak"):
-        # Dwustronny slider
-        range_sel = st.slider("Zakres czasu (s)", 
-                              min_value=min_time, max_value=max_time, 
-                              value=(min_time, max_time))
-        start_s, end_s = range_sel
-    else:
-        # Ręczne wpisywanie
-        c1, c2 = st.columns(2)
-        start_s = c1.number_input("Start (s)", min_value=min_time, max_value=max_time, value=min_time)
-        end_s = c2.number_input("Koniec (s)", min_value=min_time, max_value=max_time, value=max_time)
-        
-        if start_s >= end_s:
-            st.error("Czas końcowy musi być większy niż startowy.")
-            # Fallback to avoid empty/error logic
-            start_s, end_s = min_time, max_time
+    if start_s >= end_s:
+        st.error("Czas końcowy musi być większy niż startowy.")
+        return
     
     # Filtrowanie
     mask = (df_chart['time'] >= start_s) & (df_chart['time'] <= end_s)

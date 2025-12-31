@@ -7,6 +7,7 @@ Refactored to support Relative SmO2 analysis (normalization and trend classifica
 Includes Context-Aware Analysis (Power/HR/Cadence fusion).
 Includes Resaturation Analysis (Recovery Kinetics).
 Includes Cross-Correlation Analysis (Signal Lag).
+Includes State-Based Physiological Modeling.
 """
 import numpy as np
 import pandas as pd
@@ -352,6 +353,154 @@ def analyze_temporal_sequence(df_window: pd.DataFrame) -> Dict[str, float]:
         results['smo2_lag'] = lag_smo2
         
     return results
+
+
+def detect_physiological_state(
+    df_window: pd.DataFrame, 
+    smo2_col: str = 'smo2'
+) -> Dict[str, any]:
+    """
+    Detects the physiological state based on signal trends in the window.
+    
+    States:
+    - RECOVERY: Power < Low, HR Dropping/Low, SmO2 Rising
+    - STEADY_STATE: Power Stable, HR Stable (Slope ~0), SmO2 Stable
+    - NON_STEADY: Power Stable/High, HR Rising, SmO2 Dropping
+    - FATIGUE: Power Dropping, HR Flat/high, SmO2 Dropping (Efficiency Loss)
+    
+    Args:
+        df_window: DataFrame window (e.g. 30s)
+        smo2_col: Column name for SmO2
+    
+    Returns:
+        Dict with 'state', 'confidence', 'details'
+    """
+    if len(df_window) < 10:
+        return {"state": "UNKNOWN", "confidence": 0.0}
+        
+    time = df_window['time']
+    
+    # Calculate Slopes
+    slope_watts = 0
+    if 'watts' in df_window.columns:
+        slope_watts, _, _, _, _ = stats.linregress(time, df_window['watts'])
+        
+    slope_hr = 0
+    if 'hr' in df_window.columns:
+        slope_hr, _, _, _, _ = stats.linregress(time, df_window['hr'])
+        
+    slope_smo2 = 0
+    if smo2_col in df_window.columns:
+        slope_smo2, _, _, _, _ = stats.linregress(time, df_window[smo2_col])
+        
+    # Thresholds
+    # Slopes are per second
+    
+    # STATE LOGIC
+    
+    # 1. RECOVERY
+    # SmO2 Rising (>0.05), Watts Dropping or Low
+    if slope_smo2 > 0.05:
+        confidence = min(1.0, slope_smo2 * 10) # Higher slope = higher confidence
+        return {"state": "RECOVERY", "confidence": confidence, "details": "SmO2 Rising"}
+        
+    # 2. NON-STEADY (Deoxygenation)
+    # SmO2 Dropping (<-0.05)
+    if slope_smo2 < -0.05:
+        if slope_watts < -0.5:
+             return {"state": "FATIGUE", "confidence": 0.8, "details": "Power dropping, SmO2 dropping"}
+        else:
+             return {"state": "NON_STEADY", "confidence": 0.9, "details": "High demand (Deox)"}
+             
+    # 3. STEADY STATE vs DRIFT
+    # SmO2 Stable (-0.05 to 0.05)
+    else:
+        # Check HR drift
+        if slope_hr > 0.05: # HR Rising significantly (>3 bpm/min)
+             return {"state": "NON_STEADY", "confidence": 0.7, "details": "HR Drift detected"}
+        elif slope_watts > 0.5:
+              return {"state": "RAMP_UP", "confidence": 0.8, "details": "Power increasing"}
+        else:
+             return {"state": "STEADY_STATE", "confidence": 0.9, "details": "All signals stable"}
+
+
+def generate_state_timeline(
+    df: pd.DataFrame, 
+    window_size_sec: int = 30,
+    step_sec: int = 10
+) -> List[Dict[str, any]]:
+    """
+    Generate a timeline of physiological states using a sliding window.
+    Merges consecutive same states.
+    
+    Args:
+        df: Full session DataFrame
+        window_size_sec: Size of analysis window
+        step_sec: Step size for sliding
+        
+    Returns:
+        List of segments dict(start, end, state, confidence)
+    """
+    if 'time' not in df.columns:
+        return []
+        
+    segments = []
+    
+    t_min = df['time'].min()
+    t_max = df['time'].max()
+    
+    current_state = None
+    current_segment_start = t_min
+    current_confidences = []
+    
+    for t_start in np.arange(t_min, t_max - window_size_sec, step_sec):
+        t_end = t_start + window_size_sec
+        
+        # Slice window
+        mask = (df['time'] >= t_start) & (df['time'] < t_end)
+        window = df.loc[mask]
+        
+        if len(window) < 5:
+            continue
+            
+        res = detect_physiological_state(window)
+        state = res['state']
+        conf = res['confidence']
+        
+        if current_state is None:
+            current_state = state
+            current_segment_start = t_start
+            current_confidences = [conf]
+            
+        elif state != current_state:
+            # State changed, close previous segment
+            avg_conf = sum(current_confidences) / len(current_confidences)
+            segments.append({
+                "start": float(current_segment_start),
+                "end": float(t_start),
+                "state": current_state,
+                "confidence": float(avg_conf)
+            })
+            
+            # Start new
+            current_state = state
+            current_segment_start = t_start
+            current_confidences = [conf]
+        else:
+            # Same state, extend
+            current_confidences.append(conf)
+            
+    # Close last segment
+    if current_state:
+        avg_conf = sum(current_confidences) / len(current_confidences)
+        segments.append({
+            "start": float(current_segment_start),
+            "end": float(t_max),
+            "state": current_state,
+            "confidence": float(avg_conf)
+        })
+        
+    return segments
 
 
 def _mono_exponential(t: np.ndarray, a: float, tau: float, td: float) -> np.ndarray:

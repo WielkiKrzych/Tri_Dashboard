@@ -7,12 +7,13 @@ from modules.calculations.kinetics import (
     detect_smo2_trend, 
     classify_smo2_context, 
     calculate_resaturation_metrics,
-    analyze_temporal_sequence
+    analyze_temporal_sequence,
+    generate_state_timeline
 )
 
 def render_smo2_tab(target_df, training_notes, uploaded_file_name):
-    st.header("Analiza Kinetyki SmO2 (Context & Lag)")
-    st.markdown("Zaawansowana analiza biorąca pod uwagę kontekst wysiłku, kinetykę regeneracji oraz **opóźnienia sygnałów**.")
+    st.header("Analiza Kinetyki SmO2 (State & Lag)")
+    st.markdown("Analiza stanów fizjologicznych, opóźnień (lag) oraz kontekstu obciążenia.")
 
     if target_df is None or target_df.empty:
         st.error("Brak danych. Najpierw wgraj plik w sidebar.")
@@ -84,7 +85,58 @@ def render_smo2_tab(target_df, training_notes, uploaded_file_name):
     st.markdown("---")
     # ===== KONIEC NOTATEK SmO2 =====
 
-    st.info("💡 **ANALIZA SYTUACYJNA:** Zaznacz obszar na wykresie. Algorytm wykrywa również **Regenerację** i **Opóźnienia**.")
+    st.info("Algorytm wykrywa stany fizjologiczne (Gantt) oraz analizuje zaznaczony fragment.")
+    
+    # ===== STATE TIMELINE GANTT =====
+    # Generate timeline if not in cache (could cache later) or just compute fast
+    if 'smo2' in target_df.columns:
+        with st.expander("📊 Oś Czasu Stanów Fizjologicznych (State Timeline)", expanded=False):
+            # Compute timeline
+            timeline = generate_state_timeline(target_df, window_size_sec=30, step_sec=10)
+            
+            if timeline:
+                fig_gantt = go.Figure()
+                
+                # Colors based on state
+                color_map = {
+                    "RECOVERY": "green",
+                    "STEADY_STATE": "blue",
+                    "NON_STEADY": "orange",
+                    "FATIGUE": "red",
+                    "RAMP_UP": "purple",
+                    "UNKNOWN": "grey"
+                }
+
+                for segment in timeline:
+                    # Parse start/end to datetime for Plotly Gantt usually, or use linear x
+                    # Using Bar chart (horizontal) or Shapes
+                    
+                    fig_gantt.add_trace(go.Bar(
+                        x=[segment['end'] - segment['start']],
+                        y=["State"],
+                        base=[segment['start']],
+                        orientation='h',
+                        marker=dict(color=color_map.get(segment['state'], 'grey')),
+                        name=segment['state'],
+                        hovertemplate=f"<b>{segment['state']}</b><br>Conf: {segment['confidence']:.2f}<extra></extra>",
+                        showlegend=False
+                    ))
+                
+                # Deduplicate legend items manually if desired, but here we hide legend for clutter
+                # Add Legend manually?
+                for state, color in color_map.items():
+                     fig_gantt.add_trace(go.Bar(x=[0], y=["State"], marker=dict(color=color), name=state, visible='legendonly'))
+
+                fig_gantt.update_layout(
+                    title="Przebieg Treningu (Physiological States)",
+                    xaxis_title="Czas (s)",
+                    barmode='stack', # Stack keeps them in single line
+                    height=150,
+                    margin=dict(l=20, r=20, t=30, b=20),
+                    showlegend=True
+                )
+                st.plotly_chart(fig_gantt, use_container_width=True)
+
 
     # Użyj wartości z session_state
     startsec = st.session_state.smo2_start_sec

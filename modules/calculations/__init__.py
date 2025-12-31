@@ -96,6 +96,8 @@ from .kinetics import (
     calculate_resaturation_metrics,
     calculate_signal_lag,
     analyze_temporal_sequence,
+    detect_physiological_state,
+    generate_state_timeline,
 )
 
 from .thresholds import (
@@ -189,6 +191,8 @@ __all__ = [
     'calculate_resaturation_metrics',
     'calculate_signal_lag',
     'analyze_temporal_sequence',
+    'detect_physiological_state',
+    'generate_state_timeline',
     # Thresholds (MCP)
     'detect_vt_transition_zone',
     'analyze_step_test',

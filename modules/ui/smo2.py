@@ -24,6 +24,17 @@ def render_smo2_tab(target_df, training_notes, uploaded_file_name):
         st.stop()
 
     # Ensure smoothed columns exist if not already present
+    from modules.calculations.quality import check_signal_quality
+    
+    if 'smo2' in target_df.columns:
+        # Check Quality
+        qual_res = check_signal_quality(target_df['smo2'], "SmO2", (0, 100))
+        if not qual_res['is_valid']:
+            st.warning(f"⚠️ **Niska Jakość Sygnału SmO2 (Score: {qual_res['score']})**")
+            for issue in qual_res['issues']:
+                st.caption(f"❌ {issue}")
+            # Could mask metrics here
+
     if 'watts_smooth_5s' not in target_df.columns and 'watts' in target_df.columns:
         target_df['watts_smooth_5s'] = target_df['watts'].rolling(window=5, center=True).mean()
     if 'smo2_smooth' not in target_df.columns and 'smo2' in target_df.columns:

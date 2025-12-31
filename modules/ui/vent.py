@@ -26,6 +26,24 @@ def render_vent_tab(target_df, training_notes, uploaded_file_name):
     # Format czasu
     target_df['time_str'] = pd.to_datetime(target_df['time'], unit='s').dt.strftime('%H:%M:%S')
 
+    # --- Quality Check: Protocol Compliance ---
+    # Import locally to avoid circulars if any (though __init__ handles it)
+    from modules.calculations.quality import check_step_test_protocol
+    
+    proto_check = check_step_test_protocol(target_df)
+    
+    if not proto_check['is_valid']:
+        st.warning("⚠️ **Wykryto Problemy z Protokołem Testu**")
+        for issue in proto_check['issues']:
+            st.error(issue)
+        st.markdown("Analiza progów (VT/LT) może być **niewiarygodna** lub niemożliwa. Zalecany jest Test Stopniowany (Ramp Test).")
+        # Could stop here, but let's allow "Force Analysis" via expander or just show results with warning
+        if not st.checkbox("Wymuś analizę mimo błędów protokołu"):
+            st.stop()
+    else:
+        st.success("✅ Protokół Testu Stopniowanego: Poprawny (Liniowy Wzrost Obciążenia)")
+    # --- End Quality Check ---
+
     # 2. DETEKCJA AUTOMATYCZNA (Full Analysis with Sensitivity)
     result = analyze_step_test(
         target_df, 

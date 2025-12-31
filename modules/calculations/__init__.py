@@ -15,6 +15,7 @@ Ten pakiet grupuje funkcje obliczeniowe według odpowiedzialności:
 - async_runner.py: Async calculation wrappers
 - polars_adapter.py: Polars/Pandas interoperability
 - repeatability.py: Repeatability and stability analysis
+- quality.py: Data reliability checks
 
 Dla wstecznej kompatybilności, wszystkie funkcje są re-eksportowane z tego modułu.
 """
@@ -120,6 +121,12 @@ from .repeatability import (
     compare_session_to_baseline,
 )
 
+from .quality import (
+    check_signal_quality,
+    check_step_test_protocol,
+    check_data_suitability,
+)
+
 # Async runner exports
 from .async_runner import (
     run_in_thread,
@@ -217,6 +224,10 @@ __all__ = [
     'classify_reproducibility',
     'calculate_repeatability_metrics',
     'compare_session_to_baseline',
+    # Quality
+    'check_signal_quality',
+    'check_step_test_protocol',
+    'check_data_suitability',
     # Data Processing
     'process_data',
     'ensure_pandas',

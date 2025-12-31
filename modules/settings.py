@@ -22,28 +22,14 @@ class SettingsManager:
         }
 
     def load_settings(self):
-        """Wczytuje ustawienia z pliku JSON. Jeśli plik nie istnieje, zwraca domyślne."""
-        if os.path.exists(self.file_path):
-            try:
-                with open(self.file_path, 'r') as f:
-                    settings = json.load(f)
-                    # Merge with defaults to ensure all keys exist
-                    return {**self.default_settings, **settings}
-            except Exception as e:
-                st.error(f"Błąd wczytywania ustawień: {e}")
-                return self.default_settings
-        else:
-            return self.default_settings
+        """Returns hardcoded default settings, ignoring any saved file to enforce user preferences."""
+        # Always return defaults to ensure consistent startup state as requested
+        return self.default_settings
 
     def save_settings(self, settings_dict):
-        """Zapisuje słownik ustawień do pliku JSON."""
-        try:
-            with open(self.file_path, 'w') as f:
-                json.dump(settings_dict, f, indent=4)
-            return True
-        except Exception as e:
-            st.error(f"Błąd zapisywania ustawień: {e}")
-            return False
+        """Settings persistence is disabled to enforce hardcoded defaults."""
+        # Intentionally do nothing
+        return True
 
     def get_ui_values(self):
         """Pomocnik do pobierania wartości do UI (Session State lub Load)."""
@@ -58,4 +44,5 @@ class SettingsManager:
              st.session_state['user_settings'] = self.load_settings()
         
         st.session_state['user_settings'][key] = value
-        self.save_settings(st.session_state['user_settings'])
+        # Save is disabled, but we update session state
+        # self.save_settings(st.session_state['user_settings'])

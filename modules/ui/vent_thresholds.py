@@ -258,21 +258,38 @@ def render_vent_thresholds_tab(target_df, training_notes, uploaded_file_name, cp
                 power = step.get('avg_power', 0)
                 if power is None: power = 0
                 hr = step.get('avg_hr')
-                end_time = step.get('end_time', 0)  # Use end of step for marker
+                # Use end of step for marker. If end_time is missing, fallback to 0 (should be fixed now)
+                marker_time = step.get('end_time', 0)
                 
-                label = "VT1" if is_vt1 else "VT2"
-                color = "#ffa15a" if is_vt1 else "#ef553b"
+                label = "VT1 (Próg Aerobowy)" if is_vt1 else "VT2 (Próg Beztlenowy)"
+                line_color = "#ffa15a" if is_vt1 else "#ef553b" # Orange for VT1, Red for VT2
+                bg_color = "rgba(255, 161, 90, 0.8)" if is_vt1 else "rgba(239, 85, 59, 0.8)"
                 
                 hr_str = f"{int(hr)}" if hr is not None else "--"
                 
-                # Add Vertical Line Marker at End of Step
+                # Add Vertical Line Marker
                 fig_thresh.add_vline(
-                    x=end_time,
-                    line=dict(color=color, width=2, dash="dash"),
-                    annotation_text=f"<b>{label}</b><br>{int(power)}W @ {hr_str} bpm",
-                    annotation_position="top left",
-                    annotation_font=dict(color=color, size=12),
+                    x=marker_time,
+                    line=dict(color=line_color, width=3, dash="dash"),
                     layer="above"
+                )
+                
+                # Add Annotation with Box for prominence
+                fig_thresh.add_annotation(
+                    x=marker_time,
+                    y=1,
+                    yref="paper",
+                    text=f"<b>{label}</b><br>{int(power)}W @ {hr_str} bpm",
+                    showarrow=False,
+                    font=dict(color="white", size=11),
+                    bgcolor=bg_color,
+                    bordercolor=line_color,
+                    borderwidth=2,
+                    borderpad=4,
+                    align="center",
+                    xanchor="center",
+                    yanchor="top" if is_vt1 else "bottom", # Offset slightly to avoid overlap if close
+                    yshift=0 if is_vt1 else -40 # VT1 at top, VT2 slightly below or vice versa
                 )
     
     # Hysteresis Zones (Dashed, if available from legacy detection)

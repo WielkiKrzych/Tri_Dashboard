@@ -606,6 +606,8 @@ def detect_vt_from_steps(
             'avg_ve': s['avg_ve'],
             'avg_br': s['avg_br'],
             've_slope': s['ve_slope'],
+            'start_time': s['start_time'],
+            'end_time': s['end_time'],
             'is_skipped': skip_stage and s['step_number'] == skip_stage['step_number'],
             'is_vt1': vt1_found and s['step_number'] == result.vt1_step_number,
             'is_vt2': vt2_stage and s['step_number'] == result.vt2_step_number

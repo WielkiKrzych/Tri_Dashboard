@@ -15,18 +15,6 @@ import zipfile
 import json
 from typing import Dict, Any, Optional, Tuple
 
-# ============================================================
-# CONSTANTS - Magic numbers extracted for maintainability
-# ============================================================
-ROLLING_WINDOW_5MIN = 300  # 5 minutes in seconds
-ROLLING_WINDOW_30S = 30    # 30 seconds
-ROLLING_WINDOW_60S = 60    # 60 seconds for SmO2 smoothing
-RESAMPLE_THRESHOLD = 10000  # Resample if more than this many rows
-RESAMPLE_STEP = 5          # Take every Nth row
-MIN_WATTS_ACTIVE = 10      # Minimum watts for "active" data
-MIN_HR_ACTIVE = 40         # Minimum HR for "active" data
-MIN_RECORDS_FOR_ROLLING = 30  # Minimum records for rolling calculations
-
 # --- MODULE IMPORTS ---
 from modules.config import Config
 from modules.utils import parse_time_input, load_data, _serialize_df_to_parquet_bytes, normalize_columns_pandas
@@ -50,6 +38,25 @@ from modules.ml_logic import (
 from modules.intervals import detect_intervals
 from modules.notes import TrainingNotes
 from modules.reports import generate_docx_report, export_all_charts_as_png
+
+# --- SERVICES IMPORTS (Business Logic Layer) ---
+from services import (
+    calculate_header_metrics,
+    calculate_extended_metrics,
+    apply_smo2_smoothing,
+    resample_dataframe,
+    validate_dataframe,
+    prepare_session_record,
+    prepare_sticky_header_data,
+    ROLLING_WINDOW_5MIN,
+    ROLLING_WINDOW_30S,
+    ROLLING_WINDOW_60S,
+    RESAMPLE_THRESHOLD,
+    RESAMPLE_STEP,
+    MIN_WATTS_ACTIVE,
+    MIN_HR_ACTIVE,
+    MIN_RECORDS_FOR_ROLLING,
+)
 
 # UI Modules - Lazy Loading for faster startup
 # Each function only imports its module when actually called
@@ -146,64 +153,6 @@ def cleanup_session_state() -> None:
     for key in keys_to_check:
         if key in st.session_state:
             del st.session_state[key]
-
-
-def calculate_header_metrics(df: pd.DataFrame, cp: float) -> Tuple[float, float, float]:
-    """Calculate NP, IF, and TSS for the header display.
-    
-    Centralizes the calculation to avoid duplication.
-    
-    Args:
-        df: DataFrame with 'watts' column
-        cp: Critical Power in watts
-    
-    Returns:
-        Tuple of (NP, IF, TSS)
-    """
-    if 'watts' not in df.columns or len(df) < MIN_RECORDS_FOR_ROLLING:
-        return 0.0, 0.0, 0.0
-    
-    rolling_30s = df['watts'].rolling(window=ROLLING_WINDOW_30S, min_periods=1).mean()
-    np_val = np.power(np.mean(np.power(rolling_30s, 4)), 0.25)
-    
-    if pd.isna(np_val):
-        np_val = df['watts'].mean()
-    
-    if cp > 0:
-        if_val = np_val / cp
-        duration_sec = len(df)
-        tss_val = (duration_sec * np_val * if_val) / (cp * 3600) * 100
-    else:
-        if_val = 0.0
-        tss_val = 0.0
-    
-    return float(np_val), float(if_val), float(tss_val)
-
-
-def validate_dataframe(df: pd.DataFrame) -> Tuple[bool, str]:
-    """Validate that DataFrame has minimum required structure.
-    
-    Args:
-        df: DataFrame to validate
-    
-    Returns:
-        Tuple of (is_valid, error_message)
-    """
-    if df is None or df.empty:
-        return False, "Plik jest pusty lub nie udało się go wczytać."
-    
-    # Check for at least one data column
-    data_cols = ['watts', 'heartrate', 'cadence', 'smo2', 'power']
-    has_data = any(col in df.columns for col in data_cols)
-    
-    if not has_data:
-        return False, f"Brak wymaganych kolumn danych. Oczekiwane: {data_cols}"
-    
-    if len(df) < 10:
-        return False, f"Za mało danych ({len(df)} rekordów). Minimum: 10."
-    
-    return True, ""
-
 
 
 st.set_page_config(page_title="Pro Athlete Dashboard", layout="wide", page_icon="⚡")
@@ -305,78 +254,37 @@ if uploaded_file is not None:
         try:
             df_raw = load_data(uploaded_file)
             
-            # P0 FIX: Walidacja danych po wczytaniu
+            # VALIDATION: Use services layer
             is_valid, error_msg = validate_dataframe(df_raw)
             if not is_valid:
                 st.error(f"Błąd walidacji danych: {error_msg}")
                 st.stop()
             
+            # PROCESSING: Use modules.calculations for base processing
             df_clean_pl = process_data(df_raw)
             metrics = calculate_metrics(df_clean_pl, cp_input)
             df_w_prime = calculate_w_prime_balance(df_clean_pl, cp_input, w_prime_input)
             decoupling_percent, ef_factor = calculate_advanced_kpi(df_clean_pl)
             drift_z2 = calculate_z2_drift(df_clean_pl, cp_input)
             df_with_hsi = calculate_heat_strain_index(df_w_prime)
-            df_plot = df_with_hsi  # Removed unnecessary .copy()
+            df_plot = df_with_hsi
 
-            # --- EXTENDED METRICS CALCULATION (Centralization) ---
-            if 'watts' in df_plot.columns:
-                metrics['np'] = calculate_normalized_power(df_plot)
-                metrics['work_kj'] = df_plot['watts'].sum() / 1000
-                metrics['carbs_total'] = estimate_carbs_burned(df_plot, vt1_watts, vt2_watts)
-                
-                # VO2max Est - P0 FIX: Zabezpieczenie przed ZeroDivisionError
-                mmp_5m = df_plot['watts'].rolling(ROLLING_WINDOW_5MIN).mean().max()
-                if not pd.isna(mmp_5m) and rider_weight > 0:
-                    metrics['vo2_max_est'] = (10.8 * mmp_5m / rider_weight) + 7
-                else:
-                    metrics['vo2_max_est'] = 0
-            
-            if 'hsi' in df_plot.columns:
-                metrics['max_hsi'] = df_plot['hsi'].max()
-                
-            if 'core_temperature' in df_plot.columns:
-                metrics['max_core'] = df_plot['core_temperature'].max()
-                metrics['avg_core'] = df_plot['core_temperature'].mean()
-                
-            if 'rmssd' in df_plot.columns:
-                metrics['avg_rmssd'] = df_plot['rmssd'].mean()
-            elif 'hrv' in df_plot.columns:
-                 metrics['avg_rmssd'] = df_plot['hrv'].mean()
-            
-            # Avg Pulse Power & EF - P0 FIX: używamy stałych zamiast magic numbers
-            metrics['ef_factor'] = ef_factor 
-            metrics['avg_pp'] = 0
-            if 'watts' in df_plot.columns and 'heartrate' in df_plot.columns:
-                mask = (df_plot['watts'] > MIN_WATTS_ACTIVE) & (df_plot['heartrate'] > MIN_HR_ACTIVE)
-                if mask.sum() > 0:
-                    # P0 FIX: Zabezpieczenie przed dzieleniem przez zero
-                    hr_values = df_plot.loc[mask, 'heartrate']
-                    watts_values = df_plot.loc[mask, 'watts']
-                    safe_mask = hr_values > 0
-                    if safe_mask.sum() > 0:
-                        metrics['avg_pp'] = (watts_values[safe_mask] / hr_values[safe_mask]).mean()
-            # -----------------------------------------------------
-            
-            if 'smo2' in df_plot.columns:
-                 df_plot['smo2_smooth_ultra'] = df_plot['smo2'].rolling(
-                     window=ROLLING_WINDOW_60S, center=True, min_periods=1
-                 ).mean()
-            
-            # P2 FIX: Używamy stałych zamiast magic numbers
-            df_plot_resampled = (
-                df_plot.iloc[::RESAMPLE_STEP, :].copy() 
-                if len(df_plot) > RESAMPLE_THRESHOLD 
-                else df_plot
+            # EXTENDED METRICS: Use services layer
+            metrics = calculate_extended_metrics(
+                df_plot, metrics, rider_weight, vt1_watts, vt2_watts, ef_factor
             )
             
-            # P0 FIX: Ustawiamy flagę zamiast używać locals()
+            # SMO2 SMOOTHING: Use services layer
+            df_plot = apply_smo2_smoothing(df_plot)
+            
+            # RESAMPLING: Use services layer
+            df_plot_resampled = resample_dataframe(df_plot)
+            
             st.session_state['data_loaded'] = True
             
             # --- SEKCJA AI / MLX ---
             if MLX_AVAILABLE and os.path.exists(MODEL_FILE):
                 try:
-                    # Próbujemy odpalić predykcję
                     auto_pred = predict_only(df_plot_resampled)
                     
                     if auto_pred is not None:
@@ -386,34 +294,22 @@ if uploaded_file is not None:
                 except Exception as e:
                     st.sidebar.error(f"💥 Krytyczny błąd w Auto-Inference: {e}")
             elif not os.path.exists(MODEL_FILE):
-                # Tylko info, nie błąd - użytkownik może jeszcze nie trenował
                 pass 
             # ----------------------------------
 
-        except Exception as e:  # <--- TEGO BRAKOWAŁO!
+        except Exception as e:
             st.error(f"Błąd wczytywania pliku: {e}")
             st.stop()
 
-        # --- HEADER METRICS (P2 FIX: Używamy wydzielonej funkcji zamiast duplikacji) ---
+        # HEADER METRICS: Use services layer
         np_header, if_header, tss_header = calculate_header_metrics(df_plot, cp_input)
 
         # ===== AUTO-SAVE SESSION TO DATABASE =====
         try:
-            from datetime import date
-            session_record = SessionRecord(
-                date=date.today().isoformat(),
-                filename=uploaded_file.name,
-                duration_sec=len(df_plot),
-                tss=tss_header,
-                np=np_header,
-                if_factor=if_header,
-                avg_watts=metrics.get('avg_watts', 0),
-                avg_hr=metrics.get('avg_hr', 0),
-                max_hr=df_plot['heartrate'].max() if 'heartrate' in df_plot.columns else 0,
-                work_kj=metrics.get('work_kj', 0),
-                avg_cadence=metrics.get('avg_cadence', 0),
-                avg_rmssd=metrics.get('avg_rmssd'),
+            session_data = prepare_session_record(
+                uploaded_file.name, df_plot, metrics, np_header, if_header, tss_header
             )
+            session_record = SessionRecord(**session_data)
             SessionStore().add_session(session_record)
         except Exception as e:
             pass  # Silent fail for session save
@@ -431,15 +327,8 @@ if uploaded_file is not None:
                 else:
                     st.info(f"{alert.icon} {alert.message}")
 
-        # ===== STICKY HEADER - styles are in style.css =====
-
-        # Oblicz metryki dla sticky panelu
-        avg_power = metrics.get('avg_watts', 0)
-        avg_hr = metrics.get('avg_hr', 0)
-        avg_smo2 = df_plot['smo2'].mean() if 'smo2' in df_plot.columns else 0
-        avg_cadence = metrics.get('avg_cadence', 0)
-        avg_ve = metrics.get('avg_vent', 0)
-        duration_min = len(df_plot) / 60 if len(df_plot) > 0 else 0
+        # ===== STICKY HEADER =====
+        header_data = prepare_sticky_header_data(df_plot, metrics)
 
         st.markdown(f"""
         <div class="sticky-metrics">
@@ -447,27 +336,27 @@ if uploaded_file is not None:
             <div class="metric-row">
                 <div class="metric-box">
                     <div class="label">Avg Power</div>
-                    <div class="value">{avg_power:.0f} <span class="unit">W</span></div>
+                    <div class="value">{header_data['avg_power']:.0f} <span class="unit">W</span></div>
                 </div>
                 <div class="metric-box">
                     <div class="label">Avg HR</div>
-                    <div class="value">{avg_hr:.0f} <span class="unit">bpm</span></div>
+                    <div class="value">{header_data['avg_hr']:.0f} <span class="unit">bpm</span></div>
                 </div>
                 <div class="metric-box">
                     <div class="label">Avg SmO2</div>
-                    <div class="value">{avg_smo2:.1f} <span class="unit">%</span></div>
+                    <div class="value">{header_data['avg_smo2']:.1f} <span class="unit">%</span></div>
                 </div>
                 <div class="metric-box">
                     <div class="label">Cadence</div>
-                    <div class="value">{avg_cadence:.0f} <span class="unit">rpm</span></div>
+                    <div class="value">{header_data['avg_cadence']:.0f} <span class="unit">rpm</span></div>
                 </div>
                 <div class="metric-box">
                     <div class="label">Avg VE</div>
-                    <div class="value">{avg_ve:.0f} <span class="unit">L/min</span></div>
+                    <div class="value">{header_data['avg_ve']:.0f} <span class="unit">L/min</span></div>
                 </div>
                 <div class="metric-box">
                     <div class="label">Duration</div>
-                    <div class="value">{duration_min:.0f} <span class="unit">min</span></div>
+                    <div class="value">{header_data['duration_min']:.0f} <span class="unit">min</span></div>
                 </div>
             </div>
         </div>
@@ -586,7 +475,6 @@ if uploaded_file is not None:
 st.sidebar.markdown("---")
 st.sidebar.header("📄 Export Raportu")
 
-# P0 FIX: Zamiana locals() na session_state - bezpieczniejsze i bardziej przewidywalne
 if st.session_state.get('data_loaded', False) and uploaded_file is not None:
     # Kolumny dla przycisków
     col_docx, col_png = st.sidebar.columns(2)
@@ -594,7 +482,6 @@ if st.session_state.get('data_loaded', False) and uploaded_file is not None:
     with col_docx:
         # Generuj DOCX
         try:
-            # AKTUALIZACJA: Dodano w_prime_input na końcu
             docx_doc = generate_docx_report(
                 metrics, df_plot, df_plot_resampled, uploaded_file, cp_input,
                 vt1_watts, vt2_watts, rider_weight, vt1_vent, vt2_vent, w_prime_input

@@ -1,0 +1,649 @@
+"""
+Moduł UI: Zakładka Podsumowanie (Summary)
+
+Agreguje kluczowe wykresy i metryki z całego dashboardu w jednym miejscu.
+"""
+import streamlit as st
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+import pandas as pd
+import numpy as np
+from scipy import stats
+from modules.config import Config
+from modules.calculations import calculate_vo2max
+from modules.calculations.thresholds import analyze_step_test
+
+
+def render_summary_tab(
+    df_plot: pd.DataFrame,
+    df_plot_resampled: pd.DataFrame,
+    metrics: dict,
+    training_notes,
+    uploaded_file_name: str,
+    cp_input: int,
+    w_prime_input: int,
+    rider_weight: float,
+    vt1_watts: int = 0,
+    vt2_watts: int = 0,
+    lt1_watts: int = 0,
+    lt2_watts: int = 0,
+):
+    """Renderowanie zakładki Podsumowanie z kluczowymi wykresami i metrykami."""
+    st.header("📊 Podsumowanie Treningu")
+    st.markdown("Wszystkie kluczowe wykresy i metryki w jednym miejscu.")
+
+    # Normalize columns
+    df_plot.columns = df_plot.columns.str.lower().str.strip()
+
+    # =========================================================================
+    # 1. WYKRES PRZEBIEG TRENINGU
+    # =========================================================================
+    st.subheader("1️⃣ Przebieg Treningu")
+    
+    fig_training = go.Figure()
+    time_x = df_plot['time_min'] if 'time_min' in df_plot.columns else df_plot['time'] / 60 if 'time' in df_plot.columns else None
+    
+    if time_x is not None:
+        if 'watts_smooth' in df_plot.columns:
+            fig_training.add_trace(go.Scatter(
+                x=time_x, y=df_plot['watts_smooth'],
+                name='Moc', fill='tozeroy',
+                line=dict(color=Config.COLOR_POWER, width=1),
+                hovertemplate="Moc: %{y:.0f} W<extra></extra>"
+            ))
+        elif 'watts' in df_plot.columns:
+            fig_training.add_trace(go.Scatter(
+                x=time_x, y=df_plot['watts'].rolling(5, center=True).mean(),
+                name='Moc', fill='tozeroy',
+                line=dict(color=Config.COLOR_POWER, width=1),
+                hovertemplate="Moc: %{y:.0f} W<extra></extra>"
+            ))
+
+        if 'heartrate_smooth' in df_plot.columns:
+            fig_training.add_trace(go.Scatter(
+                x=time_x, y=df_plot['heartrate_smooth'],
+                name='HR', line=dict(color=Config.COLOR_HR, width=2),
+                yaxis='y2', hovertemplate="HR: %{y:.0f} bpm<extra></extra>"
+            ))
+        elif 'heartrate' in df_plot.columns:
+            fig_training.add_trace(go.Scatter(
+                x=time_x, y=df_plot['heartrate'],
+                name='HR', line=dict(color=Config.COLOR_HR, width=2),
+                yaxis='y2', hovertemplate="HR: %{y:.0f} bpm<extra></extra>"
+            ))
+
+        if 'smo2_smooth' in df_plot.columns:
+            fig_training.add_trace(go.Scatter(
+                x=time_x, y=df_plot['smo2_smooth'],
+                name='SmO2', line=dict(color=Config.COLOR_SMO2, width=2, dash='dot'),
+                yaxis='y3', hovertemplate="SmO2: %{y:.1f}%<extra></extra>"
+            ))
+        elif 'smo2' in df_plot.columns:
+            fig_training.add_trace(go.Scatter(
+                x=time_x, y=df_plot['smo2'].rolling(5, center=True).mean(),
+                name='SmO2', line=dict(color=Config.COLOR_SMO2, width=2, dash='dot'),
+                yaxis='y3', hovertemplate="SmO2: %{y:.1f}%<extra></extra>"
+            ))
+
+        if 'tymeventilation_smooth' in df_plot.columns:
+            fig_training.add_trace(go.Scatter(
+                x=time_x, y=df_plot['tymeventilation_smooth'],
+                name='VE', line=dict(color=Config.COLOR_VE, width=2, dash='dash'),
+                yaxis='y4', hovertemplate="VE: %{y:.1f} L/min<extra></extra>"
+            ))
+        elif 'tymeventilation' in df_plot.columns:
+            fig_training.add_trace(go.Scatter(
+                x=time_x, y=df_plot['tymeventilation'].rolling(10, center=True).mean(),
+                name='VE', line=dict(color=Config.COLOR_VE, width=2, dash='dash'),
+                yaxis='y4', hovertemplate="VE: %{y:.1f} L/min<extra></extra>"
+            ))
+
+    fig_training.update_layout(
+        template="plotly_dark", height=450,
+        yaxis=dict(title="Moc [W]"),
+        yaxis2=dict(title="HR", overlaying='y', side='right', showgrid=False),
+        yaxis3=dict(title="SmO2", overlaying='y', side='right', showgrid=False, showticklabels=False, range=[0, 100]),
+        yaxis4=dict(title="VE", overlaying='y', side='right', showgrid=False, showticklabels=False),
+        legend=dict(orientation="h", y=1.05, x=0), hovermode="x unified",
+        margin=dict(l=20, r=20, t=30, b=20)
+    )
+    st.plotly_chart(fig_training, use_container_width=True)
+
+    # =========================================================================
+    # 1a. METRYKI POD WYKRESEM
+    # =========================================================================
+    _render_metrics_panel(df_plot, metrics, cp_input, w_prime_input, rider_weight)
+
+    st.markdown("---")
+
+    # =========================================================================
+    # 2. WYKRES WENTYLACJA (VE) I ODDECHY (BR)
+    # =========================================================================
+    st.subheader("2️⃣ Wentylacja (VE) i Oddechy (BR)")
+    
+    if 'tymeventilation' in df_plot.columns:
+        fig_ve_br = make_subplots(specs=[[{"secondary_y": True}]])
+        
+        time_x_s = df_plot['time'] if 'time' in df_plot.columns else range(len(df_plot))
+        
+        # VE
+        ve_data = df_plot['tymeventilation'].rolling(10, center=True).mean() if 'tymeventilation' in df_plot.columns else None
+        if ve_data is not None:
+            fig_ve_br.add_trace(go.Scatter(
+                x=time_x_s, y=ve_data,
+                name='VE (L/min)', line=dict(color='#ffa15a', width=2),
+                hovertemplate="VE: %{y:.1f} L/min<extra></extra>"
+            ), secondary_y=False)
+        
+        # BR
+        if 'tymebreathrate' in df_plot.columns:
+            br_data = df_plot['tymebreathrate'].rolling(10, center=True).mean()
+            fig_ve_br.add_trace(go.Scatter(
+                x=time_x_s, y=br_data,
+                name='BR (oddech/min)', line=dict(color='#00cc96', width=2),
+                hovertemplate="BR: %{y:.0f} /min<extra></extra>"
+            ), secondary_y=True)
+        
+        fig_ve_br.update_layout(
+            template="plotly_dark", height=350,
+            legend=dict(orientation="h", y=1.05, x=0), hovermode="x unified",
+            margin=dict(l=20, r=20, t=30, b=20)
+        )
+        fig_ve_br.update_yaxes(title_text="VE (L/min)", secondary_y=False)
+        fig_ve_br.update_yaxes(title_text="BR (/min)", secondary_y=True)
+        st.plotly_chart(fig_ve_br, use_container_width=True)
+    else:
+        st.info("Brak danych wentylacji (VE/BR) w tym pliku.")
+
+    st.markdown("---")
+
+    # =========================================================================
+    # 3. WYKRES MATEMATYCZNY MODEL CP
+    # =========================================================================
+    st.subheader("3️⃣ Model Matematyczny CP")
+    _render_cp_model_chart(df_plot, cp_input, w_prime_input)
+
+    st.markdown("---")
+
+    # =========================================================================
+    # 4. WYKRES SmO2 vs THb W CZASIE
+    # =========================================================================
+    st.subheader("4️⃣ SmO2 vs THb w czasie")
+    _render_smo2_thb_chart(df_plot)
+
+    st.markdown("---")
+
+    # =========================================================================
+    # 5. PROGI WENTYLACYJNE VT1/VT2
+    # =========================================================================
+    st.subheader("5️⃣ Progi Wentylacyjne (VT1/VT2)")
+    _render_vent_thresholds_summary(df_plot, cp_input, vt1_watts, vt2_watts)
+
+    st.markdown("---")
+
+    # =========================================================================
+    # 6. PROGI SmO2 LT1/LT2
+    # =========================================================================
+    st.subheader("6️⃣ Progi SmO2 (LT1/LT2)")
+    _render_smo2_thresholds_summary(df_plot, cp_input, lt1_watts, lt2_watts)
+
+
+# =============================================================================
+# HELPER FUNCTIONS
+# =============================================================================
+
+def _render_metrics_panel(df_plot, metrics, cp_input, w_prime_input, rider_weight):
+    """Renderowanie panelu z metrykami pod wykresem przebiegu treningu."""
+    
+    # Oblicz metryki z danych
+    duration_min = len(df_plot) / 60 if len(df_plot) > 0 else 0
+    
+    # Power
+    avg_power = df_plot['watts'].mean() if 'watts' in df_plot.columns else 0
+    np_power = _calculate_np(df_plot['watts']) if 'watts' in df_plot.columns else 0
+    work_kj = df_plot['watts'].sum() / 1000 if 'watts' in df_plot.columns else 0
+    
+    # HR
+    hr_col = 'heartrate' if 'heartrate' in df_plot.columns else 'hr' if 'hr' in df_plot.columns else None
+    avg_hr = df_plot[hr_col].mean() if hr_col else 0
+    min_hr = df_plot[hr_col].min() if hr_col else 0
+    max_hr = df_plot[hr_col].max() if hr_col else 0
+    
+    # SmO2
+    avg_smo2 = df_plot['smo2'].mean() if 'smo2' in df_plot.columns else 0
+    min_smo2 = df_plot['smo2'].min() if 'smo2' in df_plot.columns else 0
+    max_smo2 = df_plot['smo2'].max() if 'smo2' in df_plot.columns else 0
+    
+    # VE
+    avg_ve = df_plot['tymeventilation'].mean() if 'tymeventilation' in df_plot.columns else 0
+    min_ve = df_plot['tymeventilation'].min() if 'tymeventilation' in df_plot.columns else 0
+    max_ve = df_plot['tymeventilation'].max() if 'tymeventilation' in df_plot.columns else 0
+    
+    # BR
+    avg_br = df_plot['tymebreathrate'].mean() if 'tymebreathrate' in df_plot.columns else 0
+    min_br = df_plot['tymebreathrate'].min() if 'tymebreathrate' in df_plot.columns else 0
+    max_br = df_plot['tymebreathrate'].max() if 'tymebreathrate' in df_plot.columns else 0
+    
+    # Estymacje
+    est_vo2max = metrics.get('vo2_max_est', 0) if metrics else 0
+    est_vlamax = metrics.get('vlamax_est', 0) if metrics else 0
+    
+    # Estymacja CP/W' z danych
+    est_cp, est_w_prime = _estimate_cp_wprime(df_plot)
+
+    # Wyświetlanie w 4 kolumnach
+    st.markdown("### 📈 Metryki Treningowe")
+    
+    # Wiersz 1: Czas, Moc, NP, Praca
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("⏱️ Czas", f"{duration_min:.1f} min")
+    c2.metric("⚡ AVG Power", f"{avg_power:.0f} W")
+    c3.metric("📊 NP", f"{np_power:.0f} W")
+    c4.metric("🔋 Praca", f"{work_kj:.0f} kJ")
+    
+    # Wiersz 2: HR
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("❤️ AVG HR", f"{avg_hr:.0f} bpm" if avg_hr else "--")
+    c2.metric("❤️ MIN HR", f"{min_hr:.0f} bpm" if min_hr else "--")
+    c3.metric("❤️ MAX HR", f"{max_hr:.0f} bpm" if max_hr else "--")
+    c4.empty()
+    
+    # Wiersz 3: SmO2
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("🩸 AVG SmO2", f"{avg_smo2:.1f}%" if avg_smo2 else "--")
+    c2.metric("🩸 MIN SmO2", f"{min_smo2:.1f}%" if min_smo2 else "--")
+    c3.metric("🩸 MAX SmO2", f"{max_smo2:.1f}%" if max_smo2 else "--")
+    c4.empty()
+    
+    # Wiersz 4: VE
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("🫁 AVG VE", f"{avg_ve:.1f} L/min" if avg_ve else "--")
+    c2.metric("🫁 MIN VE", f"{min_ve:.1f} L/min" if min_ve else "--")
+    c3.metric("🫁 MAX VE", f"{max_ve:.1f} L/min" if max_ve else "--")
+    c4.empty()
+    
+    # Wiersz 5: BR
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("💨 AVG BR", f"{avg_br:.0f} /min" if avg_br else "--")
+    c2.metric("💨 MIN BR", f"{min_br:.0f} /min" if min_br else "--")
+    c3.metric("💨 MAX BR", f"{max_br:.0f} /min" if max_br else "--")
+    c4.empty()
+    
+    # Wiersz 6: Estymacje
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("🎯 Est. VO2max", f"{est_vo2max:.1f} ml/kg/min" if est_vo2max else "--")
+    c2.metric("🧬 Est. VLamax", f"{est_vlamax:.2f} mmol/L/s" if est_vlamax else "--")
+    c3.metric("⚡ Est. CP", f"{est_cp:.0f} W" if est_cp else "--")
+    c4.metric("🔋 Est. W'", f"{est_w_prime:.0f} J" if est_w_prime else "--")
+
+
+def _calculate_np(watts_series):
+    """Obliczenie Normalized Power."""
+    if len(watts_series) < 30:
+        return watts_series.mean()
+    rolling_avg = watts_series.rolling(30, min_periods=1).mean()
+    fourth_power = rolling_avg ** 4
+    return fourth_power.mean() ** 0.25
+
+
+def _estimate_cp_wprime(df_plot):
+    """Estymacja CP i W' z danych MMP."""
+    if 'watts' not in df_plot.columns or len(df_plot) < 1200:
+        return 0, 0
+    
+    durations = [180, 300, 600, 900, 1200]
+    valid_durations = [d for d in durations if d < len(df_plot)]
+    
+    if len(valid_durations) < 3:
+        return 0, 0
+    
+    work_values = []
+    for d in valid_durations:
+        p = df_plot['watts'].rolling(window=d).mean().max()
+        if not pd.isna(p):
+            work_values.append(p * d)
+        else:
+            return 0, 0
+    
+    try:
+        slope, intercept, _, _, _ = stats.linregress(valid_durations, work_values)
+        return slope, intercept
+    except Exception:
+        return 0, 0
+
+
+def _render_cp_model_chart(df_plot, cp_input, w_prime_input):
+    """Renderowanie wykresu modelu CP."""
+    if 'watts' not in df_plot.columns or len(df_plot) < 1200:
+        st.info("Za mało danych (wymagane min. 20 minut) do wyświetlenia modelu CP.")
+        return
+    
+    est_cp, est_w_prime = _estimate_cp_wprime(df_plot)
+    
+    if est_cp <= 0:
+        st.info("Nie można wyestymować CP z danych.")
+        return
+    
+    # Metryki estymowane
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Est. CP", f"{est_cp:.0f} W", delta=f"{est_cp - cp_input:.0f} W vs ustawienia")
+    c2.metric("Est. W'", f"{est_w_prime:.0f} J", delta=f"{est_w_prime - w_prime_input:.0f} J vs ustawienia")
+    
+    # R² dopasowania
+    durations = [180, 300, 600, 900, 1200]
+    valid_durations = [d for d in durations if d < len(df_plot)]
+    work_values = []
+    for d in valid_durations:
+        p = df_plot['watts'].rolling(window=d).mean().max()
+        if not pd.isna(p):
+            work_values.append(p * d)
+    
+    if len(work_values) == len(valid_durations):
+        _, _, r_value, _, _ = stats.linregress(valid_durations, work_values)
+        c3.metric("R² (dopasowanie)", f"{r_value**2:.4f}")
+    
+    # Wykres
+    x_theory = np.arange(60, 1800, 60)
+    y_theory = [est_cp + (est_w_prime / t) for t in x_theory]
+    
+    y_actual = []
+    x_actual = []
+    for t in x_theory:
+        if t < len(df_plot):
+            val = df_plot['watts'].rolling(t).mean().max()
+            y_actual.append(val)
+            x_actual.append(t)
+    
+    fig_model = go.Figure()
+    
+    fig_model.add_trace(go.Scatter(
+        x=np.array(x_actual)/60, y=y_actual,
+        mode='markers', name='Twoje MMP',
+        marker=dict(color='#00cc96', size=8)
+    ))
+    
+    fig_model.add_trace(go.Scatter(
+        x=x_theory/60, y=y_theory,
+        mode='lines', name=f'Model CP ({est_cp:.0f}W)',
+        line=dict(color='#ef553b', dash='dash')
+    ))
+    
+    fig_model.update_layout(
+        template="plotly_dark",
+        title="Power Duration Curve vs Model CP",
+        xaxis_title="Czas [min]",
+        yaxis_title="Moc [W]",
+        hovermode="x unified",
+        height=400,
+        margin=dict(l=20, r=20, t=40, b=20)
+    )
+    st.plotly_chart(fig_model, use_container_width=True)
+
+
+def _render_smo2_thb_chart(df_plot):
+    """Renderowanie wykresu SmO2 vs THb w czasie."""
+    if 'smo2' not in df_plot.columns:
+        st.info("Brak danych SmO2 w tym pliku.")
+        return
+    
+    fig_smo2_thb = make_subplots(specs=[[{"secondary_y": True}]])
+    
+    time_x = df_plot['time'] if 'time' in df_plot.columns else range(len(df_plot))
+    
+    # SmO2
+    smo2_smooth = df_plot['smo2'].rolling(5, center=True).mean() if 'smo2' in df_plot.columns else None
+    if smo2_smooth is not None:
+        fig_smo2_thb.add_trace(go.Scatter(
+            x=time_x, y=smo2_smooth,
+            name='SmO2 (%)', line=dict(color='#2ca02c', width=2),
+            hovertemplate="SmO2: %{y:.1f}%<extra></extra>"
+        ), secondary_y=False)
+    
+    # THb
+    if 'thb' in df_plot.columns:
+        thb_smooth = df_plot['thb'].rolling(5, center=True).mean()
+        fig_smo2_thb.add_trace(go.Scatter(
+            x=time_x, y=thb_smooth,
+            name='THb (g/dL)', line=dict(color='#9467bd', width=2),
+            hovertemplate="THb: %{y:.2f} g/dL<extra></extra>"
+        ), secondary_y=True)
+    else:
+        st.caption("ℹ️ Brak danych THb w pliku.")
+    
+    fig_smo2_thb.update_layout(
+        template="plotly_dark", height=350,
+        legend=dict(orientation="h", y=1.05, x=0), hovermode="x unified",
+        margin=dict(l=20, r=20, t=30, b=20)
+    )
+    fig_smo2_thb.update_yaxes(title_text="SmO2 (%)", secondary_y=False)
+    fig_smo2_thb.update_yaxes(title_text="THb (g/dL)", secondary_y=True)
+    st.plotly_chart(fig_smo2_thb, use_container_width=True)
+
+
+def _render_vent_thresholds_summary(df_plot, cp_input, vt1_watts, vt2_watts):
+    """Renderowanie wykresu progów wentylacyjnych VT1/VT2."""
+    if 'tymeventilation' not in df_plot.columns:
+        st.info("Brak danych wentylacji do analizy progów VT.")
+        return
+    
+    # Wygładzanie
+    df_plot['ve_smooth'] = df_plot['tymeventilation'].rolling(window=10, center=True).mean()
+    if 'watts_smooth_5s' not in df_plot.columns and 'watts' in df_plot.columns:
+        df_plot['watts_smooth_5s'] = df_plot['watts'].rolling(window=5, center=True).mean()
+    
+    # Handle HR aliases
+    hr_col = None
+    for alias in ['hr', 'heartrate', 'heart_rate', 'bpm']:
+        if alias in df_plot.columns:
+            hr_col = alias
+            break
+    
+    # Automatyczna detekcja progów
+    result = analyze_step_test(
+        df_plot,
+        power_column='watts',
+        ve_column='tymeventilation',
+        hr_column=hr_col,
+        time_column='time'
+    )
+    
+    # Użyj wykrytych lub przekazanych wartości
+    vt1_w = result.vt1_watts if result.vt1_watts else vt1_watts
+    vt2_w = result.vt2_watts if result.vt2_watts else vt2_watts
+    vt1_hr = result.vt1_hr if result.vt1_hr else 0
+    vt2_hr = result.vt2_hr if result.vt2_hr else 0
+    vt1_ve = result.vt1_ve if result.vt1_ve else 0
+    vt2_ve = result.vt2_ve if result.vt2_ve else 0
+    
+    # Wykres
+    fig_vent = go.Figure()
+    
+    time_x = df_plot['time'] if 'time' in df_plot.columns else range(len(df_plot))
+    
+    fig_vent.add_trace(go.Scatter(
+        x=time_x, y=df_plot['ve_smooth'],
+        mode='lines', name='VE (L/min)',
+        line=dict(color='#ffa15a', width=2)
+    ))
+    
+    if 'watts_smooth_5s' in df_plot.columns:
+        fig_vent.add_trace(go.Scatter(
+            x=time_x, y=df_plot['watts_smooth_5s'],
+            mode='lines', name='Power',
+            line=dict(color='#1f77b4', width=1),
+            yaxis='y2', opacity=0.3
+        ))
+    
+    # Markery VT1/VT2
+    if vt1_w and result.step_ve_analysis:
+        for step in result.step_ve_analysis:
+            if step.get('is_vt1'):
+                marker_time = step.get('end_time', 0)
+                fig_vent.add_vline(x=marker_time, line=dict(color="#ffa15a", width=3, dash="dash"))
+    
+    if vt2_w and result.step_ve_analysis:
+        for step in result.step_ve_analysis:
+            if step.get('is_vt2'):
+                marker_time = step.get('end_time', 0)
+                fig_vent.add_vline(x=marker_time, line=dict(color="#ef553b", width=3, dash="dash"))
+    
+    fig_vent.update_layout(
+        template="plotly_dark", height=350,
+        yaxis=dict(title="VE (L/min)"),
+        yaxis2=dict(title="Moc (W)", overlaying='y', side='right', showgrid=False),
+        legend=dict(orientation="h", y=1.05, x=0), hovermode="x unified",
+        margin=dict(l=20, r=20, t=30, b=20)
+    )
+    st.plotly_chart(fig_vent, use_container_width=True)
+    
+    # Panel VT1/VT2
+    col_z1, col_z2 = st.columns(2)
+    
+    with col_z1:
+        if vt1_w:
+            st.markdown(f"""
+            <div style="padding:15px; border-radius:8px; border:2px solid #ffa15a; background-color: #222;">
+                <h3 style="margin:0; color: #ffa15a;">VT1 (Próg Tlenowy)</h3>
+                <h1 style="margin:5px 0; font-size:2.5em;">{int(vt1_w)} W</h1>
+                {f'<p style="margin:0; color:#aaa;"><b>HR:</b> {int(vt1_hr)} bpm</p>' if vt1_hr else ''}
+                {f'<p style="margin:0; color:#aaa;"><b>VE:</b> {vt1_ve:.1f} L/min</p>' if vt1_ve else ''}
+            </div>
+            """, unsafe_allow_html=True)
+            if cp_input > 0:
+                st.caption(f"~{(vt1_w/cp_input)*100:.0f}% CP")
+        else:
+            st.info("VT1: Nie wykryto")
+    
+    with col_z2:
+        if vt2_w:
+            st.markdown(f"""
+            <div style="padding:15px; border-radius:8px; border:2px solid #ef553b; background-color: #222;">
+                <h3 style="margin:0; color: #ef553b;">VT2 (Próg Beztlenowy)</h3>
+                <h1 style="margin:5px 0; font-size:2.5em;">{int(vt2_w)} W</h1>
+                {f'<p style="margin:0; color:#aaa;"><b>HR:</b> {int(vt2_hr)} bpm</p>' if vt2_hr else ''}
+                {f'<p style="margin:0; color:#aaa;"><b>VE:</b> {vt2_ve:.1f} L/min</p>' if vt2_ve else ''}
+            </div>
+            """, unsafe_allow_html=True)
+            if cp_input > 0:
+                st.caption(f"~{(vt2_w/cp_input)*100:.0f}% CP")
+        else:
+            st.info("VT2: Nie wykryto")
+
+
+def _render_smo2_thresholds_summary(df_plot, cp_input, lt1_watts, lt2_watts):
+    """Renderowanie wykresu progów SmO2 LT1/LT2."""
+    if 'smo2' not in df_plot.columns:
+        st.info("Brak danych SmO2 do analizy progów LT.")
+        return
+    
+    # Wygładzanie
+    df_plot['smo2_smooth'] = df_plot['smo2'].rolling(window=10, center=True).mean()
+    if 'watts_smooth_5s' not in df_plot.columns and 'watts' in df_plot.columns:
+        df_plot['watts_smooth_5s'] = df_plot['watts'].rolling(window=5, center=True).mean()
+    
+    # Handle HR aliases
+    hr_col = None
+    for alias in ['hr', 'heartrate', 'heart_rate', 'bpm']:
+        if alias in df_plot.columns:
+            hr_col = alias
+            break
+    
+    # Automatyczna detekcja progów
+    result = analyze_step_test(
+        df_plot,
+        power_column='watts',
+        ve_column='tymeventilation' if 'tymeventilation' in df_plot.columns else None,
+        smo2_column='smo2',
+        hr_column=hr_col,
+        time_column='time'
+    )
+    
+    # Użyj wykrytych lub przekazanych wartości
+    lt1_w = result.smo2_1_watts if result.smo2_1_watts else lt1_watts
+    lt2_w = result.smo2_2_watts if result.smo2_2_watts else lt2_watts
+    lt1_hr = result.smo2_1_hr if result.smo2_1_hr else 0
+    lt2_hr = result.smo2_2_hr if result.smo2_2_hr else 0
+    lt1_smo2 = result.smo2_1_value if result.smo2_1_value else 0
+    lt2_smo2 = result.smo2_2_value if result.smo2_2_value else 0
+    
+    # Wykres
+    fig_smo2 = go.Figure()
+    
+    time_x = df_plot['time'] if 'time' in df_plot.columns else range(len(df_plot))
+    
+    fig_smo2.add_trace(go.Scatter(
+        x=time_x, y=df_plot['smo2_smooth'],
+        mode='lines', name='SmO2 (%)',
+        line=dict(color='#2ca02c', width=2)
+    ))
+    
+    if 'watts_smooth_5s' in df_plot.columns:
+        fig_smo2.add_trace(go.Scatter(
+            x=time_x, y=df_plot['watts_smooth_5s'],
+            mode='lines', name='Power',
+            line=dict(color='#1f77b4', width=1),
+            yaxis='y2', opacity=0.3
+        ))
+    
+    # Znajdź czas dla LT1/LT2 (na podstawie mocy)
+    def find_time_for_power(power):
+        if power <= 0:
+            return None
+        if 'watts_smooth_5s' in df_plot.columns:
+            idx = (df_plot['watts_smooth_5s'] - power).abs().idxmin()
+            return df_plot.loc[idx, 'time'] if 'time' in df_plot.columns else idx
+        elif 'watts' in df_plot.columns:
+            idx = (df_plot['watts'] - power).abs().idxmin()
+            return df_plot.loc[idx, 'time'] if 'time' in df_plot.columns else idx
+        return None
+    
+    lt1_time = find_time_for_power(lt1_w) if lt1_w else None
+    lt2_time = find_time_for_power(lt2_w) if lt2_w else None
+    
+    if lt1_time is not None:
+        fig_smo2.add_vline(x=lt1_time, line=dict(color="#2ca02c", width=3, dash="dash"))
+    
+    if lt2_time is not None:
+        fig_smo2.add_vline(x=lt2_time, line=dict(color="#d62728", width=3, dash="dash"))
+    
+    fig_smo2.update_layout(
+        template="plotly_dark", height=350,
+        yaxis=dict(title="SmO2 (%)"),
+        yaxis2=dict(title="Moc (W)", overlaying='y', side='right', showgrid=False),
+        legend=dict(orientation="h", y=1.05, x=0), hovermode="x unified",
+        margin=dict(l=20, r=20, t=30, b=20)
+    )
+    st.plotly_chart(fig_smo2, use_container_width=True)
+    
+    # Panel LT1/LT2
+    col_z1, col_z2 = st.columns(2)
+    
+    with col_z1:
+        if lt1_w:
+            st.markdown(f"""
+            <div style="padding:15px; border-radius:8px; border:2px solid #2ca02c; background-color: #222;">
+                <h3 style="margin:0; color: #2ca02c;">LT1 (SteadyState)</h3>
+                <h1 style="margin:5px 0; font-size:2.5em;">{int(lt1_w)} W</h1>
+                {f'<p style="margin:0; color:#aaa;"><b>HR:</b> {int(lt1_hr)} bpm</p>' if lt1_hr else ''}
+                {f'<p style="margin:0; color:#aaa;"><b>SmO2:</b> {lt1_smo2:.1f}%</p>' if lt1_smo2 else ''}
+            </div>
+            """, unsafe_allow_html=True)
+            if cp_input > 0:
+                st.caption(f"~{(lt1_w/cp_input)*100:.0f}% CP")
+        else:
+            st.info("LT1: Nie wykryto")
+    
+    with col_z2:
+        if lt2_w:
+            st.markdown(f"""
+            <div style="padding:15px; border-radius:8px; border:2px solid #d62728; background-color: #222;">
+                <h3 style="margin:0; color: #d62728;">LT2 (Próg)</h3>
+                <h1 style="margin:5px 0; font-size:2.5em;">{int(lt2_w)} W</h1>
+                {f'<p style="margin:0; color:#aaa;"><b>HR:</b> {int(lt2_hr)} bpm</p>' if lt2_hr else ''}
+                {f'<p style="margin:0; color:#aaa;"><b>SmO2:</b> {lt2_smo2:.1f}%</p>' if lt2_smo2 else ''}
+            </div>
+            """, unsafe_allow_html=True)
+            if cp_input > 0:
+                st.caption(f"~{(lt2_w/cp_input)*100:.0f}% CP")
+        else:
+            st.info("LT2: Nie wykryto")

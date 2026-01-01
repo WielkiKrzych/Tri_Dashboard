@@ -66,6 +66,7 @@ class TabRegistry:
         "heart_rate": ("modules.ui.heart_rate", "render_hr_tab"),
         "manual_thresholds": ("modules.ui.manual_thresholds", "render_manual_thresholds_tab"),
         "smo2_manual_thresholds": ("modules.ui.smo2_manual_thresholds", "render_smo2_manual_thresholds_tab"),
+        "summary": ("modules.ui.summary", "render_summary_tab"),
     }
 
     @classmethod
@@ -191,9 +192,10 @@ if uploaded_file is not None:
 
     with tab_overview:
         UIComponents.show_breadcrumb("📊 Overview")
-        t1, t2 = st.tabs(["📋 Raport", "📈 KPI"])
+        t1, t2, t3 = st.tabs(["📋 Raport", "📈 KPI", "📊 Podsumowanie"])
         with t1: render_tab_content("report", df_plot, rider_weight, cp_input)
         with t2: render_tab_content("kpi", df_plot, df_plot_resampled, metrics, rider_weight, decoupling_percent, drift_z2, vt1_vent, vt2_vent)
+        with t3: render_tab_content("summary", df_plot, df_plot_resampled, metrics, training_notes, uploaded_file.name, cp_input, w_prime_input, rider_weight, vt1_watts, vt2_watts, 0, 0)
 
     with tab_performance:
         UIComponents.show_breadcrumb("⚡ Performance")

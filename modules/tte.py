@@ -7,10 +7,11 @@ a target power percentage (e.g., 100% FTP ±5%).
 from typing import Dict, List, Optional, Tuple
 import json
 import numpy as np
-import pandas as pd
-from dataclasses import dataclass
-from datetime import datetime, timedelta
 import sqlite3
+import json
+from typing import List, Tuple, Dict, Optional, Callable
+from concurrent.futures import ProcessPoolExecutor, as_completed
+from pathlib import Path
 from modules.config import Config
 
 
@@ -258,105 +259,129 @@ def save_tte_to_db(filename: str, session_date: str, target_pct: float, tte_seco
         return False
 
 
+def _compute_single_session_tte(
+    csv_path: Path, 
+    target_pcts: List[float], 
+    ftp: float, 
+    tol_pct: float
+) -> Optional[Dict]:
+    """Helper for parallel processing of a single file."""
+    from modules.utils import load_data
+    from modules.calculations import process_data
+    
+    try:
+        with open(csv_path, 'rb') as f:
+            df_raw = load_data(f)
+        
+        if df_raw is None or df_raw.empty or 'watts' not in df_raw.columns:
+            return None
+            
+        df = process_data(df_raw)
+        power_series = df['watts']
+        
+        results = {}
+        for pct in target_pcts:
+            # We use the existing compute_tte within this process
+            tte_val = compute_tte(power_series, pct, ftp, tol_pct)
+            results[str(int(pct))] = int(tte_val)
+            
+        return results
+    except:
+        return None
+
+
 def batch_compute_tte_for_all_sessions(
     ftp: float,
     target_pcts: List[float] = [100.0],
     tol_pct: float = 5.0,
-    progress_callback: callable = None
+    progress_callback: Optional[Callable[[int, int, str], None]] = None
 ) -> Tuple[int, int]:
-    """Batch compute TTE for all sessions in the database.
-    
-    This function loads each historical CSV from treningi_csv, computes TTE,
-    and updates the extra_metrics field in the database.
-    
-    Args:
-        ftp: Functional Threshold Power
-        target_pcts: List of FTP percentages to compute (default: [100.0])
-        tol_pct: Tolerance percentage
-        progress_callback: Optional callback(current, total, message)
-        
-    Returns:
-        Tuple of (success_count, fail_count)
     """
-    from pathlib import Path
-    from modules.utils import load_data
-    from modules.calculations import process_data
+    Optimized batch processing using parallel execution and directory caching.
     
+    Complexity Analysis:
+    - Current Big O: O(N * (G + L + P + C))
+      N=Sessions, G=Directory Glob, L=Load, P=Process, C=Compute
+    - Expected Big O: O(N_files + (N * (L + P + C)) / Cores)
+    """
     db_path = Config.DB_PATH
-    training_folder = Path(__file__).parent / ".." / "treningi_csv"
-    training_folder = training_folder.resolve()
+    training_folder = Path(Config.BASE_DIR) / "treningi_csv"
     
     success_count = 0
     fail_count = 0
     
+    # 1. Directory Caching: Scan folder once O(N_files)
+    # Mapping of stem -> Full Path for O(1) matching
+    file_cache = {p.stem: p for p in training_folder.glob("*.csv")}
+    
     try:
         with sqlite3.connect(db_path) as conn:
             conn.row_factory = sqlite3.Row
-            cursor = conn.execute("SELECT id, date, filename, extra_metrics FROM sessions")
+            cursor = conn.execute("SELECT id, filename, extra_metrics FROM sessions")
             sessions = cursor.fetchall()
             total = len(sessions)
             
-            for i, row in enumerate(sessions):
-                filename = row['filename']
-                session_date = row['date']
+            # 2. Parallel Processing Setup
+            # Using ProcessPoolExecutor for CPU-bound load_data and compute_tte
+            with ProcessPoolExecutor() as executor:
+                futures = {}
+                row_map = {} # future -> row_id
                 
-                # Find the corresponding CSV file
-                csv_path = training_folder / filename
-                if not csv_path.exists():
-                    # Try to find with glob
-                    matches = list(training_folder.glob(f"*{Path(filename).stem}*"))
-                    if matches:
-                        csv_path = matches[0]
-                    else:
+                for i, row in enumerate(sessions):
+                    filename = row['filename']
+                    row_id = row['id']
+                    
+                    # O(1) Lookup
+                    csv_path = file_cache.get(Path(filename).stem)
+                    
+                    if not csv_path or not csv_path.exists():
                         fail_count += 1
                         if progress_callback:
-                            progress_callback(i + 1, total, f"❌ {filename}: file not found")
+                            progress_callback(i + 1, total, f"❌ {filename}: Not found")
                         continue
-                
-                try:
-                    # Load and process CSV
-                    with open(csv_path, 'rb') as f:
-                        df_raw = load_data(f)
-                    
-                    if df_raw is None or df_raw.empty or 'watts' not in df_raw.columns:
-                        fail_count += 1
-                        if progress_callback:
-                            progress_callback(i + 1, total, f"❌ {filename}: no power data")
-                        continue
-                    
-                    df = process_data(df_raw)
-                    power_series = df['watts']
-                    
-                    # Get existing extra_metrics
-                    extra = json.loads(row['extra_metrics'] or '{}')
-                    if 'tte' not in extra:
-                        extra['tte'] = {}
-                    
-                    # Compute TTE for each target percentage
-                    for pct in target_pcts:
-                        tte_seconds = compute_tte(power_series, pct, ftp, tol_pct)
-                        extra['tte'][str(int(pct))] = tte_seconds
-                    
-                    # Update database
-                    conn.execute(
-                        "UPDATE sessions SET extra_metrics = ? WHERE id = ?",
-                        (json.dumps(extra), row['id'])
-                    )
-                    
-                    success_count += 1
-                    if progress_callback:
-                        progress_callback(i + 1, total, f"✅ {filename}: TTE computed")
                         
-                except Exception as e:
-                    fail_count += 1
+                    future = executor.submit(
+                        _compute_single_session_tte, 
+                        csv_path, target_pcts, ftp, tol_pct
+                    )
+                    futures[future] = (row_id, filename, row['extra_metrics'])
+                
+                # 3. Collect Results as they complete
+                updates = []
+                for j, future in enumerate(as_completed(futures)):
+                    row_id, fname, old_extra_json = futures[future]
+                    try:
+                        new_tte = future.result()
+                        if new_tte:
+                            extra = json.loads(old_extra_json or '{}')
+                            if 'tte' not in extra:
+                                extra['tte'] = {}
+                            extra['tte'].update(new_tte)
+                            
+                            updates.append((json.dumps(extra), row_id))
+                            success_count += 1
+                            msg = f"✅ {fname}: OK"
+                        else:
+                            fail_count += 1
+                            msg = f"❌ {fname}: Data error"
+                    except Exception as e:
+                        fail_count += 1
+                        msg = f"⚠️ {fname}: {str(e)}"
+                        
                     if progress_callback:
-                        progress_callback(i + 1, total, f"❌ {filename}: {str(e)}")
-            
-            conn.commit()
+                        progress_callback(j + 1, total, msg)
+                
+                # 4. Batch DB Update (N+1 Solution)
+                if updates:
+                    conn.executemany(
+                        "UPDATE sessions SET extra_metrics = ? WHERE id = ?",
+                        updates
+                    )
+                    conn.commit()
             
     except Exception as e:
-        print(f"Batch TTE error: {e}")
-    
+        print(f"Parallel TTE error: {e}")
+        
     return success_count, fail_count
 
 

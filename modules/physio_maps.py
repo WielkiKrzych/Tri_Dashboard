@@ -115,7 +115,10 @@ def scatter_power_hr(
         template='plotly_dark',
         height=450,
         margin=dict(l=20, r=20, t=50, b=20),
-        coloraxis_colorbar=dict(title="Czas [min]")
+        coloraxis_colorbar=dict(
+            title="Czas [min]",
+            tickformat=".0f"
+        )
     )
     
     return fig
@@ -189,7 +192,10 @@ def scatter_power_smo2(
         template='plotly_dark',
         height=450,
         margin=dict(l=20, r=20, t=50, b=20),
-        coloraxis_colorbar=dict(title="Czas [min]")
+        coloraxis_colorbar=dict(
+            title="Czas [min]",
+            tickformat=".0f"
+        )
     )
     
     return fig

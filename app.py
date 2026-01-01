@@ -210,7 +210,8 @@ if uploaded_file is not None:
         with t6: render_tab_content("heart_rate", df_plot)
         with t7: render_tab_content("hemo", df_plot)
         with t8: render_tab_content("drift_maps", df_plot)
-        with t9: render_tab_content("tte", df_plot, cp_input)
+        filename = uploaded_file.name if uploaded_file else "manual_upload"
+        with t9: render_tab_content("tte", df_plot, cp_input, filename)
 
     with tab_physiology:
         UIComponents.show_breadcrumb("🫀 Physiology")

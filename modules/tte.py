@@ -10,6 +10,8 @@ import numpy as np
 import pandas as pd
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+import sqlite3
+from modules.config import Config
 
 
 @dataclass
@@ -169,6 +171,91 @@ def compute_trend_data(
         Dict mapping window_days to rolling stats
     """
     return {w: rolling_tte(history, w) for w in windows}
+
+
+def get_tte_history_from_db(days: int = 90, target_pct: float = 100.0) -> List[Dict]:
+    """Fetch historical TTE data from training_history.db.
+    
+    Args:
+        days: Historical window in days
+        target_pct: The target FTP percentage to look for in extra_metrics
+        
+    Returns:
+        List of dicts with 'date', 'tte_seconds', 'session_id'
+    """
+    db_path = Config.DB_PATH
+    history = []
+    
+    try:
+        with sqlite3.connect(db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.execute("""
+                SELECT id, date, filename, extra_metrics 
+                FROM sessions 
+                WHERE date >= date('now', ?)
+                ORDER BY date ASC
+            """, (f'-{days} days',))
+            
+            for row in cursor.fetchall():
+                extra = json.loads(row['extra_metrics'] or '{}')
+                tte_data = extra.get('tte', {})
+                # tte_data stores { "target_pct_str": tte_seconds }
+                tte_val = tte_data.get(str(int(target_pct)))
+                
+                if tte_val is not None:
+                    history.append({
+                        "session_id": row['filename'],
+                        "date": row['date'],
+                        "tte_seconds": int(tte_val)
+                    })
+    except Exception as e:
+        print(f"Error fetching TTE history: {e}")
+        
+    return history
+
+
+def save_tte_to_db(filename: str, session_date: str, target_pct: float, tte_seconds: int) -> bool:
+    """Save/Update TTE value in the session's extra_metrics.
+    
+    Args:
+        filename: Session filename (unique identifier with date)
+        session_date: Session date string (YYYY-MM-DD)
+        target_pct: FTP percentage
+        tte_seconds: Computed TTE
+        
+    Returns:
+        Success boolean
+    """
+    db_path = Config.DB_PATH
+    try:
+        with sqlite3.connect(db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            # 1. Get existing extra_metrics
+            cursor = conn.execute(
+                "SELECT extra_metrics FROM sessions WHERE filename = ? AND date = ?",
+                (filename, session_date)
+            )
+            row = cursor.fetchone()
+            if not row:
+                return False
+                
+            extra = json.loads(row['extra_metrics'] or '{}')
+            if 'tte' not in extra:
+                extra['tte'] = {}
+            
+            # Save for specific target_pct
+            extra['tte'][str(int(target_pct))] = tte_seconds
+            
+            # 2. Update DB
+            conn.execute(
+                "UPDATE sessions SET extra_metrics = ? WHERE filename = ? AND date = ?",
+                (json.dumps(extra), filename, session_date)
+            )
+            conn.commit()
+            return True
+    except Exception as e:
+        print(f"Error saving TTE to db: {e}")
+        return False
 
 
 def export_tte_json(result: TTEResult) -> str:

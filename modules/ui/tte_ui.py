@@ -15,16 +15,19 @@ from modules.tte import (
     rolling_tte,
     format_tte,
     export_tte_json,
-    TTEResult
+    TTEResult,
+    get_tte_history_from_db,
+    save_tte_to_db
 )
 
 
-def render_tte_tab(df_plot: pd.DataFrame, ftp: float) -> None:
+def render_tte_tab(df_plot: pd.DataFrame, ftp: float, uploaded_file_name: str = "manual_upload") -> None:
     """Render the TTE analysis tab.
     
     Args:
         df_plot: Session data with 'watts' column
         ftp: Functional Threshold Power
+        uploaded_file_name: Original filename for record matching
     """
     st.header("⏱️ Time-to-Exhaustion (TTE)")
     st.markdown("""
@@ -65,7 +68,7 @@ def render_tte_tab(df_plot: pd.DataFrame, ftp: float) -> None:
     accept_to_history = st.toggle(
         "⭐ Zalicz trening do historii TTE", 
         value=False,
-        help="Włącz, aby trwale dodać wynik TTE z tej sesji do Twoich trendów 30/90 dni."
+        help="Włącz, aby trwale dodać wynik TTE z tej sesji do Twojej bazy treningów (training_history.db)."
     )
     
     # Compute TTE for current session
@@ -78,20 +81,26 @@ def render_tte_tab(df_plot: pd.DataFrame, ftp: float) -> None:
     )
     
     # Update historical data if accepted
-    if 'tte_history' not in st.session_state:
-        st.session_state.tte_history = []
-        
     if accept_to_history:
-        # Check if already in history by session_id to avoid duplicates
-        existing_ids = [entry.get('session_id') for entry in st.session_state.tte_history]
-        if result.session_id not in existing_ids:
-            st.session_state.tte_history.append({
-                "session_id": result.session_id,
-                "date": datetime.now().isoformat(),
-                "tte_seconds": result.tte_seconds,
-                "target_pct": result.target_pct
-            })
-            st.toast("Wynik TTE został dodany do historii!", icon="⏱️")
+        # Extract date from first valid timestamp if possible
+        session_date = datetime.now().strftime("%Y-%m-%d")
+        if 'timestamp' in df_plot.columns and not df_plot['timestamp'].empty:
+            try:
+                ts = pd.to_datetime(df_plot['timestamp'].iloc[0])
+                session_date = ts.strftime("%Y-%m-%d")
+            except:
+                pass
+        
+        success = save_tte_to_db(
+            filename=uploaded_file_name,
+            session_date=session_date,
+            target_pct=target_pct,
+            tte_seconds=result.tte_seconds
+        )
+        if success:
+            st.toast(f"Wynik TTE ({target_pct}%) zapisany w bazie!", icon="✅")
+        else:
+            st.warning("Nie znaleziono treningu w bazie. Upewnij się, że został zaimportowany.")
     
     # Display results
     st.subheader("📊 Wyniki Sesji")
@@ -132,9 +141,9 @@ def render_tte_tab(df_plot: pd.DataFrame, ftp: float) -> None:
     # Power distribution chart
     _render_power_distribution_chart(df_plot, result)
     
-    # Trend section (placeholder for historical data)
+    # Trend section
     st.divider()
-    _render_trend_section()
+    _render_trend_section(target_pct)
     
     # Export section
     st.divider()
@@ -228,28 +237,24 @@ def _render_power_distribution_chart(df_plot: pd.DataFrame, result: TTEResult) -
     st.plotly_chart(fig, use_container_width=True)
 
 
-def _render_trend_section() -> None:
-    """Render TTE trend section with placeholder data."""
-    st.subheader("📈 Trend TTE (30/90 dni)")
+def _render_trend_section(target_pct: float = 100.0) -> None:
+    """Render TTE trend section pulling data from DB."""
+    st.subheader(f"📈 Trend TTE @ {target_pct:.0f}% FTP (30/90 dni)")
     
-    # For now, show info about future functionality
-    # In production, this would load from session state or database
+    # Fetch data from DB instead of session state
+    history = get_tte_history_from_db(days=90, target_pct=target_pct)
     
-    # Check if we have historical data in session state
-    if 'tte_history' not in st.session_state:
-        st.session_state.tte_history = []
-    
-    if not st.session_state.tte_history:
-        st.info("""
-        📊 **Trend będzie dostępny po zebraniu danych z kilku sesji.**
+    if not history:
+        st.info(f"""
+        📊 **Brak danych historycznych dla {target_pct:.0f}% FTP w bazie.**
         
-        Każda przeanalizowana sesja jest automatycznie zapisywana,
-        a wykres trendu pokaże medianę TTE dla ostatnich 30 i 90 dni.
+        Użyj przełącznika 'Zalicz trening do historii TTE' powyżej, 
+        aby dodać wyniki z zaimportowanych plików do bazy.
         """)
         return
     
     # If we have data, render the trend chart
-    _render_trend_chart(st.session_state.tte_history)
+    _render_trend_chart(history)
 
 
 def _render_trend_chart(history: List[Dict]) -> None:

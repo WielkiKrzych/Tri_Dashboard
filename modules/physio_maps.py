@@ -326,13 +326,15 @@ def trend_at_constant_power(
     # Create figure
     fig = go.Figure()
     
-    # HR trace
+    # HR trace (smoothed)
+    segment[f'{hr_col}_smooth'] = segment[hr_col].rolling(window=30, min_periods=1).mean()
     fig.add_trace(go.Scatter(
         x=segment['time_min'],
-        y=segment[hr_col],
+        y=segment[f'{hr_col}_smooth'],
         mode='lines',
-        name='HR',
-        line=dict(color='#FF6B6B', width=2)
+        name='HR (30s avg)',
+        line=dict(color='#FF6B6B', width=2),
+        hovertemplate='%{y:.1f} bpm'
     ))
     
     # HR trendline
@@ -345,15 +347,17 @@ def trend_at_constant_power(
         line=dict(color='#FF6B6B', width=2, dash='dash')
     ))
     
-    # SmO2 trace (if available)
+    # SmO2 trace (smoothed)
     if smo2_col and smo2_slope is not None:
+        segment[f'{smo2_col}_smooth'] = segment[smo2_col].rolling(window=30, min_periods=1).mean()
         fig.add_trace(go.Scatter(
             x=segment['time_min'],
-            y=segment[smo2_col],
+            y=segment[f'{smo2_col}_smooth'],
             mode='lines',
-            name='SmO₂',
+            name='SmO₂ (30s avg)',
             line=dict(color='#4ECDC4', width=2),
-            yaxis='y2'
+            yaxis='y2',
+            hovertemplate='%{y:.1f} %'
         ))
         
         # SmO2 trendline
@@ -364,7 +368,8 @@ def trend_at_constant_power(
             mode='lines',
             name=f'SmO₂ Trend ({smo2_slope:.2f} %/min)',
             line=dict(color='#4ECDC4', width=2, dash='dash'),
-            yaxis='y2'
+            yaxis='y2',
+            hovertemplate='Trend: %{y:.1f} %'
         ))
     
     fig.update_layout(
@@ -378,10 +383,23 @@ def trend_at_constant_power(
             overlaying='y',
             side='right'
         ) if smo2_col else None,
+        hovermode="x unified",
         height=400,
-        margin=dict(l=20, r=20, t=50, b=20),
+        margin=dict(l=20, r=60, t=50, b=20),
         legend=dict(orientation='h', yanchor='bottom', y=1.02)
     )
+    
+    # Precise axes formatting
+    fig.update_yaxes(title_text="HR [bpm]", tickformat=".0f", color='#FF6B6B', side='left')
+    if smo2_col:
+        fig.update_layout(yaxis2=dict(
+            title='SmO₂ [%]',
+            tickformat=".1f",
+            color='#4ECDC4',
+            overlaying='y',
+            side='right',
+            anchor='x'
+        ))
     
     # Calculate correlations
     # Detect HR column again for safety

@@ -140,24 +140,23 @@ def render_drift_maps_tab(df_plot: pd.DataFrame) -> None:
     
     st.divider()
     
-    # ===== OVERALL METRICS JSON =====
-    st.subheader("📋 Metryki Sesji (JSON)")
-    
-    overall_metrics = calculate_drift_metrics(df_plot)
-    
-    col_json1, col_json2 = st.columns([2, 1])
-    
-    with col_json1:
-        st.json(overall_metrics)
-    
-    with col_json2:
-        st.download_button(
-            "📥 Pobierz JSON",
-            data=json.dumps(overall_metrics, indent=2),
-            file_name="drift_metrics.json",
-            mime="application/json",
-            key="download_drift_json"
-        )
+    # ===== OVERALL METRICS JSON (Hidden in Expander) =====
+    with st.expander("📋 Metryki Sesji (JSON)"):
+        overall_metrics = calculate_drift_metrics(df_plot)
+        
+        col_json1, col_json2 = st.columns([2, 1])
+        
+        with col_json1:
+            st.json(overall_metrics)
+        
+        with col_json2:
+            st.download_button(
+                "📥 Pobierz JSON",
+                data=json.dumps(overall_metrics, indent=2),
+                file_name="drift_metrics.json",
+                mime="application/json",
+                key="download_drift_json"
+            )
     
     # Interpretation
     with st.expander("📚 Interpretacja metryk"):

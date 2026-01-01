@@ -58,12 +58,37 @@ def normalize_columns_pandas(df_pd: pd.DataFrame) -> pd.DataFrame:
     mapping = {}
     cols = list(df_pd.columns)
     
-    if 've' in cols and 'tymeventilation' not in cols:
-        mapping['ve'] = 'tymeventilation'
-    if 'ventilation' in cols and 'tymeventilation' not in cols:
-        mapping['ventilation'] = 'tymeventilation'
-    if 'total_hemoglobin' in cols and 'thb' not in cols:
-        mapping['total_hemoglobin'] = 'thb'
+    # Mapping definitions: {alias: canonical}
+    aliases = {
+        # Heart Rate
+        'hr': 'heartrate', 'heart rate': 'heartrate', 'bpm': 'heartrate', 
+        'tętno': 'heartrate', 'heartrate': 'heartrate', 'heart_rate': 'heartrate',
+        'heart-rate': 'heartrate', 'pulse': 'heartrate', 'heart_rate_bpm': 'heartrate',
+        'heartrate_bpm': 'heartrate', 'hr_bpm': 'heartrate',
+        # Power
+        'power': 'watts', 'pwr': 'watts', 'moc': 'watts', 'w': 'watts', 'watts': 'watts',
+        # Core Temp
+        'core temp': 'core_temperature', 'core_temp': 'core_temperature', 
+        'temp_central': 'core_temperature', 'temp': 'core_temperature',
+        'core temperature': 'core_temperature',
+        # Skin Temp
+        'skin temp': 'skin_temperature', 'skin_temp': 'skin_temperature',
+        'skin temperature': 'skin_temperature',
+        # Ventilation
+        've': 'tymeventilation', 'ventilation': 'tymeventilation', 
+        'vent': 'tymeventilation',
+        # Breath Rate
+        'br': 'tymebreathrate', 'rr': 'tymebreathrate', 'breath rate': 'tymebreathrate',
+        'breathing rate': 'tymebreathrate', 'respiration rate': 'tymebreathrate',
+        # Cadence
+        'cad': 'cadence', 'rpm': 'cadence',
+        # Hematology
+        'total_hemoglobin': 'thb', 'total hemoglobin': 'thb'
+    }
+
+    for alias, canonical in aliases.items():
+        if alias in cols and canonical not in cols:
+            mapping[alias] = canonical
     
     if mapping:
         df_pd = df_pd.rename(columns=mapping)

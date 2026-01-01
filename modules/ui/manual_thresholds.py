@@ -5,7 +5,7 @@ from scipy import stats
 from modules.calculations.thresholds import analyze_step_test
 from modules.calculations.quality import check_step_test_protocol
 
-def render_manual_thresholds_tab(target_df, training_notes, uploaded_file_name, cp_input):
+def render_manual_thresholds_tab(target_df, training_notes, uploaded_file_name, cp_input, max_hr_input):
     """Ręczna edycja progów VT1/VT2 i wizualizacja na wykresie wentylacji."""
     st.header("🛠️ Manualna Edycja Progów (VT1 / VT2)")
     st.markdown("Wprowadź własne wartości mocy dla progów VT1 i VT2, aby zobaczyć je na wykresie.")
@@ -133,7 +133,7 @@ def render_manual_thresholds_tab(target_df, training_notes, uploaded_file_name, 
         if manual_vt1 > 0:
             st.markdown(f"""
             <div style="padding:15px; border-radius:8px; border:2px solid #ffa15a; background-color: #222;">
-                <h3 style="margin:0; color: #ffa15a;">VT1 (AeT)</h3>
+                <h3 style="margin:0; color: #ffa15a;">VT1 (Próg Tlenowy)</h3>
                 <h1 style="margin:5px 0; font-size:2.5em;">{int(manual_vt1)} W</h1>
                 {f'<p style="margin:0; color:#aaa;"><b>HR:</b> {int(manual_vt1_hr)} bpm</p>' if manual_vt1_hr > 0 else (f'<p style="margin:0; color:#aaa;"><b>HR (est):</b> {int(vt1_hr_est)} bpm</p>' if vt1_hr_est else '')}
                 {f'<p style="margin:0; color:#aaa;"><b>VE:</b> {manual_vt1_ve:.1f} L/min</p>' if manual_vt1_ve > 0 else ''}
@@ -148,7 +148,7 @@ def render_manual_thresholds_tab(target_df, training_notes, uploaded_file_name, 
         if manual_vt2 > 0:
             st.markdown(f"""
             <div style="padding:15px; border-radius:8px; border:2px solid #ef553b; background-color: #222;">
-                <h3 style="margin:0; color: #ef553b;">VT2 (AnT)</h3>
+                <h3 style="margin:0; color: #ef553b;">VT2 (Próg Beztlenowy)</h3>
                 <h1 style="margin:5px 0; font-size:2.5em;">{int(manual_vt2)} W</h1>
                 {f'<p style="margin:0; color:#aaa;"><b>HR:</b> {int(manual_vt2_hr)} bpm</p>' if manual_vt2_hr > 0 else (f'<p style="margin:0; color:#aaa;"><b>HR (est):</b> {int(vt2_hr_est)} bpm</p>' if vt2_hr_est else '')}
                 {f'<p style="margin:0; color:#aaa;"><b>VE:</b> {manual_vt2_ve:.1f} L/min</p>' if manual_vt2_ve > 0 else ''}
@@ -232,7 +232,7 @@ def render_manual_thresholds_tab(target_df, training_notes, uploaded_file_name, 
         fig_thresh.add_vline(x=vt1_time_manual, line=dict(color="#ffa15a", width=3, dash="dash"), layer="above")
         fig_thresh.add_annotation(
             x=vt1_time_manual, y=1, yref="paper",
-            text=f"<b>VT1 (AeT)</b><br>{int(manual_vt1)}W",
+            text=f"<b>VT1 (Próg Tlenowy)</b><br>{int(manual_vt1)}W",
             showarrow=False, font=dict(color="white", size=11),
             bgcolor="rgba(255, 161, 90, 0.8)", bordercolor="#ffa15a",
             borderwidth=2, borderpad=4, align="center", xanchor="center", yanchor="top"
@@ -242,7 +242,7 @@ def render_manual_thresholds_tab(target_df, training_notes, uploaded_file_name, 
         fig_thresh.add_vline(x=vt2_time_manual, line=dict(color="#ef553b", width=3, dash="dash"), layer="above")
         fig_thresh.add_annotation(
             x=vt2_time_manual, y=1, yref="paper",
-            text=f"<b>VT2 (AnT)</b><br>{int(manual_vt2)}W",
+            text=f"<b>VT2 (Próg Beztlenowy)</b><br>{int(manual_vt2)}W",
             showarrow=False, font=dict(color="white", size=11),
             bgcolor="rgba(239, 85, 59, 0.8)", bordercolor="#ef553b",
             borderwidth=2, borderpad=4, align="center", xanchor="center", yanchor="bottom",
@@ -355,3 +355,93 @@ def render_manual_thresholds_tab(target_df, training_notes, uploaded_file_name, 
         - Czysty sygnał wentylacji (stabilny sensor)
         - Brak przerw i wahań mocy
         """)
+
+    # 4. STREFY TRENINGOWE (NOWE)
+    st.divider()
+    st.subheader("🎨 Strefy Treningowe")
+    st.markdown("Ustaw parametry bazowe do wyliczenia stref:")
+
+    col_z1, col_z2, col_z3 = st.columns(3)
+    with col_z1:
+        zone_vt2 = st.number_input("VT2 Power (W)", min_value=0, max_value=1000, value=int(manual_vt2) if manual_vt2 > 0 else 250, step=5, help="100% mocy dla wyliczenia stref")
+    with col_z2:
+        zone_lthr = st.number_input("LTHR (HR na VT2)", min_value=0, max_value=250, value=int(manual_vt2_hr) if manual_vt2_hr > 0 else 170, step=1, help="100% tętna progowego (VT2)")
+    with col_z3:
+        zone_max_hr = st.number_input("Max Heart Rate (bpm)", min_value=0, max_value=250, value=int(max_hr_input) if max_hr_input > 0 else 190, step=1)
+
+    if zone_vt2 > 0:
+        zones = _calculate_zones(manual_vt1, zone_vt2, cp_input, zone_max_hr, zone_lthr)
+        
+        zone_data = []
+        # power_zones_list = list(zones['power'].items())
+        # hr_zones_list = list(zones['hr'].items())
+        
+        power_keys = ['Z1_Recovery', 'Z2_Endurance', 'Z3_Tempo', 'Z4_Threshold', 'Z5_VO2max', 'Z6_Anaerobic']
+        
+        for i, key in enumerate(power_keys, 1):
+            p_low, p_high = zones['power'][key]
+            hr_range = zones['hr'].get(key, (None, None))
+            
+            # Use bpm only, no "S" labels
+            hr_val = f"{hr_range[0]} - {hr_range[1]}" if hr_range[0] is not None else "—"
+            
+            zone_data.append({
+                "Strefa": key.split('_')[0], # Z1, Z2, etc.
+                "Moc (wat)": f"{p_low} - {p_high} W",
+                "Tętno (bpm)": hr_val,
+                "Fizjologia": zones['description'].get(key, "")
+            })
+        
+        st.dataframe(pd.DataFrame(zone_data), use_container_width=True, hide_index=True)
+        _render_zones_bar(zones['power'])
+    else:
+        st.info("Ustaw manualnie VT1 i VT2, aby wygenerować strefy treningowe.")
+
+def _calculate_zones(vt1: int, vt2: int, cp: int, max_hr: int, lthr: int) -> dict:
+    """Obliczanie stref treningowych na podstawie progów."""
+    return {
+        'power': {
+            'Z1_Recovery': (0, int(vt2 * 0.55)),
+            'Z2_Endurance': (int(vt2 * 0.55) + 1, int(vt2 * 0.75)),
+            'Z3_Tempo': (int(vt2 * 0.75) + 1, int(vt2 * 0.90)),
+            'Z4_Threshold': (int(vt2 * 0.90) + 1, int(vt2 * 1.05)),
+            'Z5_VO2max': (int(vt2 * 1.05) + 1, int(vt2 * 1.20)),
+            'Z6_Anaerobic': (int(vt2 * 1.20) + 1, int(vt2 * 1.50))
+        },
+        'hr': {
+            'Z1_Recovery': (0, int(lthr * 0.72)),
+            'Z2_Endurance': (int(lthr * 0.72) + 1, int(lthr * 0.81)),
+            'Z3_Tempo': (int(lthr * 0.81) + 1, int(lthr * 0.92)),
+            'Z4_Threshold': (int(lthr * 0.92) + 1, int(lthr * 1.00)),
+            'Z5_VO2max': (int(lthr * 1.01), max_hr),
+            'Z6_Anaerobic': (None, None)
+        },
+        'description': {
+            'Z1_Recovery': 'Regeneracja',
+            'Z2_Endurance': 'Baza tlenowa',
+            'Z3_Tempo': 'Tempo / Sweet Spot',
+            'Z4_Threshold': 'Próg FTP',
+            'Z5_VO2max': 'VO2max',
+            'Z6_Anaerobic': 'Beztlenowa'
+        }
+    }
+
+def _render_zones_bar(power_zones: dict):
+    """Renderowanie kolorowego paska stref mocy."""
+    colors = ['#3498db', '#2ecc71', '#f1c40f', '#e67e22', '#e74c3c', '#9b59b6']
+    fig = go.Figure()
+    
+    for i, (zone, (low, high)) in enumerate(power_zones.items()):
+        fig.add_trace(go.Bar(
+            y=['Strefy Mocy'], x=[high - low], name=zone.replace('_', ' '),
+            orientation='h', marker_color=colors[i],
+            text=f"{zone.split('_')[0]}<br>{low}-{high}W", textposition='inside',
+            hovertemplate=f"<b>{zone.replace('_', ' ')}</b><br>{low}-{high}W<extra></extra>"
+        ))
+    
+    fig.update_layout(
+        barmode='stack', height=100, margin=dict(l=0, r=0, t=0, b=0),
+        showlegend=False, xaxis=dict(title='Moc (W)', showgrid=False),
+        yaxis=dict(showticklabels=False)
+    )
+    st.plotly_chart(fig, use_container_width=True)

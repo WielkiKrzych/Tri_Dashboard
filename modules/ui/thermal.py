@@ -92,18 +92,35 @@ def render_thermal_tab(df_plot):
 
     st.header("Koszt Termiczny Wydajności (Cardiac Drift)")
     
-    # Sprawdzamy czy mamy potrzebne kolumny
-    temp_col = 'core_temperature_smooth' if 'core_temperature_smooth' in df_plot.columns else 'core_temperature'
+    # Helper function to find column by aliases
+    def find_column(df, aliases):
+        for alias in aliases:
+            if alias in df.columns:
+                return alias
+        return None
     
-    if 'watts' in df_plot.columns and temp_col in df_plot.columns and 'heartrate' in df_plot.columns:
+    # Define aliases for each column type
+    temp_aliases = ['core_temperature_smooth', 'core_temperature', 'core_temp', 'temp', 'temperature', 'core temp']
+    hr_aliases = ['heartrate', 'heartrate_smooth', 'heart_rate', 'hr', 'heart rate', 'bpm', 'pulse']
+    pwr_aliases = ['watts', 'watts_smooth', 'power', 'pwr', 'moc']
+    
+    temp_col = find_column(df_plot, temp_aliases)
+    hr_col = find_column(df_plot, hr_aliases)
+    pwr_col = find_column(df_plot, pwr_aliases)
+    
+    has_pwr = pwr_col is not None
+    has_hr = hr_col is not None
+    has_temp = temp_col is not None
+
+    if has_pwr and has_hr and has_temp:
         
         # 1. FILTROWANIE DANYCH
         # Wywalamy zera i postoje
-        mask = (df_plot['watts'] > 10) & (df_plot['heartrate'] > 60)
+        mask = (df_plot[pwr_col] > 10) & (df_plot[hr_col] > 60)
         df_clean = df_plot[mask].copy()
         
         # 2. OBLICZENIE EFEKTYWNOŚCI (EF)
-        df_clean['eff_raw'] = df_clean['watts'] / df_clean['heartrate']
+        df_clean['eff_raw'] = df_clean[pwr_col] / df_clean[hr_col]
         
         # 3. USUWANIE OUTLIERÓW
         df_clean = df_clean[df_clean['eff_raw'] < 6.0]
@@ -161,7 +178,12 @@ def render_thermal_tab(df_plot):
         else:
             st.warning("Zbyt mało danych po przefiltrowaniu (sprawdź czy masz odczyty mocy i tętna).")
     else:
-        st.error("Brak wymaganych kolumn (watts, heartrate, core_temperature).")
+        missing = []
+        if not has_pwr: missing.append("watts (moc)")
+        if not has_hr: missing.append("heartrate (tętno)")
+        if not has_temp: missing.append("core_temperature (temperatura głęboka)")
+        
+        st.error(f"Brak wymaganych danych dla tego wykresu: {', '.join(missing)}")
         
         st.info("""
         **💡 Interpretacja: Koszt Fizjologiczny Ciepła (Decoupling Termiczny)**

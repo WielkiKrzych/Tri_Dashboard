@@ -12,35 +12,57 @@ def render_nutrition_tab(df_plot, cp_input, vt1_watts, vt2_watts):
     initial_glycogen = c2.number_input("Początkowy Zapas Glikogenu [g]", min_value=200, max_value=800, value=450, step=50, help="Standardowo: 400-500g dla wytrenowanego sportowca.")
     efficiency_input = c3.number_input("Sprawność Mechaniczna [%]", min_value=18.0, max_value=26.0, value=22.0, step=0.5, help="Amator: 18-21%, Pro: 23%+")
     
-    # --- ZMIANA: "MENU KOLARSKIE" (CHEAT SHEET) ---
+    # --- MENU KOLARSKIE (ROZBUDOWANE) ---
     with st.expander("🍬 Menu Kolarskie (Ile to węglowodanów?)", expanded=False):
         st.markdown("""
-        Aby dostarczyć 90g węgli na godzinę, potrzebujesz np.:
-        * **3 x Żel Energetyczny** (standardowo ~25-30g CHO / sztukę)
-        * **1.5 Bidonu Izotonika** (standardowo ~40g CHO / 500ml)
-        * **3 x Banan** (~25-30g CHO / sztukę)
-        * **2 x Baton Energetyczny** (~40-50g CHO / sztukę)
-        * **Garść Żelków (100g)** (~75g CHO)
+        ### Produkty Energetyczne na Rower
+        
+        | Produkt | CHO [g] | Szybkość wchłaniania | Uwagi |
+        |---------|---------|---------------------|-------|
+        | **Żel energetyczny** (1 szt.) | 25-30 | ⚡ Bardzo szybka | Glukoza/maltodekstryna, łatwy do spożycia |
+        | **Baton energetyczny** | 40-50 | 🔵 Średnia | Orzech/płatki, dłuższe żucie |
+        | **Banan** | 25-30 | 🟢 Średnia | Naturalny cukier + potas |
+        | **Izotonik (500ml)** | 30-40 | ⚡ Szybka | Płynne, łatwe do spożycia w ruchu |
+        | **Żelki (100g)** | ~75 | ⚡ Szybka | Glukoza/fruktoza mix, idealne na interwały |
+        | **Rodzynki (50g)** | 35 | 🔵 Średnia | Naturalne, ale wolniejsze wchłanianie |
+        | **Miód (1 łyżka)** | 20 | ⚡ Szybka | Może podrażnić żołądek |
+        | **Cola (330ml)** | 35 | ⚡ Szybka | Kofeina + cukier, "emergency boost" |
+        | **Daktyle (3 szt.)** | 45 | 🟢 Średnia | Naturalne, wysokie w błonnik |
+        | **Ryż kleisty (100g)** | 80 | 🔵 Średnia-wolna | "Rice cakes", popularne w peletonie |
+        | **Syrop klonowy (50ml)** | 50 | ⚡ Szybka | Alternatywa dla żeli |
+        
+        ---
+        
+        **💡 Pro Tip: Glukoza + Fruktoza (2:1)**
+        
+        Jelita mają oddzielne transportery dla glukozy (SGLT1) i fruktozy (GLUT5). 
+        Łącząc oba cukry w proporcji 2:1, możesz wchłonąć nawet **90-120g/h** zamiast standardowych 60g/h samej glukozy.
         
         *Pamiętaj: Trening jelita jest równie ważny jak trening nóg! Nie testuj 90g/h pierwszy raz na zawodach.*
         """)
     
     if 'watts' in df_plot.columns:
-        intensity_factor = df_plot['watts'] / cp_input
+        # --- NOWY MODEL INSCYD-INSPIRED ---
+        # Spalanie oparte na %FTP z ciągłą krzywą
+        intensity = df_plot['watts'] / cp_input if cp_input > 0 else 0
         
-        # Model metaboliczny (Logika bez zmian)
-        conditions = [
-            (df_plot['watts'] < vt1_watts),
-            (df_plot['watts'] >= vt1_watts) & (df_plot['watts'] < vt2_watts),
-            (df_plot['watts'] >= vt2_watts)
-        ]
-        choices = [0.3, 0.8, 1.1] 
-        carb_fraction = np.select(conditions, choices, default=1.0)
+        # Bazowy współczynnik spalania (g/W/h) rośnie wykładniczo z intensywnością
+        # Formuła uproszczona: base_rate * intensity^exponent
+        base_rate = 0.5  # g/W/h przy 100% FTP
         
-        # Obliczenia energii
-        energy_kcal_sec = df_plot['watts'] / (efficiency_input/100.0) / 4184.0
-        carbs_burned_per_sec = (energy_kcal_sec * carb_fraction) / 4.0
-        cumulative_burn = carbs_burned_per_sec.cumsum()
+        # Krzywą kalibrujemy by pasowała do danych INSCYD:
+        # - 50% FTP: ~20-30g/h
+        # - 75% FTP: ~50-70g/h
+        # - 100% FTP: ~100-120g/h
+        # - 120% FTP: ~150-180g/h
+        
+        # Formuła: CarbRate = Power * BaseRate * (Intensity^1.5)
+        # Dla 250W @100%: 250 * 0.5 * 1.0 = 125 g/h
+        # Dla 200W @80%: 200 * 0.5 * 0.71 = 71 g/h
+        # Dla 150W @60%: 150 * 0.5 * 0.46 = 35 g/h
+        
+        carb_rate_per_sec = (df_plot['watts'] * base_rate * np.power(np.clip(intensity, 0.1, 2.0), 1.5)) / 3600.0
+        cumulative_burn = carb_rate_per_sec.cumsum()
         
         intake_per_sec = carb_intake / 3600.0
         cumulative_intake = np.cumsum(np.full(len(df_plot), intake_per_sec))
@@ -52,7 +74,7 @@ def render_nutrition_tab(df_plot, cp_input, vt1_watts, vt2_watts):
             'Bilans Glikogenu [g]': glycogen_balance,
             'Spalone [g]': cumulative_burn,
             'Spożyte [g]': cumulative_intake,
-            'Burn Rate [g/h]': carbs_burned_per_sec * 3600
+            'Burn Rate [g/h]': carb_rate_per_sec * 3600
         })
         
         # --- WYKRES 1: BILANS GLIKOGENU ---
@@ -103,6 +125,9 @@ def render_nutrition_tab(df_plot, cp_input, vt1_watts, vt2_watts):
         # Linia Spożycia (Intake)
         fig_burn.add_hline(y=carb_intake, line_dash="dot", line_color="#00cc96", annotation_text=f"Intake: {carb_intake}g/h", annotation_position="top right")
         
+        # Linia limitu jelitowego
+        fig_burn.add_hline(y=90, line_dash="dash", line_color="yellow", opacity=0.5, annotation_text="Limit jelitowy ~90g/h", annotation_position="bottom left")
+        
         fig_burn.update_layout(
             template="plotly_dark",
             title="Zapotrzebowanie na Węglowodany",
@@ -119,25 +144,78 @@ def render_nutrition_tab(df_plot, cp_input, vt1_watts, vt2_watts):
         total_burn = cumulative_burn.iloc[-1]
         total_intake = cumulative_intake[-1]
         final_balance = glycogen_balance.iloc[-1]
+        avg_burn_rate = df_nutri['Burn Rate [g/h]'].mean()
         
-        n1, n2, n3 = st.columns(3)
+        n1, n2, n3, n4 = st.columns(4)
         n1.metric("Spalone Węgle", f"{total_burn:.0f} g", help="Suma węglowodanów zużytych na wysiłek")
         n2.metric("Spożyte Węgle", f"{total_intake:.0f} g", help="Suma węglowodanów dostarczonych z jedzenia/napojów")
         n3.metric("Wynik Końcowy", f"{final_balance:.0f} g", delta=f"{final_balance - initial_glycogen:.0f} g", delta_color="inverse" if final_balance < 0 else "normal")
+        n4.metric("Śr. Spalanie", f"{avg_burn_rate:.0f} g/h", help="Średnie tempo spalania węgli podczas treningu")
         
         if final_balance < 0:
-            st.error(f"⚠️ **UWAGA:** Według symulacji, Twoje zapasy glikogenu wyczerpały się w okolicach {df_nutri[df_nutri['Bilans Glikogenu [g]'] < 0]['Czas [min]'].iloc[0]:.0f} minuty! To oznacza ryzyko 'odcięcia' (bonk).")
+            bonk_time = df_nutri[df_nutri['Bilans Glikogenu [g]'] < 0]['Czas [min]'].iloc[0]
+            st.error(f"⚠️ **UWAGA:** Według symulacji, Twoje zapasy glikogenu wyczerpały się w okolicach {bonk_time:.0f} minuty! To oznacza ryzyko 'odcięcia' (bonk).")
         else:
             st.success(f"✅ **OK:** Zakończyłeś trening z zapasem {final_balance:.0f}g glikogenu. Strategia żywieniowa wystarczająca dla tej intensywności.")
         
-        st.info("""
-        **💡 Fizjologia Spalania (Model VT1/VT2):**
-        
-        * **Strefa Tłuszczowa (< VT1):** Spalasz ok. **20-40g węgli/h**. Reszta to tłuszcz. Tutaj możesz jechać godzinami na samej wodzie.
-        * **Strefa Mieszana (VT1 - VT2):** Spalanie węgli skacze do **60-90g/h**. Musisz zacząć jeść (żele/izotonik), żeby nie opróżniać baku.
-        * **Strefa Cukrowa (> VT2):** "Turbo". Spalasz **120g/h i więcej**. Twoje jelita nie są w stanie tyle wchłonąć (max ~90g/h). Każda minuta tutaj to "pożyczka", której nie spłacisz w trakcie jazdy.
-        
-        *Model uwzględnia Twoją wagę, sprawność (Efficiency) oraz progi mocy.*
-        """)
+        # --- TEORIA FIZJOLOGII SPALANIA (ROZBUDOWANA) ---
+        with st.expander("🔬 Fizjologia Spalania Węglowodanów (Model INSCYD)", expanded=False):
+            st.markdown("""
+            ## Model Metaboliczny: VO2max, VLaMax, i Spalanie Węglowodanów
+            
+            INSCYD i WKO5 używają zaawansowanych modeli metabolicznych, które uwzględniają dwa kluczowe parametry:
+            
+            ### 1. VO2max (Maksymalny Pobór Tlenu)
+            * Określa Twoją maksymalną zdolność aerobową (tlenową)
+            * Im wyższy VO2max, tym więcej energii możesz wytworzyć z tłuszczu i węglowodanów przy udziale tlenu
+            
+            ### 2. VLaMax (Maksymalna Produkcja Mleczanu)
+            * Określa Twoją zdolność glikolityczną (beztlenową)
+            * **Wysoki VLaMax** (>0.6 mmol/L/s): Sprintery, szybkie spalanie węgli, słabsza wytrzymałość
+            * **Niski VLaMax** (<0.4 mmol/L/s): Climbers, oszczędne spalanie, lepsza ekonomia tłuszczowa
+            
+            ---
+            
+            ## Strefy Spalania Paliwa
+            
+            | Intensywność | %FTP | Dominujące paliwo | Spalanie CHO [g/h] |
+            |--------------|------|-------------------|-------------------|
+            | Z1 (Recovery) | <55% | Tłuszcz (70-90%) | 10-30 |
+            | Z2 (Endurance) | 55-75% | Mix (50-70% tłuszcz) | 30-60 |
+            | Z3 (Tempo) | 76-90% | Mix (50-70% CHO) | 60-90 |
+            | Z4 (Threshold) | 91-105% | Węglowodany (80%+) | 90-130 |
+            | Z5/Z6 (VO2max) | >105% | Węglowodany (95%+) | 130-180+ |
+            
+            ---
+            
+            ## Kluczowe Koncepcje
+            
+            ### FatMax (Maksymalne Spalanie Tłuszczu)
+            * Intensywność, przy której spalasz najwięcej tłuszczu (zwykle 55-65% FTP)
+            * Powyżej tego punktu, spalanie tłuszczu spada, a węgla rośnie
+            
+            ### CarbMax (Maksymalne Spalanie Węgli)
+            * Maksymalne tempo, w jakim Twój organizm może spalać węglowodany
+            * Limitowane przez VLaMax i enzymy glikolityczne
+            * Typowo: 150-250 g/h dla elitarnych sportowców
+            
+            ### Limity Jelitowe
+            * **Sama glukoza**: max ~60 g/h absorpcji
+            * **Glukoza + Fruktoza (2:1)**: max ~90-120 g/h
+            * Dlatego przy intensywnych wysiłkach (>Z4) zawsze "pożyczasz" z rezerw glikogenu
+            
+            ---
+            
+            ## Strategie Żywieniowe
+            
+            | Strategia | Kiedy stosować | Cel |
+            |-----------|----------------|-----|
+            | **Train Low** | Treningi Z2, długie bazy | Poprawa adaptacji tłuszczowej |
+            | **Train High** | Interwały, tempo, wyścigi | Maksymalna wydajność |
+            | **Periodyzacja** | Cykl tygodniowy | Łączenie obu strategii |
+            | **Sleep Low** | Po treningu wieczorem | Wzmocnienie odpowiedzi adaptacyjnej |
+            
+            *Ten kalkulator używa uproszczonego modelu INSCYD, gdzie spalanie węgli rośnie wykładniczo z intensywnością (%FTP^1.5).*
+            """)
     else:
         st.warning("Brak danych mocy (Watts) do obliczenia wydatku energetycznego.")

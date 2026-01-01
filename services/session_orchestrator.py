@@ -17,6 +17,15 @@ from .session_analysis import (
 )
 from .data_validation import validate_dataframe
 
+from modules.calculations import (
+    calculate_w_prime_balance,
+    calculate_metrics,
+    calculate_advanced_kpi,
+    calculate_z2_drift,
+    calculate_heat_strain_index,
+    process_data,
+)
+
 
 def process_uploaded_session(
     df_raw: pd.DataFrame,
@@ -38,28 +47,9 @@ def process_uploaded_session(
     7. SmO2 smoothing
     8. Resampling
     
-    Args:
-        df_raw: Raw DataFrame from file upload
-        cp_input: Critical Power in watts
-        w_prime_input: W' in joules
-        rider_weight: Rider weight in kg
-        vt1_watts: VT1 threshold in watts
-        vt2_watts: VT2 threshold in watts
-    
     Returns:
-        Tuple of (df_plot, df_plot_resampled, metrics, error_message)
-        If error_message is not None, other values may be None
+    (df_plot, df_plot_resampled, metrics, error_message)
     """
-    # Import calculation functions
-    from modules.calculations import (
-        calculate_w_prime_balance,
-        calculate_metrics,
-        calculate_advanced_kpi,
-        calculate_z2_drift,
-        calculate_heat_strain_index,
-        process_data,
-    )
-    
     # Validate data
     is_valid, error_msg = validate_dataframe(df_raw)
     if not is_valid:
@@ -96,6 +86,7 @@ def process_uploaded_session(
     df_plot_resampled = resample_dataframe(df_plot)
     
     # Store intermediate values in metrics for later use
+    # We use a leading underscore convention for internal values
     metrics['_decoupling_percent'] = decoupling_percent
     metrics['_drift_z2'] = drift_z2
     metrics['_df_clean_pl'] = df_clean_pl
@@ -111,19 +102,7 @@ def prepare_session_record(
     if_header: float,
     tss_header: float
 ) -> Dict[str, Any]:
-    """Prepare session data for database storage.
-    
-    Args:
-        filename: Name of the uploaded file
-        df_plot: Processed DataFrame
-        metrics: Calculated metrics dictionary
-        np_header: Normalized Power
-        if_header: Intensity Factor
-        tss_header: Training Stress Score
-    
-    Returns:
-        Dictionary with session record data
-    """
+    """Prepare session data for database storage."""
     return {
         'date': date.today().isoformat(),
         'filename': filename,
@@ -144,15 +123,7 @@ def prepare_sticky_header_data(
     df_plot: pd.DataFrame,
     metrics: Dict[str, Any]
 ) -> Dict[str, Any]:
-    """Prepare data for the sticky header display.
-    
-    Args:
-        df_plot: Processed DataFrame
-        metrics: Calculated metrics dictionary
-    
-    Returns:
-        Dictionary with header display values
-    """
+    """Prepare data for the sticky header display."""
     return {
         'avg_power': metrics.get('avg_watts', 0),
         'avg_hr': metrics.get('avg_hr', 0),

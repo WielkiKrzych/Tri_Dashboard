@@ -96,7 +96,7 @@ def render_smo2_thresholds_tab(target_df, training_notes, uploaded_file_name, cp
                 # Markers
                 if 'is_t1' in step_df.columns:
                      step_df['Marker'] = step_df.apply(
-                        lambda r: '🟢 SmO2 T1' if r.get('is_t1') else ('🔴 SmO2 T2' if r.get('is_t2') else ''), 
+                        lambda r: '🟢 SmO2 T1' if r.get('is_t1') else ('🔴 SmO2 T2' if r.get('is_t2') else ('🟡 SKIPPED' if r.get('is_skipped') else '')), 
                         axis=1
                     )
                 

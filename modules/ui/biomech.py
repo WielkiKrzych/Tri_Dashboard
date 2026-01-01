@@ -36,6 +36,13 @@ def render_biomech_tab(df_plot, df_plot_resampled):
             title="Analiza Generowania Mocy (Siła vs Szybkość)",
             hovermode="x unified",
             
+            # Oś X - Czas
+            xaxis=dict(
+                title="Czas [min]",
+                tickformat=".0f",
+                hoverformat=".0f"
+            ),
+            
             # Oś Lewa
             yaxis=dict(title="Moment [Nm]"),
             

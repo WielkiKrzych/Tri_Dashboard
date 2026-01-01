@@ -8,26 +8,29 @@ Tri_Dashboard is a specialized analytical platform designed for sports scientist
 
 ## 🚀 Key Modules & Features
 
-### 🫁 Ventilatory Analysis (VT)
-- **Threshold Detection**: Automated detection of VT1 and VT2 using multiple algorithms (V-slope, EQO2/EQCO2).
-- **Hysteresis Analysis**: Comparison of "Ramp Up" vs. "Ramp Down" kinetics to identify physiological lag and stability.
-- **Sensitivity Analysis**: Robustness checks for threshold stability across various smoothing parameters.
-- **Reliability Engine**: Automated scoring of signal quality and protocol adherence.
+### 📈 Overview & KPI
+- **KPI Dashboard**: Real-time tracking of VO2max (est), Training Load (TSS/IF), and metabolic efficiency.
+- **Detailed Reports**: Comprehensive session summaries with automated periodization insights.
+- **Summary Tab**: Aggregated view of power, heart rate, SmO2, and ventilation metrics in a single interactive dashboard.
 
-### 💪 SmO2 (NIRS) Kinematics
-- **Raw Multi-Sensor Support**: Integration of Moxy, TrainRed, and other NIRS sensors.
-- **Contextual Interpretation**: Algorithms to distinguish between oxygen demand, delivery limitations, and muscular occlusion.
-- **Interval Analysis**: Manual and automated interval marking with metrics like Śr. SmO2, Trend Slope, and Re-saturation rates.
-- **Lag Analysis**: Correlation analysis between Power/Speed and SmO2/HR response.
+### ⚡ Performance Analytics
+- **Power (Moc vs W')**: Real-time W' Balance tracking to identify anaerobic capacity depletion. Automated "Match Burns" detection (efforts below 30% W' Bal).
+- **Power Duration Curve (PDC)**: Log-log modeling of your power profile. Includes Critical Power (CP) fitting via `scipy.curve_fit`, PR tracking, and **Phenotype Classification** (e.g., Sprinter, TT Specialist, All-rounder).
+- **Intervals**: Specialized analysis of repeating efforts. Includes **Pulse Power** stats and **Gross Efficiency (GE)** modeling to evaluate metabolic cost vs. mechanical output.
+- **TTE (Time-to-Exhaustion)**: Advanced analysis of how long you can sustain specific FTP percentages (90-110%). Features a **persistent history** stored in SQLite to track endurance trends over 30/90 days.
+- **Biomechanics**: Landing dynamics and efficiency factors derived from wearable sensors, focusing on foot strike and energy return.
+- **Drift Maps**: Visualization of physiological decoupling (Efficiency Factor) over time to identify aerobic durability.
 
-### 💓 HRV & Cardiac Performance
-- **Time/Frequency Domain**: SDNN, RMSSD, and spectral analysis of R-R intervals.
-- **DFA Alpha 1**: Real-time estimation of aerobic threshold (AerT) via heart rate variability.
-- **Training Load**: Integration of TRIMP and session RPE for readiness assessment.
+### 🫀 Physiology & Thresholds
+- **Ventilation (VT1/VT2)**: Automated detection of ventilatory thresholds using V-slope and Ventilatory Equivalent methods. Features **Hysteresis Analysis** for ramp-test reliability.
+- **SmO2 (NIRS)**: Support for Moxy and TrainRed. Automated detection of SmO2 LT1/LT2 thresholds based on muscle oxygenation kinetics. Includes **Re-saturation Analysis** to evaluate recovery speed.
+- **HRV (DFA a1)**: Estimation of the aerobic threshold (AerT) using heart rate variability dynamics.
+- **Thermal Analysis**: Real-time **Heat Strain Index (HSI)** calculation and **Cardiac Drift vs. Core Temperature** modeling to evaluate thermoregulatory cost.
 
-### 🧠 Automated Coach (AI)
-- **Physiological Diagnosis**: Identification of "Aerobic Deficiency," "Slow Recovery Kinetics," or "Peripheral vs Central Limiters."
-- **Actionable Training Prescriptions**: Recommendations for Zone 2 base building, interval density, and recovery duration based on your unique profile.
+### 🧠 Intelligence & AI
+- **Nutrition**: Dynamic modeling of carbohydrate and fat utilization based on intensity and individual metabolic profile.
+- **Limiters**: Automated diagnosis of performance bottlenecks (e.g., O2 transport, Muscular utilization, or Anaerobic capacity).
+- **AI Coach**: GPT-integrated interpretation layer that provides actionable training advice based on multi-sensor data fusion.
 
 ## 🛠 Technical Architecture
 
@@ -43,89 +46,36 @@ graph TD
         Quality --> NIRS["SmO2 Kinematics"]
         Quality --> HRV["Heart Rate Dynamics"]
         Quality --> Metabolic["Metabolic Estimation"]
+        Quality --> PDC_TTE["Power Profile & TTE"]
     end
     
-    VT & NIRS & HRV & Metabolic --> Intepretation["AI Interpretation Layer"]
+    VT & NIRS & HRV & Metabolic & PDC_TTE --> Intepretation["AI Interpretation Layer"]
     Intepretation --> UI["Streamlit Dashboard"]
-    UI --> PDF["PDF/DOCX Reports"]
+    UI --> DB[("SQLite Database")]
 ```
 
 ## 💻 Tech Stack
 
-- **Frontend**: [Streamlit](https://streamlit.io/) for interactive data visualization.
+- **Frontend**: [Streamlit](https://streamlit.io/) for interactive data visualization with dark-mode optimized glassmorphism.
 - **Data Processing**: [Polars](https://pola.rs/) & [Pandas](https://pandas.pydata.org/) for high-performance data manipulation.
-- **Scientific Computing**: [SciPy](https://scipy.org/), [NumPy](https://numpy.org/), [NeuroKit2](https://neurokit2.readthedocs.io/).
-- **AI/ML**: [MLX](https://github.com/ml-explore/mlx) for local inference (optimized for Apple Silicon).
-- **Visualization**: [Plotly](https://plotly.com/) for interactive, publication-quality charts.
+- **Scientific Computing**: [SciPy](https://scipy.org/), [NumPy](https://numpy.org/).
+- **Database**: [SQLite](https://sqlite.org/) for persistent session storage and trend tracking.
+- **Visualization**: [Plotly](https://plotly.com/) for interactive, publication-quality charts with unified hover modes.
 
-## 📁 Project Structure
-
-```bash
-Tri_Dashboard/
-├── app.py                 # Application entry point
-├── modules/
-│   ├── calculations/      # Core scientific logic (Thresholds, Kinetics, HRV)
-│   ├── ui/                # Custom Streamlit components & dashboard layouts
-│   ├── ai/                # LLM & ML model integration
-│   └── db/                # Training history and metadata storage
-├── services/              # Business logic (Validation, Session Orchestration)
-└── tests/                 # Comprehensive test suite (Unit, Integration, Robustness)
-```
-
-## ⚙️ Installation & Setup
-
-### Prerequisites
-- Python 3.10 or higher
-- `pip` or `conda`
+## ⚙️ Installation & Usage
 
 ### Step-by-Step
-1. **Clone the repository**:
+1. **Clone & Install**:
    ```bash
    git clone https://github.com/WielkiKrzych/Tri_Dashboard.git
    cd Tri_Dashboard
+   pip install -e .
    ```
 
-2. **Setup virtual environment**:
-   ```bash
-   python -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
-   ```
-
-3. **Install dependencies**:
-   ```bash
-   pip install -e .[dev]
-   ```
-
-4. **Initialize Database**:
-   ```bash
-   python init_db.py
-   ```
-
-## 🚦 Usage
-
-1. **Start the Dashboard**:
+2. **Run the Dashboard**:
    ```bash
    streamlit run app.py
    ```
-2. **Access the UI**: Open your browser at `http://localhost:8501`.
-3. **Upload Data**: Drag and drop your `.fit` or `.tcx` training files.
-4. **Analyze**: Review automated threshold detections and AI-driven coaching insights.
-
-## 🧪 Developer Guide
-
-### Testing
-Run the full test suite using `pytest`:
-```bash
-pytest tests/
-```
-
-### Code Quality
-We use `ruff` and `black` to maintain code standards:
-```bash
-ruff check .
-black .
-```
 
 ## 📄 License
-This project is licensed under the MIT License - see the LICENSE file for details.
-
+This project is licensed under the MIT License.

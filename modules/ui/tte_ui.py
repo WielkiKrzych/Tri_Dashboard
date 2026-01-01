@@ -17,7 +17,8 @@ from modules.tte import (
     export_tte_json,
     TTEResult,
     get_tte_history_from_db,
-    save_tte_to_db
+    save_tte_to_db,
+    batch_compute_tte_for_all_sessions
 )
 
 
@@ -143,7 +144,7 @@ def render_tte_tab(df_plot: pd.DataFrame, ftp: float, uploaded_file_name: str = 
     
     # Trend section
     st.divider()
-    _render_trend_section(target_pct)
+    _render_trend_section(target_pct, ftp, tol_pct)
     
     # Export section
     st.divider()
@@ -237,11 +238,24 @@ def _render_power_distribution_chart(df_plot: pd.DataFrame, result: TTEResult) -
     st.plotly_chart(fig, use_container_width=True)
 
 
-def _render_trend_section(target_pct: float = 100.0) -> None:
+def _render_trend_section(target_pct: float, ftp: float, tol_pct: float) -> None:
     """Render TTE trend section pulling data from DB."""
     st.subheader(f"📈 Trend TTE @ {target_pct:.0f}% FTP (30/90 dni)")
     
-    # Fetch data from DB instead of session state
+    # Batch processing button
+    col1, col2 = st.columns([2, 1])
+    with col2:
+        if st.button("🔄 Przelicz TTE dla całej historii", help="Przetwarza wszystkie treningi z folderu treningi_csv"):
+            with st.spinner("Przetwarzam pliki historyczne..."):
+                success, fail = batch_compute_tte_for_all_sessions(
+                    ftp=ftp,
+                    target_pcts=[target_pct],
+                    tol_pct=tol_pct
+                )
+                st.toast(f"Gotowe! Sukces: {success}, Błędy: {fail}", icon="✅")
+                st.rerun()
+    
+    # Fetch data from DB
     history = get_tte_history_from_db(days=90, target_pct=target_pct)
     
     if not history:

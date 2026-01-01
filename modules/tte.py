@@ -258,6 +258,108 @@ def save_tte_to_db(filename: str, session_date: str, target_pct: float, tte_seco
         return False
 
 
+def batch_compute_tte_for_all_sessions(
+    ftp: float,
+    target_pcts: List[float] = [100.0],
+    tol_pct: float = 5.0,
+    progress_callback: callable = None
+) -> Tuple[int, int]:
+    """Batch compute TTE for all sessions in the database.
+    
+    This function loads each historical CSV from treningi_csv, computes TTE,
+    and updates the extra_metrics field in the database.
+    
+    Args:
+        ftp: Functional Threshold Power
+        target_pcts: List of FTP percentages to compute (default: [100.0])
+        tol_pct: Tolerance percentage
+        progress_callback: Optional callback(current, total, message)
+        
+    Returns:
+        Tuple of (success_count, fail_count)
+    """
+    from pathlib import Path
+    from modules.utils import load_data
+    from modules.calculations import process_data
+    
+    db_path = Config.DB_PATH
+    training_folder = Path(__file__).parent / ".." / "treningi_csv"
+    training_folder = training_folder.resolve()
+    
+    success_count = 0
+    fail_count = 0
+    
+    try:
+        with sqlite3.connect(db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.execute("SELECT id, date, filename, extra_metrics FROM sessions")
+            sessions = cursor.fetchall()
+            total = len(sessions)
+            
+            for i, row in enumerate(sessions):
+                filename = row['filename']
+                session_date = row['date']
+                
+                # Find the corresponding CSV file
+                csv_path = training_folder / filename
+                if not csv_path.exists():
+                    # Try to find with glob
+                    matches = list(training_folder.glob(f"*{Path(filename).stem}*"))
+                    if matches:
+                        csv_path = matches[0]
+                    else:
+                        fail_count += 1
+                        if progress_callback:
+                            progress_callback(i + 1, total, f"❌ {filename}: file not found")
+                        continue
+                
+                try:
+                    # Load and process CSV
+                    with open(csv_path, 'rb') as f:
+                        df_raw = load_data(f)
+                    
+                    if df_raw is None or df_raw.empty or 'watts' not in df_raw.columns:
+                        fail_count += 1
+                        if progress_callback:
+                            progress_callback(i + 1, total, f"❌ {filename}: no power data")
+                        continue
+                    
+                    df = process_data(df_raw)
+                    power_series = df['watts']
+                    
+                    # Get existing extra_metrics
+                    extra = json.loads(row['extra_metrics'] or '{}')
+                    if 'tte' not in extra:
+                        extra['tte'] = {}
+                    
+                    # Compute TTE for each target percentage
+                    for pct in target_pcts:
+                        tte_seconds = compute_tte(power_series, pct, ftp, tol_pct)
+                        extra['tte'][str(int(pct))] = tte_seconds
+                    
+                    # Update database
+                    conn.execute(
+                        "UPDATE sessions SET extra_metrics = ? WHERE id = ?",
+                        (json.dumps(extra), row['id'])
+                    )
+                    
+                    success_count += 1
+                    if progress_callback:
+                        progress_callback(i + 1, total, f"✅ {filename}: TTE computed")
+                        
+                except Exception as e:
+                    fail_count += 1
+                    if progress_callback:
+                        progress_callback(i + 1, total, f"❌ {filename}: {str(e)}")
+            
+            conn.commit()
+            
+    except Exception as e:
+        print(f"Batch TTE error: {e}")
+    
+    return success_count, fail_count
+
+
 def export_tte_json(result: TTEResult) -> str:
     """Export TTE result to JSON string.
     

@@ -40,7 +40,7 @@ def render_heatmaps_tab(
         return
     
     # ===== CONTROLS =====
-    col1, col2, col3 = st.columns([1, 1, 2])
+    col1, col2 = st.columns([1, 3])
     
     with col1:
         ftp = st.number_input(
@@ -53,15 +53,6 @@ def render_heatmaps_tab(
         )
     
     with col2:
-        resolution = st.radio(
-            "Rozdzielczość",
-            options=["hourly", "weekday_hourly"],
-            format_func=lambda x: "Godzinowa (0-23)" if x == "hourly" else "Dzień × Godzina",
-            horizontal=True,
-            help="Wybierz jak grupować dane: tylko godzina lub dzień tygodnia × godzina."
-        )
-    
-    with col3:
         # Date filter (if timestamp available)
         if 'timestamp' in df_plot.columns:
             df_plot['_ts_temp'] = pd.to_datetime(df_plot['timestamp'], errors='coerce')
@@ -85,7 +76,7 @@ def render_heatmaps_tab(
             df_filtered = df_filtered.drop(columns=['_ts_temp'], errors='ignore')
         else:
             df_filtered = df_plot.copy()
-            st.caption("Brak timestampów - używam syntetycznych godzin.")
+            st.caption("Brak timestampów - używam czasu trwania sesji.")
     
     # ===== ZONE PREVIEW =====
     with st.expander("📊 Podgląd stref mocy"):
@@ -105,7 +96,6 @@ def render_heatmaps_tab(
         pivot, metadata = power_zone_heatmap(
             df_filtered,
             ftp=ftp,
-            resolution=resolution,
             power_col=power_col
         )
         
@@ -116,7 +106,6 @@ def render_heatmaps_tab(
         # ===== DISPLAY HEATMAP =====
         fig = plot_power_zone_heatmap(
             pivot,
-            resolution=resolution,
             title=f"Heatmapa Stref Mocy (FTP={ftp}W)"
         )
         st.plotly_chart(fig, use_container_width=True)
@@ -125,14 +114,14 @@ def render_heatmaps_tab(
         st.subheader("📈 Statystyki")
         
         total_min = metadata["total_seconds"] / 60
-        st.metric("Łączny czas analizy", f"{total_min:.0f} min")
+        st.metric("Łączny czas analizy", f"{total_min:.1f} min")
         
         # Zone distribution
-        zone_cols = st.columns(len(metadata["zone_distribution"]))
-        for i, (zone, seconds) in enumerate(metadata["zone_distribution"].items()):
+        zone_cols = st.columns(len(metadata["zone_distribution_min"]))
+        for i, (zone, minutes) in enumerate(metadata["zone_distribution_min"].items()):
             with zone_cols[i]:
-                pct = (seconds / metadata["total_seconds"] * 100) if metadata["total_seconds"] > 0 else 0
-                st.metric(zone.split()[0], f"{seconds/60:.0f}m", f"{pct:.0f}%")
+                pct = (minutes / (metadata["total_seconds"]/60) * 100) if metadata["total_seconds"] > 0 else 0
+                st.metric(zone.split()[0], f"{minutes:.1f}m", f"{pct:.0f}%")
         
         # ===== EXPORT =====
         with st.expander("📥 Eksportuj dane"):

@@ -111,19 +111,15 @@ def assign_power_zone(power: float, zones: List[PowerZone]) -> Optional[str]:
 def power_zone_heatmap(
     df: pd.DataFrame,
     ftp: float,
-    resolution: str = "hourly",
     zone_edges: Optional[List[Tuple[float, float, str]]] = None,
-    timestamp_col: str = "timestamp",
     power_col: str = "watts"
 ) -> Tuple[pd.DataFrame, Dict]:
-    """Compute power zone heatmap pivot table.
+    """Compute power zone heatmap pivot table (per minute).
     
     Args:
-        df: DataFrame with timestamp and power columns
+        df: DataFrame with power data
         ftp: Functional Threshold Power
-        resolution: "hourly" (0-23) or "weekday_hourly" (Mon-Sun × 0-23)
         zone_edges: Optional custom zone definitions
-        timestamp_col: Name of timestamp column
         power_col: Name of power column
         
     Returns:
@@ -139,22 +135,12 @@ def power_zone_heatmap(
     # Prepare data
     df_work = df.copy()
     
-    # Handle timestamp
-    if timestamp_col in df_work.columns:
-        df_work['_ts'] = pd.to_datetime(df_work[timestamp_col], errors='coerce')
-    elif 'time' in df_work.columns:
-        # If only elapsed time, use current date + time
-        base_date = pd.Timestamp.now().normalize()
-        df_work['_ts'] = base_date + pd.to_timedelta(df_work['time'], unit='s')
+    # Handle elapsed time in minutes
+    if 'time' in df_work.columns:
+        df_work['_minutes'] = (df_work['time'] // 60).astype(int)
     else:
-        # Generate synthetic timestamps at 1Hz
-        base_date = pd.Timestamp.now().normalize()
-        df_work['_ts'] = pd.date_range(start=base_date, periods=len(df_work), freq='1s')
-    
-    # Extract hour and weekday
-    df_work['_hour'] = df_work['_ts'].dt.hour
-    df_work['_weekday'] = df_work['_ts'].dt.dayofweek  # 0=Mon, 6=Sun
-    df_work['_weekday_name'] = df_work['_ts'].dt.day_name()
+        # If no time col, assume 1Hz and generate index
+        df_work['_minutes'] = (np.arange(len(df_work)) // 60).astype(int)
     
     # Assign zones
     df_work['_zone'] = df_work[power_col].apply(lambda p: assign_power_zone(p, zones))
@@ -163,86 +149,58 @@ def power_zone_heatmap(
     df_valid = df_work[df_work['_zone'].notna()].copy()
     
     if len(df_valid) == 0:
-        # Return empty pivot
-        if resolution == "hourly":
-            cols = list(range(24))
-        else:
-            cols = pd.MultiIndex.from_product([range(7), range(24)], names=['weekday', 'hour'])
-        pivot = pd.DataFrame(0, index=zone_names, columns=cols)
+        pivot = pd.DataFrame(0, index=zone_names, columns=[0])
         return pivot, {"total_seconds": 0, "ftp": ftp}
     
-    # Compute time per zone per time bucket (assuming 1Hz data = 1 second per row)
-    if resolution == "hourly":
-        # Group by zone and hour
-        grouped = df_valid.groupby(['_zone', '_hour']).size()
-        pivot = grouped.unstack(fill_value=0)
-        
-        # Ensure all hours and zones are present
-        for h in range(24):
-            if h not in pivot.columns:
-                pivot[h] = 0
-        pivot = pivot.sort_index(axis=1)
-        
-        for zone in zone_names:
-            if zone not in pivot.index:
-                pivot.loc[zone] = 0
-        pivot = pivot.reindex(zone_names)
-        
-    else:  # weekday_hourly
-        # Group by zone, weekday, and hour
-        grouped = df_valid.groupby(['_zone', '_weekday', '_hour']).size()
-        
-        # Create multi-index pivot
-        weekday_names = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
-        columns = []
-        for wd in range(7):
-            for h in range(24):
-                columns.append(f"{weekday_names[wd]}_{h:02d}")
-        
-        pivot = pd.DataFrame(0, index=zone_names, columns=columns)
-        
-        for (zone, wd, hour), count in grouped.items():
-            col_name = f"{weekday_names[wd]}_{hour:02d}"
-            if zone in pivot.index and col_name in pivot.columns:
-                pivot.loc[zone, col_name] = count
+    # Group by zone and minute
+    grouped = df_valid.groupby(['_zone', '_minutes']).size()
+    pivot_seconds = grouped.unstack(fill_value=0)
+    
+    # Ensure all zones are present
+    for zone in zone_names:
+        if zone not in pivot_seconds.index:
+            pivot_seconds.loc[zone] = 0
+    pivot_seconds = pivot_seconds.reindex(zone_names)
+    
+    # Ensure all minutes from 0 to max_min are present
+    max_min = int(df_work['_minutes'].max())
+    for m in range(max_min + 1):
+        if m not in pivot_seconds.columns:
+            pivot_seconds[m] = 0
+    pivot_seconds = pivot_seconds.sort_index(axis=1)
+    
+    # Convert values to minutes
+    pivot_minutes = pivot_seconds / 60.0
     
     # Metadata
     metadata = {
         "total_seconds": int(len(df_valid)),
         "ftp": ftp,
-        "resolution": resolution,
-        "zone_distribution": {
-            zone: int(pivot.loc[zone].sum()) for zone in zone_names
+        "zone_distribution_min": {
+            zone: float(pivot_minutes.loc[zone].sum()) for zone in zone_names
         }
     }
     
-    return pivot, metadata
+    return pivot_minutes, metadata
 
 
 def plot_power_zone_heatmap(
     pivot: pd.DataFrame,
-    resolution: str = "hourly",
-    title: str = "Power Zone Heatmap"
+    title: str = "Rozkład Stref Mocy w Czasie"
 ) -> go.Figure:
-    """Create Plotly heatmap figure.
+    """Create Plotly heatmap figure (per minute).
     
     Args:
-        pivot: Pivot table from power_zone_heatmap
-        resolution: "hourly" or "weekday_hourly"
+        pivot: Pivot table (minutes) from power_zone_heatmap
         title: Chart title
         
     Returns:
         Plotly Figure object
     """
-    # Convert to minutes for readability
-    values = pivot.values / 60  # seconds to minutes
+    values = pivot.values
     
-    # X-axis labels
-    if resolution == "hourly":
-        x_labels = [f"{h:02d}:00" for h in range(24)]
-    else:
-        # Weekday_hourly: show abbreviated labels
-        x_labels = list(pivot.columns)
+    # X-axis labels (minutes)
+    x_labels = [f"{m}m" for m in pivot.columns]
     
     # Y-axis labels (zones)
     y_labels = list(pivot.index)
@@ -252,20 +210,20 @@ def plot_power_zone_heatmap(
         x=x_labels,
         y=y_labels,
         colorscale=[
-            [0, 'rgb(20, 20, 30)'],      # Dark for 0
-            [0.25, 'rgb(30, 80, 120)'],  # Blue
-            [0.5, 'rgb(50, 150, 100)'],  # Green
-            [0.75, 'rgb(220, 180, 50)'], # Yellow
-            [1, 'rgb(220, 80, 50)']      # Red for max
+            [0, 'rgb(20, 20, 30)'],
+            [0.25, 'rgb(30, 80, 120)'],
+            [0.5, 'rgb(50, 150, 100)'],
+            [0.75, 'rgb(220, 180, 50)'],
+            [1, 'rgb(220, 80, 50)']
         ],
         colorbar=dict(
-            title="Czas [min]",
-            tickformat=".0f"
+            title="Minuty w strefie",
+            tickformat=".1f"
         ),
         hovertemplate=(
             "<b>%{y}</b><br>"
-            "Godzina: %{x}<br>"
-            "Czas: <b>%{z:.1f} min</b>"
+            "Minuta treningu: %{x}<br>"
+            "Czas w strefie: <b>%{z:.2f} min</b>"
             "<extra></extra>"
         )
     ))
@@ -274,17 +232,16 @@ def plot_power_zone_heatmap(
     fig.update_layout(
         title=dict(text=title, font=dict(size=18)),
         xaxis=dict(
-            title="Godzina" if resolution == "hourly" else "Dzień × Godzina",
-            tickangle=-45 if resolution == "weekday_hourly" else 0,
-            tickfont=dict(size=10 if resolution == "weekday_hourly" else 12)
+            title="Minuta Treningu",
+            nticks=20
         ),
         yaxis=dict(
             title="Strefa Mocy",
-            autorange="reversed"  # Z1 at top
+            autorange="reversed"
         ),
         template="plotly_dark",
-        height=450,
-        margin=dict(l=100, r=20, t=60, b=100 if resolution == "weekday_hourly" else 60)
+        height=400,
+        margin=dict(l=100, r=20, t=60, b=60)
     )
     
     return fig

@@ -10,7 +10,18 @@ def render_power_tab(df_plot, df_plot_resampled, cp_input, w_prime_input):
     fig_pw = go.Figure()
     fig_pw.add_trace(go.Scatter(x=df_plot_resampled['time_min'], y=df_plot_resampled['watts_smooth'], name="Moc", fill='tozeroy', line=dict(color=Config.COLOR_POWER, width=1), hovertemplate="Moc: %{y:.0f} W<extra></extra>"))
     fig_pw.add_trace(go.Scatter(x=df_plot_resampled['time_min'], y=df_plot_resampled['w_prime_balance'], name="W' Bal", yaxis="y2", line=dict(color=Config.COLOR_HR, width=2), hovertemplate="W' Bal: %{y:.0f} J<extra></extra>"))
-    fig_pw.update_layout(template="plotly_dark", title="Zarządzanie Energią (Moc vs W')", hovermode="x unified", yaxis=dict(title="Moc [W]"), yaxis2=dict(title="W' Balance [J]", overlaying="y", side="right", showgrid=False))
+    fig_pw.update_layout(
+        template="plotly_dark", 
+        title="Zarządzanie Energią (Moc vs W')", 
+        hovermode="x unified", 
+        xaxis=dict(
+            title="Czas [min]",
+            tickformat=".0f",
+            hoverformat=".0f"
+        ),
+        yaxis=dict(title="Moc [W]"), 
+        yaxis2=dict(title="W' Balance [J]", overlaying="y", side="right", showgrid=False)
+    )
     st.plotly_chart(fig_pw, use_container_width=True)
     
     st.info("""

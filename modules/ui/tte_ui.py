@@ -61,6 +61,13 @@ def render_tte_tab(df_plot: pd.DataFrame, ftp: float) -> None:
             help="Dopuszczalne odchylenie od docelowej mocy"
         )
     
+    # New: Manual history acceptance toggle
+    accept_to_history = st.toggle(
+        "⭐ Zalicz trening do historii TTE", 
+        value=False,
+        help="Włącz, aby trwale dodać wynik TTE z tej sesji do Twoich trendów 30/90 dni."
+    )
+    
     # Compute TTE for current session
     power_series = df_plot['watts']
     result = compute_tte_result(
@@ -69,6 +76,22 @@ def render_tte_tab(df_plot: pd.DataFrame, ftp: float) -> None:
         ftp=ftp,
         tol_pct=tol_pct
     )
+    
+    # Update historical data if accepted
+    if 'tte_history' not in st.session_state:
+        st.session_state.tte_history = []
+        
+    if accept_to_history:
+        # Check if already in history by session_id to avoid duplicates
+        existing_ids = [entry.get('session_id') for entry in st.session_state.tte_history]
+        if result.session_id not in existing_ids:
+            st.session_state.tte_history.append({
+                "session_id": result.session_id,
+                "date": datetime.now().isoformat(),
+                "tte_seconds": result.tte_seconds,
+                "target_pct": result.target_pct
+            })
+            st.toast("Wynik TTE został dodany do historii!", icon="⏱️")
     
     # Display results
     st.subheader("📊 Wyniki Sesji")

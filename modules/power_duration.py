@@ -426,6 +426,7 @@ def plot_power_duration(
             tickvals=[1, 2, 5, 10, 30, 60, 120, 300, 600, 1200, 1800, 3600],
             ticktext=['1s', '2s', '5s', '10s', '30s', '1m', '2m', '5m', '10m', '20m', '30m', '1h'],
             tickangle=-45,
+            hoverformat='.0f',
             gridcolor='rgba(0,0,0,0.1)'
         ),
         yaxis=dict(

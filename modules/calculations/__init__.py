@@ -42,6 +42,7 @@ from .hrv import (
 
 from .thermal import (
     calculate_heat_strain_index,
+    calculate_thermal_decay,
 )
 
 from .power import (
@@ -169,6 +170,7 @@ __all__ = [
     'calculate_dynamic_dfa',
     # Thermal
     'calculate_heat_strain_index',
+    'calculate_thermal_decay',
     # Power - Basic
     'calculate_normalized_power',
     'calculate_pulse_power_stats',

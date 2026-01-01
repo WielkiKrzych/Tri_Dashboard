@@ -57,8 +57,8 @@ def render_hrv_tab(df_clean_pl):
         col3.metric("Śr. RR", f"{df_dfa['mean_rr'].mean():.0f} ms" if 'mean_rr' in df_dfa.columns else "N/A")
         col4.metric("Śr. HR (z RR)", f"{60000/df_dfa['mean_rr'].mean():.0f} bpm" if 'mean_rr' in df_dfa.columns else "N/A")
 
-        st.subheader("Indeks Zmienności HRV (Pseudo-Alpha)")
-        st.caption("Wyższe wartości = większa zmienność = lepszy stan regeneracji. Niższe = stres metaboliczny.")
+        st.subheader("Analiza Fraktalna DFA Alpha-1")
+        st.caption("Współczynnik korelacji: 1.0 = Stan optymalny (Szum Różowy), 0.75 = Próg VT1, 0.50 = Próg VT2 (Szum Biały).")
         
         fig_dfa = go.Figure()
         fig_dfa.add_trace(go.Scatter(
@@ -81,17 +81,17 @@ def render_hrv_tab(df_clean_pl):
         ))
 
         fig_dfa.add_hline(y=0.75, line_dash="solid", line_color="#ef553b", line_width=2, 
-                        annotation_text="Próg stresu (0.75)", annotation_position="top left")
+                        annotation_text="VT1/LT1 (0.75)", annotation_position="top left")
         
-        fig_dfa.add_hline(y=0.50, line_dash="dot", line_color="#ab63fa", line_width=1, 
-                        annotation_text="Wysoki stres (0.50)", annotation_position="bottom left")
+        fig_dfa.add_hline(y=0.50, line_dash="solid", line_color="#ab63fa", line_width=2, 
+                        annotation_text="VT2/LT2 (0.50)", annotation_position="bottom left")
 
         fig_dfa.update_layout(
             template="plotly_dark",
-            title="Indeks Zmienności HRV vs Czas",
+            title="Indeks Zmienności HRV (DFA Alpha-1) vs Czas",
             hovermode="x unified",
             xaxis=dict(title="Czas [min]"),
-            yaxis=dict(title="Indeks HRV", range=[0.2, 1.6]),
+            yaxis=dict(title="Indeks HRV (Alpha-1)", range=[0.2, 1.4]),
             yaxis2=dict(title="Moc [W]", overlaying='y', side='right', showgrid=False),
             height=500,
             margin=dict(l=10, r=10, t=40, b=10),
@@ -207,34 +207,57 @@ def render_hrv_tab(df_clean_pl):
         else:
             st.warning("Brak surowych danych R-R do wygenerowania wykresu Poincaré.")    
 
-        mask_threshold = (df_dfa['time_min'] > 5) & (df_dfa['alpha1'] < 0.75)
+        # --- DETEKCJA PROGÓW ---
+        st.subheader("🏁 Wykryte Progi HRV")
+        c1, c2 = st.columns(2)
         
-        if mask_threshold.any():
-            row = df_dfa[mask_threshold].iloc[0]
-            vt1_est_power = row['watts']
-            vt1_est_hr = row['hr']
-            vt1_time = row['time_min']
-            
-            c1, c2, c3 = st.columns(3)
-            c1.metric("Estymowane VT1 (Moc)", f"{vt1_est_power:.0f} W", help="Moc w momencie przecięcia linii 0.75")
-            c2.metric("Estymowane VT1 (HR)", f"{vt1_est_hr:.0f} bpm", help="Tętno w momencie przecięcia linii 0.75")
-            c3.metric("Czas przecięcia", f"{vt1_time:.0f} min")
-            
-            if vt1_est_power < 100:
-                st.warning("⚠️ Wykryto bardzo niskie VT1. Sprawdź jakość danych HRV (artefakty mogą zaniżać wynik).")
+        # VT1 Detection (0.75)
+        mask_vt1 = (df_dfa['time_min'] > 3) & (df_dfa['alpha1'] <= 0.75)
+        if mask_vt1.any():
+            row_vt1 = df_dfa[mask_vt1].iloc[0]
+            c1.success(f"**Estymowane VT1 (Aerobowe)**")
+            c1.write(f"Moc: **{row_vt1['watts']:.0f} W**")
+            c1.write(f"Tętno: **{row_vt1['hr']:.0f} bpm**")
+            c1.caption(f"Wykryte w {row_vt1['time_min']:.1f} min (alfa-1 = {row_vt1['alpha1']:.2f})")
         else:
-            st.info("Nie przekroczono progu 0.75 w trakcie tego treningu (cały czas praca tlenowa lub krótkie dane).")
+            c1.info("Nie wykryto progu VT1 (0.75).")
+
+        # VT2 Detection (0.50)
+        mask_vt2 = (df_dfa['time_min'] > 3) & (df_dfa['alpha1'] <= 0.50)
+        if mask_vt2.any():
+            row_vt2 = df_dfa[mask_vt2].iloc[0]
+            c2.error(f"**Estymowane VT2 (Beztlenowe)**")
+            c2.write(f"Moc: **{row_vt2['watts']:.0f} W**")
+            c2.write(f"Tętno: **{row_vt2['hr']:.0f} bpm**")
+            c2.caption(f"Wykryte w {row_vt2['time_min']:.1f} min (alfa-1 = {row_vt2['alpha1']:.2f})")
+        else:
+            c2.info("Nie wykryto progu VT2 (0.50).")
 
         # --- TEORIA ---
         with st.expander("🧠 O co chodzi z DFA Alpha-1?", expanded=True):
             st.markdown(r"""
-            **Detrended Fluctuation Analysis ($\alpha_1$)** mierzy tzw. korelacje fraktalne w odstępach między uderzeniami serca.
-            
-            * **$\alpha_1 \approx 1.0$ (Szum Różowy):** Stan zdrowy, wypoczęty. Serce bije w sposób złożony, elastyczny. Organizuje się samo.
-            * **$\alpha_1 \approx 0.5$ (Szum Biały/Losowy):** Silny stres metaboliczny. Układ nerwowy "bombarduje" węzeł zatokowy, rytm staje się nieskorelowany.
-            
-            **Dlaczego 0.75?**
-            Badania (m.in. Rogers et al.) wykazały, że przejście przez wartość **0.75** idealnie pokrywa się z **Pierwszym Progiem Wentylacyjnym (VT1)**. Jest to punkt, w którym zaczynasz tracić "luz tlenowy", a organizm zaczyna rekrutować więcej włókien szybkokurczliwych.
+            ### Czym jest DFA Alpha-1?
+            **Detrended Fluctuation Analysis ($\alpha_1$)** to zaawansowana metoda analizy zmienności rytmu serca, która mierzy tzw. **korelacje fraktalne**. W przeciwieństwie do prostych metryk (jak RMSSD), DFA bada strukturę czasową uderzeń serca.
+
+            #### 🔍 Skala Alpha-1:
+            *   **$\alpha_1 \approx 1.0$ (Szum Różowy / 1/f):** Optymalny stan. Rytm serca jest złożony i "zdrowo chaotyczny". Dominuje układ przywspółczulny (regeneracja).
+            *   **$\alpha_1 \approx 0.75$ (Próg Aerobowy - VT1):** Punkt, w którym korelacje zaczynają zanikać. Układ nerwowy przechodzi w stan większego pobudzenia (stres metaboliczny).
+            *   **$\alpha_1 \approx 0.50$ (Szum Biały / Losowy):** Całkowity brak korelacji. Serce bije "losowo" pod wpływem silnego stresu współczulnego. To moment **Progu Beztlenowego (VT2)**.
+
+            ---
+
+            ### 📈 Zastosowanie w WKO5 i INSCYD
+            Nowoczesne systemy analityczne wykorzystują DFA Alpha-1 jako "cyfrowy kwas mlekowy". Pozwala to na:
+            1.  **Bezkrwawe wyznaczanie progów**: Zamiast kłucia palca, analizujemy geometrię uderzeń serca.
+            2.  **Monitorowanie kosztu metabolicznego**: Jeśli przy tej samej mocy Alpha-1 spada z czasem, oznacza to narastające zmęczenie centralne (dryf HRV).
+            3.  **Indywidualną periodyzację**: Niskie Alpha-1 rano lub na początku treningu sugeruje niedostateczną regenerację.
+
+            ---
+
+            ### ⚠️ Uwagi Techniczne
+            Analiza DFA jest niezwykle czuła na artefakty. Nawet 1-2 "zgubione" uderzenia serca mogą drastycznie zmienić wynik. 
+            *   **Wymagany sprzęt**: Pas piersiowy o wysokiej precyzji (np. Polar H10).
+            *   **Stabilizacja**: Algorytm potrzebuje około 2 minut stabilnego wysiłku, aby poprawnie wyliczyć okno fraktalne.
             """)
 
     else:

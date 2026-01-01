@@ -2,14 +2,35 @@ import streamlit as st
 import plotly.graph_objects as go
 import plotly.express as px
 import pandas as pd
+import numpy as np
+from modules.calculations import calculate_thermal_decay
 
 def render_thermal_tab(df_plot):
-    st.header("Wydajność Chłodzenia")
+    st.header("Wydajność Chłodzenia i Koszt Termiczny")
     
+    # --- NOWA SEKCJA: KPI KOSZTU TERMICZNEGO ---
+    decay_res = calculate_thermal_decay(df_plot)
+    
+    col1, col2, col3 = st.columns(3)
+    if decay_res['r_squared'] > 0:
+        val_color = "inverse" if decay_res['decay_pct_per_c'] < -5 else "normal"
+        col1.metric("Koszt Termiczny", f"{decay_res['decay_pct_per_c']}% / 1°C", 
+                   delta=f"{decay_res['decay_pct_per_c']}%" if decay_res['decay_pct_per_c'] != 0 else None,
+                   delta_color=val_color,
+                   help="O ile procent spada Twoja wydajność (W/HR) na każdy 1°C wzrostu temperatury głębokiej.")
+        col2.metric("Pewność Statystyczna (R²)", f"{decay_res['r_squared']:.2f}",
+                   help="Jak dobrze linia trendu pasuje do danych. >0.5 oznacza wysoką wiarygodność.")
+        
+        status = "🔴 Wysoki" if decay_res['decay_pct_per_c'] < -6 else ("🟡 Średni" if decay_res['decay_pct_per_c'] < -3 else "🟢 Niski")
+        col3.metric("Status Adaptacji", status)
+    else:
+        st.info("💡 " + decay_res['message'])
+
+    st.divider()
+
     fig_t = go.Figure()
     
     # 1. CORE TEMP (Oś Lewa)
-    # Kolor pomarańczowy - symbolizuje ciepło
     if 'core_temperature_smooth' in df_plot.columns:
         fig_t.add_trace(go.Scatter(
             x=df_plot['time_min'], 
@@ -20,39 +41,25 @@ def render_thermal_tab(df_plot):
         ))
     
     # 2. HSI - HEAT STRAIN INDEX (Oś Prawa)
-    # Kolor czerwony przerywany - symbolizuje ryzyko/alarm
     if 'hsi' in df_plot.columns:
         fig_t.add_trace(go.Scatter(
             x=df_plot['time_min'], 
             y=df_plot['hsi'], 
             name='HSI', 
-            yaxis="y2", # Druga oś
+            yaxis="y2", 
             line=dict(color='#d62728', width=2, dash='dot'), 
             hovertemplate="HSI: %{y:.1f}<extra></extra>"
         ))
     
-    # Linie referencyjne dla temperatury (Strefy)
     fig_t.add_hline(y=38.5, line_dash="dash", line_color="red", opacity=0.5, annotation_text="Krytyczna (38.5°C)", annotation_position="top left")
     fig_t.add_hline(y=37.5, line_dash="dot", line_color="green", opacity=0.5, annotation_text="Optymalna (37.5°C)", annotation_position="bottom left")
 
-    # LAYOUT (Unified Hover)
     fig_t.update_layout(
         template="plotly_dark",
         title="Termoregulacja: Temperatura Głęboka vs Indeks Zmęczenia (HSI)",
         hovermode="x unified",
-        
-        # Oś Lewa
         yaxis=dict(title="Core Temp [°C]"),
-        
-        # Oś Prawa
-        yaxis2=dict(
-            title="HSI [0-10]", 
-            overlaying="y", 
-            side="right", 
-            showgrid=False,
-            range=[0, 12] # Lekki zapas na skali, żeby wykres nie dotykał sufitu
-        ),
-        
+        yaxis2=dict(title="HSI [0-10]", overlaying="y", side="right", showgrid=False, range=[0, 12]),
         legend=dict(orientation="h", y=1.1, x=0),
         margin=dict(l=10, r=10, t=40, b=10),
         height=450
@@ -60,37 +67,35 @@ def render_thermal_tab(df_plot):
     
     st.plotly_chart(fig_t, use_container_width=True)
     
-    st.info("""
-    **🌡️ Kompendium Termoregulacji: Fizjologia i Strategia**
+    with st.expander("🌡️ Teoria: Koszt Termiczny Wydajności (WKO5/INSCYD)", expanded=False):
+        st.markdown("""
+        ### Jak ciepło zabija Twoje Waty?
+        
+        Według założeń **WKO5** i **INSCYD**, temperatura nie jest tylko dyskomfortem – to realny "podatek metaboliczny", który płacisz za każdy wat mocy.
 
-    **1. Fizjologiczny Koszt Ciepła (Konkurencja o Krew)**
-    Twój układ krążenia to system zamknięty o ograniczonej pojemności (ok. 5L krwi). Podczas wysiłku w upale serce musi obsłużyć dwa konkurencyjne cele:
-    * **Mięśnie:** Dostarczenie tlenu i paliwa (priorytet wysiłkowy).
-    * **Skóra:** Oddanie ciepła przez pot i konwekcję (priorytet przeżycia).
-    * **Efekt:** Mniej krwi trafia do mięśni -> Spadek VO2max -> Wzrost tętna przy tej samej mocy (Cardiac Drift). Dodatkowo, utrata osocza (pot) zagęszcza krew, zmuszając serce do cięższej pracy.
+        #### 1. Mechanizm VLaMax (Wzrost Glikolizy)
+        Wysoka temperatura ciała to stresor, który podnosi poziom katecholamin (adrenaliny). To z kolei stymuluje system glikolityczny.
+        * **Efekt:** W upale Twój **VLaMax rośnie**. Oznacza to, że przy tej samej mocy spalasz więcej glikogenu i produkujesz więcej mleczanu niż w chłodzie.
+        * **Konsekwencja:** Szybsze "odcięcie" i gorsza ekonomia na długim dystansie.
 
-    **2. Strefy Temperaturowe (Core Temp):**
-    * **36.5°C - 37.5°C:** Homeostaza. Strefa komfortu i rozgrzewki.
-    * **37.5°C - 38.4°C:** **Strefa Wydajności.** Optymalna temperatura pracy mięśni (enzymy działają najszybciej). Tutaj chcesz być podczas wyścigu.
-    * **> 38.5°C:** **Strefa Krytyczna ("The Meltdown").** Ośrodkowy Układ Nerwowy (mózg) zaczyna "zaciągać hamulec ręczny", redukując rekrutację jednostek motorycznych, by chronić organy przed ugotowaniem. Odczuwasz to jako nagły brak mocy ("odcięcie").
+        #### 2. Cardiac Drift (Dryf Sercowy)
+        Mózg musi zdecydować: krew do mięśni (napęd) czy krew do skóry (chłodzenie). 
+        * **Blood Split:** W miarę wzrostu temp., coraz więcej krwi trafia do skóry. Serce musi bić szybciej, by utrzymać ciśnienie przy mniejszej objętości krwi (utrata osocza z potem).
+        * **Efficiency Factor (EF):** Metryka spadku EF (W/HR) pokazuje, jak bardzo Twoja termoregulacja jest obciążona. Spadek powyżej 5% jest uznawany za znaczący.
 
-    **3. HSI (Heat Strain Index 0-10):**
-    * **0-3 (Niski):** Pełen komfort. Możesz cisnąć maxa.
-    * **4-6 (Umiarkowany):** Fizjologiczny koszt rośnie. Wymagane nawadnianie.
-    * **7-9 (Wysoki):** Znaczący spadek wydajności. Skup się na chłodzeniu, nie na watach.
-    * **10 (Ekstremalny):** Ryzyko udaru. Zwolnij natychmiast.
+        #### 3. Strefy i Adaptation Score
+        * **37.5°C - 38.4°C:** Strefa Wydajności (Performance Zone). Mięśnie działają optymalnie.
+        * **> 38.5°C:** Strefa Krytyczna (The Meltdown). Nagły spadek rekrutacji jednostek motorycznych – mózg broni się przed przegrzaniem.
+        
+        ---
+        
+        ### Strategia na Upalny Wyścig:
+        1. **Pre-cooling:** Obniż core temp przed startem (kamizelki lodowe, ice slurry).
+        2. **Per-cooling:** Polewaj nadgarstki i kark (duże naczynia krwionośne).
+        3. **Nawadnianie:** Nie tylko woda – elektrolity (sód!) są kluczowe, by utrzymać objętość osocza i rzut serca.
+        """)
 
-    **4. Protokół Chłodzenia (Strategia):**
-    * **Internal (Wewnętrzne):** Pij zimne napoje (tzw. ice slurry). Obniża to temp. żołądka i core temp.
-    * **External (Zewnętrzne):** Polewaj wodą głowę, kark i **nadgarstki** (duże naczynia krwionośne blisko skóry). Lód w stroju startowym (na karku/klatce) to game-changer.
-
-    **5. Czerwone Flagi (Kiedy przerwać):**
-    * Gęsia skórka lub dreszcze w upale (paradoksalna reakcja - mózg "wariuje").
-    * Nagły spadek tętna przy utrzymaniu wysiłku.
-    * Zaburzenia widzenia lub koordynacji.
-    """)
-
-    st.header("Koszt Termiczny Wydajności (Cardiac Drift)")
+    st.header("Cardiac Drift vs Temperatura")
     
     # Helper function to find column by aliases
     def find_column(df, aliases):
@@ -99,7 +104,6 @@ def render_thermal_tab(df_plot):
                 return alias
         return None
     
-    # Define aliases for each column type
     temp_aliases = ['core_temperature_smooth', 'core_temperature', 'core_temp', 'temp', 'temperature', 'core temp']
     hr_aliases = ['heartrate', 'heartrate_smooth', 'heart_rate', 'hr', 'heart rate', 'bpm', 'pulse']
     pwr_aliases = ['watts', 'watts_smooth', 'power', 'pwr', 'moc']
@@ -108,95 +112,32 @@ def render_thermal_tab(df_plot):
     hr_col = find_column(df_plot, hr_aliases)
     pwr_col = find_column(df_plot, pwr_aliases)
     
-    has_pwr = pwr_col is not None
-    has_hr = hr_col is not None
-    has_temp = temp_col is not None
-
-    if has_pwr and has_hr and has_temp:
-        
-        # 1. FILTROWANIE DANYCH
-        # Wywalamy zera i postoje
+    if pwr_col and hr_col and temp_col:
         mask = (df_plot[pwr_col] > 10) & (df_plot[hr_col] > 60)
         df_clean = df_plot[mask].copy()
-        
-        # 2. OBLICZENIE EFEKTYWNOŚCI (EF)
         df_clean['eff_raw'] = df_clean[pwr_col] / df_clean[hr_col]
-        
-        # 3. USUWANIE OUTLIERÓW
         df_clean = df_clean[df_clean['eff_raw'] < 6.0]
 
         if not df_clean.empty:
-            # Tworzymy wykres z linią trendu (Lowess - lokalna regresja)
             fig_te = px.scatter(
-                df_clean, 
-                x=temp_col, 
-                y='eff_raw', 
-                trendline="lowess", 
-                trendline_options=dict(frac=0.3), 
-                trendline_color_override="#FF4B4B", 
-                template="plotly_dark",
-                opacity=0.3 # Przezroczyste punkty, żeby widzieć gęstość
+                df_clean, x=temp_col, y='eff_raw', 
+                trendline="lowess", trendline_options=dict(frac=0.3), 
+                trendline_color_override="#FF4B4B", template="plotly_dark", opacity=0.3
             )
-            
-            # Formatowanie punktów (Scatter)
-            fig_te.update_traces(
-                selector=dict(mode='markers'),
-                marker=dict(size=5, color='#1f77b4'),
-                hovertemplate="<b>Temp:</b> %{x:.2f}°C<br><b>EF:</b> %{y:.2f} W/bpm<extra></extra>"
-            )
-            
-            # Formatowanie linii trendu
-            fig_te.update_traces(
-                selector=dict(mode='lines'),
-                line=dict(width=4),
-                hovertemplate="<b>Trend:</b> %{y:.2f} W/bpm<extra></extra>"
-            )
-            
-            # LAYOUT (Unified Hover)
+            fig_te.update_traces(selector=dict(mode='markers'), marker=dict(size=5, color='#1f77b4'))
             fig_te.update_layout(
                 title="Spadek Efektywności (W/HR) vs Temperatura",
-                hovermode="x unified",
-                
                 xaxis=dict(title="Temperatura Głęboka [°C]"),
                 yaxis=dict(title="Efficiency Factor [W/bpm]"),
-                
-                showlegend=False,
-                margin=dict(l=10, r=10, t=40, b=10),
-                height=450
+                height=450, margin=dict(l=10, r=10, t=40, b=10)
             )
-
-            st.plotly_chart(fig_te, use_container_width=True, config={'scrollZoom': False}, key="thermal_eff")
+            st.plotly_chart(fig_te, use_container_width=True)
             
             st.info("""
-            ℹ️ **Jak to czytać?**
-            Ten wykres pokazuje **Cardiac Drift** w funkcji temperatury.
-            * **Oś Y (W/HR):** Ile watów generujesz z jednego uderzenia serca. Wyższa wartość = lepsza efektywność.
-            * **Oś X (Core Temp):** Twoja temperatura wewnętrzna. Wyższa wartość = większy stres cieplny.
-            * **Trend spadkowy:** Oznacza, że wraz ze wzrostem temperatury Twoje serce musi bić szybciej dla tej samej mocy (krew idzie do skóry na chłodzenie = mniejszy rzut serca dla mięśni).
-            * **Filtracja:** Usunąłem momenty, gdy nie pedałujesz (Moc < 10W), żeby nie zaburzać wyniku.
+            ℹ️ **Interpretacja WKO5:**
+            Ten wykres pokazuje, ile Watów generujesz z jednego uderzenia serca wraz ze wzrostem temperatury. Jeśli linia opada stromo, Twój koszt termiczny jest wysoki.
             """)
         else:
-            st.warning("Zbyt mało danych po przefiltrowaniu (sprawdź czy masz odczyty mocy i tętna).")
+            st.warning("Zbyt mało danych do analizy dryfu.")
     else:
-        missing = []
-        if not has_pwr: missing.append("watts (moc)")
-        if not has_hr: missing.append("heartrate (tętno)")
-        if not has_temp: missing.append("core_temperature (temperatura głęboka)")
-        
-        st.error(f"Brak wymaganych danych dla tego wykresu: {', '.join(missing)}")
-        
-        st.info("""
-        **💡 Interpretacja: Koszt Fizjologiczny Ciepła (Decoupling Termiczny)**
-
-        Ten wykres pokazuje, jak Twoje "serce płaci" za każdy wat mocy w miarę wzrostu temperatury ciała.
-        * **Oś X:** Temperatura Centralna (Core Temp).
-        * **Oś Y:** Efektywność (Waty na 1 uderzenie serca).
-        * **Czerwona Linia:** Trend zmian.
-
-        **🔍 Scenariusze:**
-        1.  **Linia Płaska (Idealnie):** Twoja termoregulacja działa świetnie. Mimo wzrostu temperatury, serce pracuje tak samo wydajnie. Jesteś dobrze nawodniony i zaadaptowany do ciepła.
-        2.  **Linia Opadająca (Typowe):** Wraz ze wzrostem temp. serce musi bić szybciej, by utrzymać tę samą moc (Dryf). Krew ucieka do skóry, by Cię chłodzić, zamiast napędzać mięśnie.
-        3.  **Gwałtowny Spadek:** "Zawał termiczny" wydajności. Zazwyczaj powyżej 38.5°C. W tym momencie walczysz o przetrwanie, a nie o wynik.
-
-        **Wniosek:** Jeśli linia leci mocno w dół, musisz poprawić chłodzenie (polewanie wodą, lód) lub strategię nawadniania przed startem.
-        """)
+        st.error("Brak danych (Moc, HR lub Core Temp) do pełnej analizy.")

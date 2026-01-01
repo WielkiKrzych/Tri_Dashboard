@@ -118,7 +118,11 @@ def render_intervals_tab(df_plot, df_plot_resampled, cp_input, rider_weight, rid
                 template="plotly_dark",
                 title="Pulse Power: Koszt Energetyczny Serca",
                 hovermode="x unified",
-                xaxis=dict(title="Czas [min]"),
+                xaxis=dict(
+                    title="Czas [min]",
+                    tickformat=".0f",
+                    hoverformat=".0f"
+                ),
                 yaxis=dict(title="Pulse Power [W / bpm]"),
                 yaxis2=dict(overlaying='y', side='right', showgrid=False, visible=False),
                 margin=dict(l=10, r=10, t=40, b=10),
@@ -266,6 +270,11 @@ def render_intervals_tab(df_plot, df_plot_resampled, cp_input, rider_weight, rid
                 template="plotly_dark",
                 title="Efektywność Brutto (GE%) w Czasie",
                 hovermode="x unified",
+                xaxis=dict(
+                    title="Czas [min]",
+                    tickformat=".0f",
+                    hoverformat=".0f"
+                ),
                 yaxis=dict(title="GE [%]", range=[10, 30]),
                 yaxis2=dict(title="Moc [W]", overlaying='y', side='right', showgrid=False),
                 height=400,

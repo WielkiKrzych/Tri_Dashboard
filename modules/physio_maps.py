@@ -343,8 +343,9 @@ def trend_at_constant_power(
         x=segment['time_min'],
         y=hr_trend,
         mode='lines',
-        name=f'HR Trend ({hr_slope:.2f} bpm/min)',
-        line=dict(color='#FF6B6B', width=2, dash='dash')
+        name=f'Trend HR: {hr_slope:.2f}',
+        line=dict(color='#FF6B6B', width=2, dash='dash'),
+        hovertemplate='%{y:.1f} bpm'
     ))
     
     # SmO2 trace (smoothed)
@@ -366,7 +367,7 @@ def trend_at_constant_power(
             x=segment['time_min'],
             y=smo2_trend,
             mode='lines',
-            name=f'SmO₂ Trend ({smo2_slope:.2f} %/min)',
+            name=f'Trend SmO₂: {smo2_slope:.2f}',
             line=dict(color='#4ECDC4', width=2, dash='dash'),
             yaxis='y2',
             hovertemplate='Trend: %{y:.1f} %'
@@ -375,7 +376,11 @@ def trend_at_constant_power(
     fig.update_layout(
         template='plotly_dark',
         title=f'Drift Analysis @ {power_target:.0f}W (±{tolerance_pct}%)',
-        xaxis=dict(title='Czas [min]'),
+        xaxis=dict(
+            title='Czas [min]',
+            tickformat='.0f',
+            hoverformat='.0f'
+        ),
         yaxis=dict(title='HR [bpm]', color='#FF6B6B'),
         yaxis2=dict(
             title='SmO₂ [%]',

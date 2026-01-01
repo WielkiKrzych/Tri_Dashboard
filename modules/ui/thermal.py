@@ -58,6 +58,11 @@ def render_thermal_tab(df_plot):
         template="plotly_dark",
         title="Termoregulacja: Temperatura Głęboka vs Indeks Zmęczenia (HSI)",
         hovermode="x unified",
+        xaxis=dict(
+            title="Czas [min]",
+            tickformat=".0f",
+            hoverformat=".0f"
+        ),
         yaxis=dict(title="Core Temp [°C]"),
         yaxis2=dict(title="HSI [0-10]", overlaying="y", side="right", showgrid=False, range=[0, 12]),
         legend=dict(orientation="h", y=1.1, x=0),

@@ -127,14 +127,17 @@ def render_thermal_tab(df_plot):
             fig_te = px.scatter(
                 df_clean, x=temp_col, y='eff_raw', 
                 trendline="lowess", trendline_options=dict(frac=0.3), 
-                trendline_color_override="#FF4B4B", template="plotly_dark", opacity=0.3
+                trendline_color_override="#FF4B4B", template="plotly_dark", opacity=0.3,
+                labels={temp_col: "Core Temperature", "eff_raw": "Efficiency Factor"},
+                hover_data={temp_col: ":.2f", "eff_raw": ":.2f"}
             )
             fig_te.update_traces(selector=dict(mode='markers'), marker=dict(size=5, color='#1f77b4'))
             fig_te.update_layout(
                 title="Spadek Efektywności (W/HR) vs Temperatura",
-                xaxis=dict(title="Temperatura Głęboka [°C]"),
-                yaxis=dict(title="Efficiency Factor [W/bpm]"),
-                height=450, margin=dict(l=10, r=10, t=40, b=10)
+                xaxis=dict(title="Core Temperature [°C]", tickformat=".2f"),
+                yaxis=dict(title="Efficiency Factor [W/bpm]", tickformat=".2f"),
+                height=450, margin=dict(l=10, r=10, t=40, b=10),
+                hovermode="x unified"
             )
             st.plotly_chart(fig_te, use_container_width=True)
             

@@ -104,28 +104,32 @@ def render_hr_tab(df):
     
     st.markdown("---")
 
-    # 4. Wykres
+    # 4. Wykres z wygładzaniem (10s średnia krocząca)
+    # Wyliczamy window (zakładamy 1Hz, można by sprawdzić częstotliwość, ale 10 wierszy to bezpieczny default)
+    # Jeśli dane są rzadsze, rolling(window=10) i tak zadziała.
+    df_segment['hr_smooth'] = df_segment['hr'].rolling(window=10, center=True, min_periods=1).mean()
+    
     fig = go.Figure()
     
-    # Linia HR
+    # Linia HR (wygładzona)
     # Dodajemy sformatowany czas do tooltipa
     df_segment['time_str'] = pd.to_datetime(df_segment['time'], unit='s').dt.strftime('%H:%M:%S')
 
     fig.add_trace(go.Scatter(
         x=df_segment['time'], 
-        y=df_segment['hr'],
+        y=df_segment['hr_smooth'],
         mode='lines',
-        name='HR',
+        name='HR (10s avg)',
         line=dict(color='#d62728', width=2),
         customdata=df_segment['time_str'],
-        hovertemplate="<b>Czas:</b> %{customdata} (%{x}s)<br><b>HR:</b> %{y:.0f} bpm<extra></extra>"
+        hovertemplate="<b>Czas:</b> %{customdata} (%{x}s)<br><b>HR (10s):</b> %{y:.1f} bpm<extra></extra>"
     ))
     
     # Linia średniej wizualnie
     fig.add_hline(y=avg_hr, line_dash="dash", line_color="white", opacity=0.5, annotation_text="Avg", annotation_position="bottom right")
 
     fig.update_layout(
-        title="Wykres Tętna (HR)",
+        title="Wykres Tętna (HR) - Średnia Krocząca 10s",
         xaxis_title="Czas (s)",
         yaxis_title="Tętno (bpm)",
         height=500,

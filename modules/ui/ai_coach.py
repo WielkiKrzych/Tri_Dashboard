@@ -27,7 +27,9 @@ def render_ai_coach_tab(df_plot_resampled):
                             callback=callback
                         )
                         
-                        st.success(f"✅ Trening Zakończony! Baza: {b_val:.1f}, Próg: {t_val:.1f}")
+                        b_str = f"{b_val:.1f}" if b_val is not None else "N/A"
+                        t_str = f"{t_val:.1f}" if t_val is not None else "N/A"
+                        st.success(f"✅ Trening Zakończony! Baza: {b_str}, Próg: {t_str}")
                         time.sleep(1)
                         st.rerun()
                     except Exception as e:
@@ -74,8 +76,16 @@ def render_ai_coach_tab(df_plot_resampled):
                         hist_df = hist_df.reset_index()
                         hist_df['session_nr'] = hist_df.index + 1
                         
-                        hover_text_base = hist_df.apply(lambda row: f"Plik: {row.get('source_file', 'N/A')}<br>Baza: {row['hr_base']:.1f} bpm", axis=1)
-                        hover_text_thresh = hist_df.apply(lambda row: f"Plik: {row.get('source_file', 'N/A')}<br>Próg: {row['hr_thresh']:.1f} bpm", axis=1)
+                        hover_text_base = hist_df.apply(
+                            lambda row: f"Plik: {row.get('source_file', 'N/A')}<br>Baza: {row['hr_base']:.1f} bpm" 
+                            if row['hr_base'] is not None and not pd.isna(row['hr_base']) else "N/A", 
+                            axis=1
+                        )
+                        hover_text_thresh = hist_df.apply(
+                            lambda row: f"Plik: {row.get('source_file', 'N/A')}<br>Próg: {row['hr_thresh']:.1f} bpm"
+                            if row['hr_thresh'] is not None and not pd.isna(row['hr_thresh']) else "N/A", 
+                            axis=1
+                        )
 
                         fig_evo = go.Figure()
                         

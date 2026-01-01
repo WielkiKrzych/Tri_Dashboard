@@ -56,18 +56,25 @@ def scatter_power_hr(
     """Create Power vs HR scatter with time coloring and trendline.
     
     Args:
-        df: DataFrame with 'watts' and 'hr' columns
+        df: DataFrame with 'watts' and 'heartrate' (or 'hr') columns
         title: Chart title
         
     Returns:
         Plotly Figure or None if data missing
     """
-    if 'watts' not in df.columns or 'hr' not in df.columns:
-        logger.warning("Missing watts or hr columns for scatter_power_hr")
+    # Detect HR column
+    hr_col = None
+    for col in ['heartrate', 'hr', 'heart_rate', 'HeartRate']:
+        if col in df.columns:
+            hr_col = col
+            break
+            
+    if 'watts' not in df.columns or hr_col is None:
+        logger.warning(f"Missing watts or HR columns for scatter_power_hr. Found: {df.columns.tolist()}")
         return None
     
     # Prepare data
-    plot_df = df[['watts', 'hr']].dropna()
+    plot_df = df[['watts', hr_col]].dropna()
     if len(plot_df) < 10:
         return None
     
@@ -76,22 +83,22 @@ def scatter_power_hr(
     plot_df['time_min'] = np.arange(len(plot_df)) / 60
     
     # Calculate correlation
-    corr = plot_df['watts'].corr(plot_df['hr'])
+    corr = plot_df['watts'].corr(plot_df[hr_col])
     
     # Create scatter
     fig = px.scatter(
         plot_df,
         x='watts',
-        y='hr',
+        y=hr_col,
         color='time_min',
         color_continuous_scale='Viridis',
-        labels={'watts': 'Moc [W]', 'hr': 'HR [bpm]', 'time_min': 'Czas [min]'},
+        labels={'watts': 'Moc [W]', hr_col: 'HR [bpm]', 'time_min': 'Czas [min]'},
         title=f"{title} (r = {corr:.2f})"
     )
     
     # Add trendline
     slope, intercept, r_value, p_value, std_err = stats.linregress(
-        plot_df['watts'], plot_df['hr']
+        plot_df['watts'], plot_df[hr_col]
     )
     x_line = np.array([plot_df['watts'].min(), plot_df['watts'].max()])
     y_line = slope * x_line + intercept
@@ -269,7 +276,14 @@ def trend_at_constant_power(
     Returns:
         Tuple of (Plotly Figure, DriftMetrics)
     """
-    if 'watts' not in df.columns or 'hr' not in df.columns:
+    # Detect HR column
+    hr_col = None
+    for col in ['heartrate', 'hr', 'heart_rate']:
+        if col in df.columns:
+            hr_col = col
+            break
+
+    if 'watts' not in df.columns or hr_col is None:
         return None, None
     
     # Find matching segment
@@ -288,7 +302,7 @@ def trend_at_constant_power(
     
     # Calculate HR drift
     hr_slope, hr_intercept, hr_r, hr_p, hr_se = stats.linregress(
-        segment['time_min'], segment['hr']
+        segment['time_min'], segment[hr_col]
     )
     
     # Calculate SmO2 drift (if available)
@@ -315,7 +329,7 @@ def trend_at_constant_power(
     # HR trace
     fig.add_trace(go.Scatter(
         x=segment['time_min'],
-        y=segment['hr'],
+        y=segment[hr_col],
         mode='lines',
         name='HR',
         line=dict(color='#FF6B6B', width=2)
@@ -370,7 +384,9 @@ def trend_at_constant_power(
     )
     
     # Calculate correlations
-    corr_power_hr = df['watts'].corr(df['hr'])
+    # Detect HR column again for safety
+    hr_col = next((c for c in ['heartrate', 'hr', 'heart_rate'] if c in df.columns), 'hr')
+    corr_power_hr = df['watts'].corr(df[hr_col]) if hr_col in df.columns else None
     
     metrics = DriftMetrics(
         hr_drift_slope=hr_slope,
@@ -402,11 +418,18 @@ def calculate_drift_metrics(df: pd.DataFrame) -> Dict:
         "correlation_power_smo2": None
     }
     
-    if 'watts' not in df.columns or 'hr' not in df.columns:
+    # Detect HR column
+    hr_col = None
+    for col in ['heartrate', 'hr', 'heart_rate', 'HeartRate']:
+        if col in df.columns:
+            hr_col = col
+            break
+
+    if 'watts' not in df.columns or hr_col is None:
         return result
     
     # Overall correlations
-    result["correlation_power_hr"] = round(df['watts'].corr(df['hr']), 3)
+    result["correlation_power_hr"] = round(df['watts'].corr(df[hr_col]), 3)
     
     # SmO2 correlation if available
     for col in ['smo2', 'SmO2', 'muscle_oxygen']:
@@ -428,7 +451,7 @@ def calculate_drift_metrics(df: pd.DataFrame) -> Dict:
         
         # HR drift
         if len(segment) > 30:
-            slope, _, _, _, _ = stats.linregress(segment['time_min'], segment['hr'])
+            slope, _, _, _, _ = stats.linregress(segment['time_min'], segment[hr_col])
             result["hr_drift_slope"] = round(slope, 3)
         
         # SmO2 drift

@@ -26,7 +26,7 @@ class TestScatterPowerHR:
         """Should return a Plotly figure with valid power and HR data."""
         df = pd.DataFrame({
             'watts': np.random.uniform(150, 300, 600),
-            'hr': np.random.uniform(120, 170, 600)
+            'heartrate': np.random.uniform(120, 170, 600)
         })
         
         fig = scatter_power_hr(df)
@@ -48,7 +48,7 @@ class TestScatterPowerHR:
         """Should return None if less than 10 data points."""
         df = pd.DataFrame({
             'watts': [200, 210, 220],
-            'hr': [140, 142, 144]
+            'heartrate': [140, 142, 144]
         })
         
         fig = scatter_power_hr(df)
@@ -63,7 +63,7 @@ class TestScatterPowerSmO2:
         """Should return None if SmO2 column is missing (graceful degradation)."""
         df = pd.DataFrame({
             'watts': np.random.uniform(150, 300, 600),
-            'hr': np.random.uniform(120, 170, 600)
+            'heartrate': np.random.uniform(120, 170, 600)
         })
         
         fig = scatter_power_smo2(df)
@@ -120,7 +120,7 @@ class TestTrendAtConstantPower:
         time = np.arange(600)
         df = pd.DataFrame({
             'watts': [200] * 600,
-            'hr': 140 + time / 60 * 0.5  # 0.5 bpm/min drift
+            'heartrate': 140 + time / 60 * 0.5  # 0.5 bpm/min drift
         })
         
         fig, metrics = trend_at_constant_power(df, power_target=200, tolerance_pct=10)
@@ -137,7 +137,7 @@ class TestTrendAtConstantPower:
         time = np.arange(600)
         df = pd.DataFrame({
             'watts': [250] * 600,
-            'hr': [150] * 600,
+            'heartrate': [150] * 600,
             'smo2': 60 - time / 60 * 0.3  # -0.3 %/min decline
         })
         
@@ -159,7 +159,7 @@ class TestCalculateDriftMetrics:
         power = np.random.uniform(150, 300, 600)
         hr = 100 + power * 0.3 + np.random.normal(0, 5, 600)  # HR correlated with power
         
-        df = pd.DataFrame({'watts': power, 'hr': hr})
+        df = pd.DataFrame({'watts': power, 'heartrate': hr})
         
         metrics = calculate_drift_metrics(df)
         
@@ -170,7 +170,7 @@ class TestCalculateDriftMetrics:
         """Should handle missing SmO2 gracefully."""
         df = pd.DataFrame({
             'watts': np.random.uniform(150, 300, 600),
-            'hr': np.random.uniform(120, 170, 600)
+            'heartrate': np.random.uniform(120, 170, 600)
         })
         
         metrics = calculate_drift_metrics(df)

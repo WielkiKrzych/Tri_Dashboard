@@ -31,7 +31,7 @@ def render_drift_maps_tab(df_plot: pd.DataFrame) -> None:
     """)
     
     # Check data availability
-    has_hr = 'hr' in df_plot.columns
+    has_hr = any(col in df_plot.columns for col in ['heartrate', 'hr', 'heart_rate', 'HeartRate'])
     has_smo2 = any(col in df_plot.columns for col in ['smo2', 'SmO2', 'muscle_oxygen'])
     
     if not has_hr:

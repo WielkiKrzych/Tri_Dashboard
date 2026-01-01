@@ -89,10 +89,11 @@ def render_intervals_tab(df_plot, df_plot_resampled, cp_input, rider_weight, rid
             fig_pp.add_trace(go.Scatter(
                 x=df_pp['time_min'], 
                 y=df_pp['pp_smooth'], 
+                customdata=df_pp['watts_smooth'],
                 name='Pulse Power (W/bpm)', 
                 mode='lines',
                 line=dict(color='#FFD700', width=2), # Złoty kolor
-                hovertemplate="Pulse Power: %{y:.2f} W/bpm<extra></extra>"
+                hovertemplate="Pulse Power: %{y:.2f} W/bpm<br>Moc: %{customdata:.0f} W<extra></extra>"
             ))
             
             if trend_line_pp is not None:
@@ -235,11 +236,12 @@ def render_intervals_tab(df_plot, df_plot_resampled, cp_input, rider_weight, rid
             fig_ge.add_trace(go.Scatter(
                 x=df_ge['time_min'], 
                 y=df_ge['ge'],
+                customdata=df_ge['watts'],
                 mode='lines',
                 name='Gross Efficiency (%)',
                 line=dict(color='#00cc96', width=1.5),
                 connectgaps=False, # Nie łączymy przerw (postojów)
-                hovertemplate="GE: %{y:.1f}%<extra></extra>"
+                hovertemplate="GE: %{y:.1f}%<br>Moc: %{customdata:.0f} W<extra></extra>"
             ))
             
             # Tło (Moc)

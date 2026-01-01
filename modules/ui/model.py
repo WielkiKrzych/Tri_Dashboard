@@ -76,15 +76,17 @@ def render_model_tab(df_plot, cp_input, w_prime_input):
             # Rzeczywiste MMP
             fig_model.add_trace(go.Scatter(
                 x=np.array(x_actual)/60, y=y_actual,
-                mode='markers', name='Twoje MMP (Actual)',
-                marker=dict(color='#00cc96', size=8)
+                mode='markers', name='MMP (Plik)',
+                marker=dict(color='#00cc96', size=8),
+                hovertemplate='%{y:.0f} W'
             ))
             
             # Model Teoretyczny
             fig_model.add_trace(go.Scatter(
                 x=x_theory/60, y=y_theory,
-                mode='lines', name=f'Model CP ({modeled_cp:.0f}W)',
-                line=dict(color='#ef553b', dash='dash')
+                mode='lines', name=f'Model: {modeled_cp:.0f}W',
+                line=dict(color='#ef553b', dash='dash'),
+                hovertemplate='%{y:.0f} W'
             ))
 
             fig_model.update_layout(
@@ -92,6 +94,7 @@ def render_model_tab(df_plot, cp_input, w_prime_input):
                 title="Power Duration Curve: Rzeczywistość vs Model",
                 xaxis_title="Czas trwania [min]",
                 yaxis_title="Moc [W]",
+                yaxis=dict(tickformat=".0f"),
                 hovermode="x unified",
                 height=500
             )

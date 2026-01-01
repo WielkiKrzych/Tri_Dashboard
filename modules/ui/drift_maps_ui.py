@@ -16,6 +16,13 @@ from modules.physio_maps import (
 )
 
 
+def _format_min_to_mmss(decimal_min: float) -> str:
+    """Helper to convert decimal minutes to mm:ss string."""
+    total_seconds = int(decimal_min * 60)
+    minutes = total_seconds // 60
+    seconds = total_seconds % 60
+    return f"{minutes:02d}:{seconds:02d}"
+
 def render_drift_maps_tab(df_plot: pd.DataFrame) -> None:
     """Render the Drift Maps tab in Performance section.
     
@@ -104,7 +111,7 @@ def render_drift_maps_tab(df_plot: pd.DataFrame) -> None:
     else:
         # Segment selector
         segment_options = [
-            f"{i+1}. {seg[2]:.0f}W ({(seg[1]-seg[0])/60:.1f} min)"
+            f"{i+1}. {seg[2]:.0f}W ({_format_min_to_mmss((seg[1]-seg[0])/60)})"
             for i, seg in enumerate(segments)
         ]
         
@@ -214,7 +221,7 @@ def _display_drift_metrics(metrics) -> None:
     with col3:
         st.metric(
             "Czas segmentu",
-            f"{metrics.segment_duration_min:.1f} min"
+            _format_min_to_mmss(metrics.segment_duration_min)
         )
     
     with col4:

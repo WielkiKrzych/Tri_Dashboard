@@ -93,6 +93,11 @@ def scatter_power_hr(
         color='time_min',
         color_continuous_scale='Viridis',
         labels={'watts': 'Moc [W]', hr_col: 'HR [bpm]', 'time_min': 'Czas [min]'},
+        hover_data={
+            'watts': ':.0f',
+            hr_col: ':.0f',
+            'time_min': ':.0f'
+        },
         title=f"{title} (r = {corr:.2f})"
     )
     
@@ -170,6 +175,11 @@ def scatter_power_smo2(
         color='time_min',
         color_continuous_scale='Plasma',
         labels={'watts': 'Moc [W]', smo2_col: 'SmO₂ [%]', 'time_min': 'Czas [min]'},
+        hover_data={
+            'watts': ':.0f',
+            smo2_col: ':.1f',
+            'time_min': ':.0f'
+        },
         title=f"{title} (r = {corr:.2f})"
     )
     

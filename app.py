@@ -67,7 +67,6 @@ class TabRegistry:
         "manual_thresholds": ("modules.ui.manual_thresholds", "render_manual_thresholds_tab"),
         "smo2_manual_thresholds": ("modules.ui.smo2_manual_thresholds", "render_smo2_manual_thresholds_tab"),
         "summary": ("modules.ui.summary", "render_summary_tab"),
-        "heatmaps": ("modules.ui.heatmaps_ui", "render_heatmaps_tab"),
     }
 
     @classmethod
@@ -200,7 +199,7 @@ if uploaded_file is not None:
 
     with tab_performance:
         UIComponents.show_breadcrumb("⚡ Performance")
-        t1, t2, t3, t4, t5, t6, t7, t8 = st.tabs(["🔋 Power", "📊 PDC", "⏱️ Intervals", "🦵 Biomech", "📐 Model", "❤️ HR", "🧬 Hematology", "🔥 Heatmapy"])
+        t1, t2, t3, t4, t5, t6, t7 = st.tabs(["🔋 Power", "📊 PDC", "⏱️ Intervals", "🦵 Biomech", "📐 Model", "❤️ HR", "🧬 Hematology"])
         with t1: render_tab_content("power", df_plot, df_plot_resampled, cp_input, w_prime_input)
         with t2: render_tab_content("pdc", df_plot, cp_input, w_prime_input, rider_weight, metrics.get('vo2_max_est', 0))
         with t3: render_tab_content("intervals", df_plot, df_plot_resampled, cp_input, rider_weight, rider_age, is_male)
@@ -208,7 +207,6 @@ if uploaded_file is not None:
         with t5: render_tab_content("model", df_plot, cp_input, w_prime_input)
         with t6: render_tab_content("heart_rate", df_plot)
         with t7: render_tab_content("hemo", df_plot)
-        with t8: render_tab_content("heatmaps", df_plot, cp_input)
 
     with tab_physiology:
         UIComponents.show_breadcrumb("🫀 Physiology")

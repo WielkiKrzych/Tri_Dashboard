@@ -33,6 +33,19 @@ from modules.calculations import (
     get_recovery_recommendation,
 )
 
+# NEW: Power-Duration module with CP fitting
+from modules.power_duration import (
+    compute_max_mean_power,
+    fit_critical_power,
+    detect_personal_records,
+    plot_power_duration,
+    export_model_json,
+    export_pr_csv,
+    export_chart_png,
+    CPModelResult,
+    DEFAULT_DURATIONS,
+)
+
 
 def _format_duration(seconds: int) -> str:
     """Format seconds to human-readable duration."""
@@ -196,9 +209,130 @@ def render_pdc_tab(
     </div>
     """, unsafe_allow_html=True)
     
-    # ===== PDC CHART =====
-    fig_pdc = _create_pdc_chart(pdc, cp)
+    # ===== PDC CHART WITH NEW FEATURES =====
+    st.subheader("📉 Krzywa Mocy (Log-Log)")
+    
+    # Chart options
+    col_opts1, col_opts2 = st.columns(2)
+    with col_opts1:
+        use_loglog = st.checkbox("Wykres Log-Log", value=True, key="pdc_loglog")
+    with col_opts2:
+        history_overlay = st.selectbox(
+            "Nakładka historyczna",
+            ["Brak", "30 dni", "90 dni"],
+            key="pdc_history_overlay"
+        )
+    
+    # Get extended PDC with more durations
+    if 'watts' in df_plot.columns:
+        power_series = df_plot['watts'].fillna(0)
+        pdc_extended = compute_max_mean_power(power_series, DEFAULT_DURATIONS)
+    else:
+        pdc_extended = pdc
+    
+    # Fit CP model using scipy curve_fit
+    cp_model_result = None
+    try:
+        durations_list = [d for d, p in pdc_extended.items() if p is not None]
+        powers_list = [pdc_extended[d] for d in durations_list]
+        if len([d for d in durations_list if 120 <= d <= 1200]) >= 3:
+            cp_model_result = fit_critical_power(durations_list, powers_list)
+    except ValueError as e:
+        st.warning(f"Nie udało się dopasować modelu CP: {e}")
+    
+    # PR detection (placeholder historical best - in production would come from DB)
+    historical_best = st.session_state.get('historical_pdc_best', {})
+    personal_records = detect_personal_records(pdc_extended, historical_best)
+    
+    # Update historical best in session state
+    for d, p in pdc_extended.items():
+        if p is not None:
+            if d not in historical_best or p > historical_best[d]:
+                historical_best[d] = p
+    st.session_state['historical_pdc_best'] = historical_best
+    
+    # Create advanced log-log chart
+    fig_pdc = plot_power_duration(
+        current_pdc=pdc_extended,
+        cp_model=cp_model_result,
+        history_30d=historical_best if history_overlay == "30 dni" else None,
+        history_90d=historical_best if history_overlay == "90 dni" else None,
+        personal_records=personal_records if personal_records else None,
+        title="Power-Duration Curve"
+    )
+    
+    # Apply log-log setting
+    if not use_loglog:
+        fig_pdc.update_layout(
+            xaxis=dict(type='linear'),
+            yaxis=dict(type='linear')
+        )
+    
     st.plotly_chart(fig_pdc, use_container_width=True)
+    
+    # ===== CP MODEL RESULTS =====
+    if cp_model_result:
+        st.subheader("🎯 Model Critical Power (scipy curve_fit)")
+        
+        col_cp1, col_cp2, col_cp3, col_cp4 = st.columns(4)
+        
+        with col_cp1:
+            st.metric("CP (Critical Power)", f"{cp_model_result.cp:.0f} W")
+        with col_cp2:
+            st.metric("W' (Anaerobic Capacity)", f"{cp_model_result.w_prime/1000:.1f} kJ")
+        with col_cp3:
+            st.metric("RMSE", f"{cp_model_result.rmse:.1f} W")
+        with col_cp4:
+            st.metric("R²", f"{cp_model_result.r_squared:.3f}")
+        
+        st.caption(f"Model: P(t) = W'/t + CP | Dane: {len(cp_model_result.durations_used)} punktów ({cp_model_result.durations_used[0]}s - {cp_model_result.durations_used[-1]}s)")
+    
+    # ===== PR DETECTION =====
+    if personal_records:
+        st.subheader("🏆 Nowe Rekordy Osobiste!")
+        pr_cols = st.columns(min(len(personal_records), 4))
+        for i, pr in enumerate(personal_records[:4]):
+            with pr_cols[i]:
+                duration_str = _format_duration(pr.duration)
+                st.metric(f"🏆 {duration_str}", f"{pr.power:.0f} W")
+    
+    # ===== EXPORT SECTION =====
+    with st.expander("📥 Eksportuj dane"):
+        col_exp1, col_exp2, col_exp3 = st.columns(3)
+        
+        with col_exp1:
+            if cp_model_result and st.button("💾 Model JSON", key="export_cp_json"):
+                import tempfile
+                import os
+                json_path = os.path.join(tempfile.gettempdir(), "cp_model.json")
+                export_model_json(cp_model_result, json_path)
+                with open(json_path, 'r') as f:
+                    st.download_button(
+                        "📥 Pobierz JSON",
+                        f.read(),
+                        file_name="cp_model.json",
+                        mime="application/json"
+                    )
+        
+        with col_exp2:
+            if personal_records and st.button("📊 PRs CSV", key="export_prs_csv"):
+                import tempfile
+                import os
+                csv_path = os.path.join(tempfile.gettempdir(), "personal_records.csv")
+                export_pr_csv(personal_records, csv_path)
+                with open(csv_path, 'r') as f:
+                    st.download_button(
+                        "📥 Pobierz CSV",
+                        f.read(),
+                        file_name="personal_records.csv",
+                        mime="text/csv"
+                    )
+        
+        with col_exp3:
+            if st.button("🖼️ PNG Chart", key="export_png"):
+                st.info("Użyj przycisku aparatu w prawym górnym rogu wykresu aby zapisać jako PNG.")
+    
+    st.divider()
     
     # ===== KEY METRICS + TTE (NEW) =====
     st.subheader("📈 Kluczowe Metryki & Time to Exhaustion")

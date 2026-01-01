@@ -35,13 +35,18 @@ def render_hemo_tab(target_df):
         
         fig_hemo = px.scatter(
             df_hemo, 
-            x=col_smo2, # Revert to original col_smo2 (3s smoothed or raw)
+            x=col_smo2, 
             y=thb_val, 
             color='watts' if 'watts' in df_hemo.columns else None, 
-            title="Hemo-Scatter: SmO2 (Oś X) vs THb (Oś Y)", # Revert title
+            title="Hemo-Scatter: SmO2 (Oś X) vs THb (Oś Y)", 
             labels={col_smo2: "SmO2 (Saturacja) [%]", thb_val: "THb (Objętość Krwi) [a.u.]", "watts": "Moc [W]"},
+            hover_data={
+                col_smo2: ":.1f",
+                thb_val: ":.1f",
+                "watts": ":.0f" if "watts" in df_hemo.columns else False
+            },
             template="plotly_dark",
-            color_continuous_scale='Turbo' # Turbo jest świetne do pokazywania intensywności
+            color_continuous_scale='Turbo' 
         )
         
         # Odwracamy oś X dla SmO2 (zwyczajowo w fizjologii wykresy czyta się od prawej do lewej dla desaturacji)

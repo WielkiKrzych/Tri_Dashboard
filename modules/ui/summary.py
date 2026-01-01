@@ -371,8 +371,14 @@ def _render_cp_model_chart(df_plot, cp_input, w_prime_input):
     fig_model.update_layout(
         template="plotly_dark",
         title="Power Duration Curve vs Model CP",
-        xaxis_title="Czas [min]",
-        yaxis_title="Moc [W]",
+        xaxis=dict(
+            title="Czas [min]",
+            tickformat='.0f'
+        ),
+        yaxis=dict(
+            title="Moc [W]",
+            tickformat='.0f'
+        ),
         hovermode="x unified",
         height=400,
         margin=dict(l=20, r=20, t=40, b=20)

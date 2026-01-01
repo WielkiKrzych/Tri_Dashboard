@@ -341,7 +341,8 @@ def plot_power_duration(
         mode='lines+markers',
         name='Dzisiaj',
         line=dict(color='#FF6B35', width=3),
-        marker=dict(size=8, color='#FF6B35')
+        marker=dict(size=8, color='#FF6B35'),
+        hovertemplate='P: <b>%{y:.0f} W</b><extra></extra>'
     ))
     
     # Historical overlays
@@ -355,7 +356,8 @@ def plot_power_duration(
             mode='lines',
             name='Max 30 dni',
             line=dict(color='#4ECDC4', width=2, dash='dash'),
-            opacity=0.7
+            opacity=0.7,
+            hovertemplate='P: <b>%{y:.0f} W</b> (30d)<extra></extra>'
         ))
     
     if history_90d:
@@ -368,7 +370,8 @@ def plot_power_duration(
             mode='lines',
             name='Max 90 dni',
             line=dict(color='#95E1D3', width=2, dash='dot'),
-            opacity=0.6
+            opacity=0.6,
+            hovertemplate='P: <b>%{y:.0f} W</b> (90d)<extra></extra>'
         ))
     
     # CP model fit curve
@@ -381,7 +384,8 @@ def plot_power_duration(
             y=model_powers,
             mode='lines',
             name=f'Model CP (CP={cp_model.cp:.0f}W, W\'={cp_model.w_prime/1000:.1f}kJ)',
-            line=dict(color='#2D3436', width=2, dash='dashdot')
+            line=dict(color='#2D3436', width=2, dash='dashdot'),
+            hovertemplate='Model: <b>%{y:.0f} W</b><extra></extra>'
         ))
         
         # Add CP horizontal line
@@ -390,7 +394,8 @@ def plot_power_duration(
             line_dash="solid",
             line_color="rgba(45, 52, 54, 0.5)",
             annotation_text=f"CP = {cp_model.cp:.0f}W",
-            annotation_position="right"
+            annotation_position="right",
+            annotation_font=dict(size=10, color="rgba(45, 52, 54, 0.8)")
         )
     
     # PR markers
@@ -408,7 +413,8 @@ def plot_power_duration(
                 color='gold',
                 symbol='star',
                 line=dict(color='#FF6B35', width=2)
-            )
+            ),
+            hovertemplate='🏆 PR: <b>%{y:.0f} W</b><extra></extra>'
         ))
     
     # Layout with log-log scale
@@ -417,13 +423,15 @@ def plot_power_duration(
         xaxis=dict(
             title='Czas (sekundy)',
             type='log',
-            tickvals=[1, 5, 10, 30, 60, 120, 300, 600, 1200, 1800, 3600],
-            ticktext=['1s', '5s', '10s', '30s', '1min', '2min', '5min', '10min', '20min', '30min', '1h'],
+            tickvals=[1, 2, 5, 10, 30, 60, 120, 300, 600, 1200, 1800, 3600],
+            ticktext=['1s', '2s', '5s', '10s', '30s', '1m', '2m', '5m', '10m', '20m', '30m', '1h'],
+            tickangle=-45,
             gridcolor='rgba(0,0,0,0.1)'
         ),
         yaxis=dict(
             title='Moc (W)',
             type='log',
+            tickformat='.0f',
             gridcolor='rgba(0,0,0,0.1)'
         ),
         template='plotly_white',

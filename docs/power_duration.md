@@ -8,6 +8,7 @@ The power-duration module (`modules/power_duration.py`) provides advanced analys
 2. **Critical Power (CP) model** fitting using non-linear regression
 3. **Personal Record (PR)** detection against historical bests
 4. **Log-log visualization** with historical curve overlays
+5. **Manual history acceptance** to control which sessions update records
 
 ## Mathematical Model
 

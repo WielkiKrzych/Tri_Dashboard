@@ -212,8 +212,8 @@ def render_pdc_tab(
     # ===== PDC CHART WITH NEW FEATURES =====
     st.subheader("📉 Krzywa Mocy (Log-Log)")
     
-    # Chart options
-    col_opts1, col_opts2 = st.columns(2)
+    # Chart & History options
+    col_opts1, col_opts2, col_opts3 = st.columns([1, 1, 1.5])
     with col_opts1:
         use_loglog = st.checkbox("Wykres Log-Log", value=True, key="pdc_loglog")
     with col_opts2:
@@ -221,6 +221,13 @@ def render_pdc_tab(
             "Nakładka historyczna",
             ["Brak", "30 dni", "90 dni"],
             key="pdc_history_overlay"
+        )
+    with col_opts3:
+        # NEW: Manual history acceptance toggle
+        accept_to_history = st.toggle(
+            "⭐ Zalicz trening do historii i PR", 
+            value=False,
+            help="Włącz, aby trwale dodać rekordy z tego pliku do Twojej historii 30/90 dni."
         )
     
     # Get extended PDC with more durations
@@ -244,12 +251,15 @@ def render_pdc_tab(
     historical_best = st.session_state.get('historical_pdc_best', {})
     personal_records = detect_personal_records(pdc_extended, historical_best)
     
-    # Update historical best in session state
-    for d, p in pdc_extended.items():
-        if p is not None:
-            if d not in historical_best or p > historical_best[d]:
-                historical_best[d] = p
-    st.session_state['historical_pdc_best'] = historical_best
+    # Update historical best in session state ONLY IF ACCEPTED
+    if accept_to_history:
+        for d, p in pdc_extended.items():
+            if p is not None:
+                if d not in historical_best or p > historical_best[d]:
+                    historical_best[d] = p
+        st.session_state['historical_pdc_best'] = historical_best
+        if personal_records:
+            st.toast("Rekordy zostały dodane do historii!", icon="🏆")
     
     # Create advanced log-log chart
     fig_pdc = plot_power_duration(

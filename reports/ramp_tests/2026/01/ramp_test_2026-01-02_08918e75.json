@@ -1,0 +1,135 @@
+{
+  "$schema": "ramp_test_result_v1.json",
+  "version": "1.0.0",
+  "test_validity": {
+    "status": "valid",
+    "issues": [],
+    "metrics": {
+      "ramp_duration_sec": 2739,
+      "power_range_watts": 485.0,
+      "exhaustion_reached": true,
+      "rpe_final": null
+    },
+    "signal_quality": {
+      "Power": {
+        "signal_name": "Power",
+        "quality_score": 1.0,
+        "artifact_ratio": 0.0,
+        "gap_ratio": 0.0,
+        "total_samples": 2740,
+        "valid_samples": 2740,
+        "is_usable": true,
+        "grade": "A"
+      },
+      "HR": {
+        "signal_name": "HR",
+        "quality_score": 1.0,
+        "artifact_ratio": 0.0,
+        "gap_ratio": 0.0,
+        "total_samples": 2740,
+        "valid_samples": 2740,
+        "is_usable": true,
+        "grade": "A"
+      }
+    }
+  },
+  "thresholds": {
+    "vt1": {
+      "range_watts": [
+        298.76666666666665,
+        358.6222222222222
+      ],
+      "midpoint_watts": 328.69444444444446,
+      "range_hr": [
+        123.09444444444445,
+        139.86666666666667
+      ],
+      "midpoint_hr": 131.48055555555555,
+      "confidence": 0.42484778431932346,
+      "confidence_level": "low",
+      "sources": [
+        "VE"
+      ],
+      "method": "step_ve_slope_range",
+      "stability_score": null,
+      "variability_watts": null
+    },
+    "vt2": {
+      "range_watts": [
+        358.6222222222222,
+        388.59444444444443
+      ],
+      "midpoint_watts": 373.60833333333335,
+      "range_hr": [
+        139.86666666666667,
+        147.35
+      ],
+      "midpoint_hr": 143.60833333333335,
+      "confidence": 0.7002777777777778,
+      "confidence_level": "medium",
+      "sources": [
+        "VE"
+      ],
+      "method": "step_ve_slope_range",
+      "stability_score": null,
+      "variability_watts": null
+    }
+  },
+  "smo2_context": {
+    "signal_type": "LOCAL",
+    "is_threshold_source": false,
+    "drop_point": {
+      "range_watts": [
+        329.0,
+        359.0
+      ],
+      "midpoint_watts": 344.0,
+      "range_hr": null,
+      "midpoint_hr": null,
+      "confidence": 0.4,
+      "confidence_level": "low",
+      "sources": [
+        "SmO2 (LOCAL)"
+      ],
+      "method": "local_signal_reference",
+      "stability_score": null,
+      "variability_watts": null
+    },
+    "deviation_from_vt1_watts": 15.305555555555543,
+    "interpretation": "SmO₂ (LOCAL) bliski VT → niewielka korekta"
+  },
+  "conflicts": {
+    "agreement_score": 1.0,
+    "signals_analyzed": [
+      "VE",
+      "SmO2 (LOCAL)"
+    ],
+    "detected": [],
+    "recommendations": []
+  },
+  "interpretation": {
+    "overall_confidence": 0.8082825947731078,
+    "confidence_level": "high",
+    "can_generate_zones": true,
+    "warnings": [],
+    "notes": [
+      "Dostępne sygnały: Power, HR, VE, SmO2",
+      "Wykryto test schodkowy: 9 stopni",
+      "VT1 (VE): 329 W (confidence: 0.47)",
+      "VT2 (VE): 374 W (confidence: 0.70)",
+      "LT1 (SmO2, LOCAL): 344 W (confidence: 0.40)",
+      "LT2 (SmO2, LOCAL): 374 W",
+      "ℹ️ SmO₂ (LOCAL) bliski VT1 (różnica: 15 W) → confidence -0.05"
+    ]
+  },
+  "metadata": {
+    "test_date": "2026-01-02",
+    "protocol": "Ramp Test",
+    "analysis_timestamp": "2026-01-02T19:20:21.353287",
+    "method_version": "1.0.0",
+    "session_id": "08918e75-3bdc-43ef-8235-d5020def9416",
+    "athlete_id": null,
+    "notes": "Auto-save from UI. File: i107023035_streams.csv",
+    "analyzer": "Tri_Dashboard/ramp_pipeline"
+  }
+}

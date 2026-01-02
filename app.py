@@ -69,6 +69,7 @@ class TabRegistry:
         "summary": ("modules.ui.summary", "render_summary_tab"),
         "drift_maps": ("modules.ui.drift_maps_ui", "render_drift_maps_tab"),
         "tte": ("modules.ui.tte_ui", "render_tte_tab"),
+        "ramp_archive": ("modules.ui.ramp_archive", "render_ramp_archive"),
     }
 
     @classmethod
@@ -215,7 +216,7 @@ if uploaded_file is not None:
 
     with tab_physiology:
         UIComponents.show_breadcrumb("🫀 Physiology")
-        t1, t2, t3, t4, t5, t6, t7, t8 = st.tabs(["💓 HRV", "🩸 SmO2", "🫁 Ventilation", "🎯 Vent - Progi", "🛠️ Vent - Progi Manuals", "🎯 SmO2 - Progi", "🛠️ SmO2 - Progi Manuals", "🌡️ Thermal"])
+        t1, t2, t3, t4, t5, t6, t7, t8, t9 = st.tabs(["💓 HRV", "🩸 SmO2", "🫁 Ventilation", "🎯 Vent - Progi", "🛠️ Vent - Progi Manuals", "🎯 SmO2 - Progi", "🛠️ SmO2 - Progi Manuals", "🌡️ Thermal", "🗄️ Ramp Archive"])
         with t1: render_tab_content("hrv", df_clean_pl)
         with t2: render_tab_content("smo2", df_plot, training_notes, uploaded_file.name)
         max_hr = int(208 - 0.7 * rider_age) if rider_age else 185
@@ -225,6 +226,7 @@ if uploaded_file is not None:
         with t6: render_tab_content("smo2_thresholds", df_plot, training_notes, uploaded_file.name, cp_input)
         with t7: render_tab_content("smo2_manual_thresholds", df_plot, training_notes, uploaded_file.name, cp_input)
         with t8: render_tab_content("thermal", df_plot)
+        with t9: render_tab_content("ramp_archive")
 
     with tab_intelligence:
         UIComponents.show_breadcrumb("🧠 Intelligence")

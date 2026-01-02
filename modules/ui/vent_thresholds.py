@@ -87,11 +87,12 @@ def render_vent_thresholds_tab(target_df, training_notes, uploaded_file_name, cp
             
             # Automatyczny zapis jeśli test jest ważny
             if pipeline_result.validity.validity in [ValidityLevel.VALID, ValidityLevel.CONDITIONAL]:
-                saved_path = save_ramp_test_report(
+                save_result = save_ramp_test_report(
                     pipeline_result,
                     notes=f"Auto-save from UI. File: {uploaded_file_name}"
                 )
-                session_id = pipeline_result.metadata.get('session_id', 'unknown')
+                session_id = save_result.get('session_id', 'unknown')
+                saved_path = save_result.get('path', '')
                 st.toast(f"✅ Ramp Test report saved: {session_id[:8]}", icon="💾")
                 print(f"Ramp Test report saved: {session_id} -> {saved_path}")
             else:

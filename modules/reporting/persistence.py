@@ -41,7 +41,7 @@ def save_ramp_test_report(
     athlete_id: Optional[str] = None,
     notes: Optional[str] = None,
     dev_mode: bool = False
-) -> str:
+) -> Dict:
     """
     Save Ramp Test result to JSON file.
     
@@ -133,7 +133,11 @@ def save_ramp_test_report(
     except Exception as e:
         print(f"Warning: Failed to update report index: {e}")
         
-    return str(file_path.absolute())
+    return {
+        "path": str(file_path.absolute()),
+        "session_id": session_id,
+        "uuid": session_id  # alias
+    }
 
 
 def _update_index(base_dir: str, metadata: Dict, file_path: str):

@@ -95,6 +95,19 @@ class SignalQuality:
         elif self.quality_score >= 0.50:
             return "D"
         return "F"
+    
+    def to_dict(self) -> Dict:
+        """Serialize to dict for JSON export."""
+        return {
+            "signal_name": self.signal_name,
+            "quality_score": self.quality_score,
+            "artifact_ratio": self.artifact_ratio,
+            "gap_ratio": self.gap_ratio,
+            "total_samples": self.total_samples,
+            "valid_samples": self.valid_samples,
+            "is_usable": self.is_usable,
+            "grade": self.get_grade()
+        }
 
 
 # ============================================================
@@ -169,6 +182,21 @@ class ThresholdRange:
             prefix = "może "
         
         return f"{prefix}{self.lower_watts:.0f}–{self.upper_watts:.0f} W (środek: ~{self.midpoint_watts:.0f} W)"
+    
+    def to_dict(self) -> Dict:
+        """Serialize to dict for JSON export per canonical spec."""
+        return {
+            "range_watts": [self.lower_watts, self.upper_watts],
+            "midpoint_watts": self.midpoint_watts,
+            "range_hr": [self.lower_hr, self.upper_hr] if self.lower_hr and self.upper_hr else None,
+            "midpoint_hr": self.midpoint_hr,
+            "confidence": self.confidence,
+            "confidence_level": self.confidence_level.value,
+            "sources": self.sources,
+            "method": self.method,
+            "stability_score": self.stability_score,
+            "variability_watts": self.variability_watts
+        }
 
 
 # ============================================================
@@ -207,6 +235,19 @@ class SignalConflict:
     
     # Impact
     confidence_penalty: float = 0.0     # How much to reduce confidence (0–0.3)
+    
+    def to_dict(self) -> Dict:
+        """Serialize to dict for JSON export."""
+        return {
+            "type": self.conflict_type.value,
+            "severity": self.severity.value,
+            "signal_a": self.signal_a,
+            "signal_b": self.signal_b,
+            "description": self.description,
+            "physiological_interpretation": self.physiological_interpretation,
+            "magnitude_watts": self.magnitude,
+            "confidence_penalty": self.confidence_penalty
+        }
 
 
 @dataclass
@@ -246,6 +287,15 @@ class ConflictReport:
     def total_confidence_penalty(self) -> float:
         """Sum of all confidence penalties."""
         return sum(c.confidence_penalty for c in self.conflicts)
+    
+    def to_dict(self) -> Dict:
+        """Serialize to dict for JSON export per canonical spec."""
+        return {
+            "agreement_score": self.agreement_score,
+            "signals_analyzed": self.signals_analyzed,
+            "detected": [c.to_dict() for c in self.conflicts],
+            "recommendations": self.recommendations
+        }
 
 
 # ============================================================
@@ -314,6 +364,22 @@ class TestValidity:
         if not self.issues:
             return "Wszystkie kryteria jakości spełnione."
         return "\n".join(f"- {issue}" for issue in self.issues)
+    
+    def to_dict(self) -> Dict:
+        """Serialize to dict for JSON export per canonical spec."""
+        return {
+            "status": self.validity.value,
+            "issues": self.issues,
+            "metrics": {
+                "ramp_duration_sec": self.ramp_duration_sec,
+                "power_range_watts": self.power_range_watts,
+                "exhaustion_reached": self.exhaustion_reached,
+                "rpe_final": self.rpe_final
+            },
+            "signal_quality": {
+                name: sq.to_dict() for name, sq in self.signal_qualities.items()
+            }
+        }
 
 
 # ============================================================
@@ -381,6 +447,43 @@ class RampTestResult:
             return "Rozważ"
         else:
             return "Dane niepewne — unikam jednoznacznych zaleceń"
+    
+    def to_dict(self) -> Dict:
+        """Serialize to dict for JSON export per canonical spec."""
+        # Confidence level
+        if self.overall_confidence >= 0.8:
+            conf_level = "high"
+        elif self.overall_confidence >= 0.5:
+            conf_level = "medium"
+        else:
+            conf_level = "low"
+        
+        return {
+            "test_validity": self.validity.to_dict(),
+            "thresholds": {
+                "vt1": self.vt1.to_dict() if self.vt1 else None,
+                "vt2": self.vt2.to_dict() if self.vt2 else None
+            },
+            "smo2_context": {
+                "signal_type": "LOCAL",
+                "is_threshold_source": False,
+                "drop_point": self.smo2_lt1.to_dict() if self.smo2_lt1 else None,
+                "deviation_from_vt1_watts": self.smo2_deviation_from_vt,
+                "interpretation": self.smo2_interpretation
+            } if self.smo2_lt1 or self.smo2_interpretation else None,
+            "conflicts": self.conflicts.to_dict(),
+            "interpretation": {
+                "overall_confidence": self.overall_confidence,
+                "confidence_level": conf_level,
+                "can_generate_zones": self.can_generate_zones(),
+                "warnings": self.warnings,
+                "notes": self.analysis_notes
+            },
+            "metadata": {
+                "test_date": self.test_date,
+                "protocol": self.protocol
+            }
+        }
 
 
 # ============================================================

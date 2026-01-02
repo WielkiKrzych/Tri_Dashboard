@@ -30,3 +30,10 @@ reports/**/*.json
 # Optional: other generated artifacts
 reports/**/*.pdf
 reports/**/*.html
+
+# === Raw training data (CSV) ===
+treningi_csv/
+treningi_csv/**/*.csv
+
+# Safety net – any CSV in data folders
+data/**/*.csv

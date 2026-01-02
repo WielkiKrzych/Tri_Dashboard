@@ -430,6 +430,9 @@ class RampTestResult:
     protocol: str = ""
     test_date: str = ""
     
+    # Transient / Debug data (not for JSON)
+    detailed_step_analysis: Optional[Dict] = field(default=None, repr=False)
+    
     def can_generate_zones(self) -> bool:
         """Check if training zones can be calculated."""
         return (

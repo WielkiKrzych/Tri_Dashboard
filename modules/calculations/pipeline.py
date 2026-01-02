@@ -503,8 +503,13 @@ def build_result(
         vt1=integration.vt1,
         vt2=integration.vt2,
         conflicts=integration.conflicts,
+        conflicts=integration.conflicts,
         test_date=test_date,
-        protocol=protocol
+        protocol=protocol,
+        detailed_step_analysis={
+             "vt": analysis.vt_result,
+             "smo2": analysis.smo2_result
+        }
     )
     
     # Add SmO2 context (LOCAL signal - for information only, not as threshold)

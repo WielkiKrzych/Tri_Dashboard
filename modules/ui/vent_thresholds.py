@@ -4,6 +4,9 @@ import pandas as pd
 from scipy import stats
 from modules.calculations.thresholds import analyze_step_test
 from modules.calculations.quality import check_step_test_protocol
+from modules.calculations.pipeline import run_ramp_test_pipeline
+from modules.reporting.persistence import save_ramp_test_report
+from models.results import ValidityLevel
 
 def render_vent_thresholds_tab(target_df, training_notes, uploaded_file_name, cp_input):
     """Detekcja progów wentylacyjnych VT1/VT2 - wymaga Ramp Test."""
@@ -67,6 +70,36 @@ def render_vent_thresholds_tab(target_df, training_notes, uploaded_file_name, cp
             hr_column='hr' if 'hr' in target_df.columns else None,
             time_column='time'
         )
+
+        # 3. NOWA METODOLOGIA: Uruchom pełny pipeline i zapisz raport
+        # (Działa w tle, wynik zapisywany do JSON)
+        try:
+            pipeline_result = run_ramp_test_pipeline(
+                target_df,
+                power_column='watts',
+                ve_column='tymeventilation',
+                hr_column='hr' if 'hr' in target_df.columns else None,
+                smo2_column='smo2' if 'smo2' in target_df.columns else None,
+                time_column='time',
+                test_date=pd.Timestamp.now().strftime("%Y-%m-%d"),
+                protocol="Ramp Test"
+            )
+            
+            # Automatyczny zapis jeśli test jest ważny
+            if pipeline_result.validity.validity in [ValidityLevel.VALID, ValidityLevel.CONDITIONAL]:
+                saved_path = save_ramp_test_report(
+                    pipeline_result,
+                    notes=f"Auto-save from UI. File: {uploaded_file_name}"
+                )
+                session_id = pipeline_result.metadata.get('session_id', 'unknown')
+                st.toast(f"✅ Ramp Test report saved: {session_id[:8]}", icon="💾")
+                print(f"Ramp Test report saved: {session_id} -> {saved_path}")
+            else:
+                st.toast("⚠️ Raport NIE zapisany (Test Invalid)", icon="⛔")
+                
+        except Exception as e:
+            st.error(f"Błąd zapisu raportu: {e}")
+            print(f"Report save failed: {e}")
     
     vt1_zone = result.vt1_zone
     vt2_zone = result.vt2_zone

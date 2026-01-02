@@ -146,7 +146,29 @@ class StepVTResult:
 
 @dataclass
 class StepSmO2Result:
-    """Result of step-by-step SmO2 detection."""
+    """Result of step-by-step SmO2 detection.
+    
+    IMPORTANT LIMITATIONS - SmO₂ is a LOCAL/REGIONAL signal:
+    
+    1. SmO₂ reflects oxygen saturation in ONE muscle group (e.g., vastus lateralis).
+       It does NOT represent whole-body oxygen dynamics like VO₂ or VE.
+       
+    2. Sensor placement significantly affects readings:
+       - Different muscles show different responses
+       - Subcutaneous fat thickness affects signal
+       - Movement artifacts are common
+       
+    3. SmO₂ thresholds should SUPPORT ventilatory thresholds (VT1/VT2), 
+       NOT replace them. Use SmO₂ as confirmatory evidence only.
+       
+    4. Inter-individual variability is HIGH:
+       - Baseline SmO₂ varies 60-80% between athletes
+       - Response patterns differ based on training/fiber type
+    
+    Set is_supporting_only=True by default - SmO₂ should influence
+    interpretation of other thresholds, never be the sole decision maker.
+    """
+    # Detection results
     smo2_1_watts: Optional[float] = None
     smo2_1_hr: Optional[float] = None
     smo2_1_step_number: Optional[int] = None
@@ -157,6 +179,38 @@ class StepSmO2Result:
     smo2_2_slope: Optional[float] = None
     step_analysis: List[dict] = field(default_factory=list)
     notes: List[str] = field(default_factory=list)
+    
+    # LOCAL SIGNAL FLAGS - SmO2 is regional, not systemic
+    signal_type: str = "LOCAL"  # LOCAL = muscle-specific, not whole-body
+    is_supporting_only: bool = True  # Should NOT generate standalone decisions
+    
+    # Documented limitations for UI display
+    limitations: List[str] = field(default_factory=lambda: [
+        "SmO₂ odzwierciedla utlenowanie JEDNEGO mięśnia, nie całego ciała",
+        "Pozycja sensora znacząco wpływa na odczyty",
+        "Użyj SmO₂ do potwierdzenia VT1/VT2 z wentylacji, nie jako samodzielny próg",
+        "Zmienność międzyosobnicza jest wysoka (baseline 60-80%)"
+    ])
+    
+    def get_confidence_modifier(self) -> float:
+        """Return confidence modifier for combined threshold detection.
+        
+        SmO₂ should only slightly boost confidence when it agrees with VT,
+        not be used alone for threshold detection.
+        """
+        # SmO₂ alone = low confidence boost
+        # Agreement with VT = moderate boost
+        if self.smo2_1_watts is not None and self.smo2_2_watts is not None:
+            return 0.15  # Both thresholds detected - moderate support
+        elif self.smo2_1_watts is not None or self.smo2_2_watts is not None:
+            return 0.10  # One threshold - weak support
+        return 0.0  # No detection
+    
+    def get_interpretation_note(self) -> str:
+        """Get interpretation guidance for UI."""
+        if self.is_supporting_only:
+            return "⚠️ SmO₂ to sygnał LOKALNY - używaj do potwierdzenia VT, nie jako samodzielny próg"
+        return ""
 
 
 # ============================================================

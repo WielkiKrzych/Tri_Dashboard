@@ -1,5 +1,7 @@
 """
 Metabolic Threshold Detection (SmO2/LT).
+
+IMPORTANT: SmO₂ is a LOCAL/REGIONAL signal - see limitations below.
 """
 import pandas as pd
 from typing import Optional, List
@@ -16,8 +18,42 @@ def detect_smo2_from_steps(
     smo2_t1_slope_threshold: float = -0.01,
     smo2_t2_slope_threshold: float = -0.02
 ) -> StepSmO2Result:
-    """Detect SmO2 thresholds from step data."""
+    """Detect SmO2 thresholds from step data.
+    
+    ⚠️ CRITICAL LIMITATIONS - SmO₂ is a LOCAL signal:
+    
+    1. SmO₂ reflects oxygen saturation in ONE muscle group only.
+       Example: Vastus lateralis SmO₂ ≠ whole-body VO₂.
+       
+    2. This function detects POTENTIAL thresholds that should:
+       - SUPPORT ventilatory thresholds (VT1, VT2)
+       - NOT be used as standalone decision points
+       - Be interpreted WITH VE/HR data, not instead of it
+       
+    3. Sensor placement, subcutaneous fat, and movement artifacts
+       significantly affect readings.
+       
+    4. Results are returned with is_supporting_only=True to indicate
+       these should influence interpretation of VT, not replace it.
+    
+    Args:
+        df: DataFrame with SmO2 data
+        step_range: Detected step test range
+        smo2_column: Column name for SmO2 (default: 'smo2')
+        power_column: Column name for power (default: 'watts')
+        hr_column: Column name for HR (default: 'hr')
+        time_column: Column name for time (default: 'time')
+        smo2_t1_slope_threshold: Slope threshold for LT1 detection
+        smo2_t2_slope_threshold: Slope threshold for LT2 detection
+    
+    Returns:
+        StepSmO2Result with is_supporting_only=True (local signal)
+    """
     result = StepSmO2Result()
+    
+    # Add interpretation note to results
+    result.notes.append("⚠️ SmO₂ = sygnał LOKALNY - potwierdzaj z VT z wentylacji")
+    
     if not step_range or not step_range.is_valid or len(step_range.steps) < 3:
         result.notes.append("Insufficient steps for SmO2 detection (need > 2)")
         return result

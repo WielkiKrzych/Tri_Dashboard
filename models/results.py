@@ -322,7 +322,7 @@ class TestValidity:
     - If INVALID: "Test metodologicznie nieważny"
     - If CONDITIONAL: "Test ważny z zastrzeżeniami"
     """
-    validity: ValidityLevel
+    validity: ValidityLevel = ValidityLevel.VALID
     
     # Test duration
     ramp_duration_sec: int = 0

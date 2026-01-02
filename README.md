@@ -83,3 +83,6 @@ This project is licensed under the MIT License.
 > [!WARNING]
 > **Generated Ramp Test reports are intentionally excluded from version control.**
 > They contain analysis artifacts and must not be committed.
+>
+> **Raw training CSV files are excluded from version control.**
+> They contain sensitive source data and must remain local.

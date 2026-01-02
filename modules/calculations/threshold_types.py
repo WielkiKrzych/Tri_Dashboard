@@ -128,7 +128,16 @@ class StepTestRange:
 
 @dataclass
 class StepVTResult:
-    """Result of step-by-step VT detection."""
+    """Result of step-by-step VT detection.
+    
+    NEW: vt1_zone and vt2_zone provide range-based thresholds with confidence.
+    Legacy point fields (vt1_watts, vt2_watts) kept for backward compatibility.
+    """
+    # NEW: Range-based thresholds (preferred)
+    vt1_zone: Optional[TransitionZone] = None
+    vt2_zone: Optional[TransitionZone] = None
+    
+    # Legacy point values (for backward compatibility)
     vt1_watts: Optional[float] = None
     vt1_hr: Optional[float] = None
     vt1_ve: Optional[float] = None
@@ -143,6 +152,17 @@ class StepVTResult:
     vt2_ve_slope: Optional[float] = None
     step_analysis: List[dict] = field(default_factory=list)
     notes: List[str] = field(default_factory=list)
+    
+    # Confidence (derived from zones if available)
+    @property
+    def vt1_confidence(self) -> float:
+        """Get VT1 confidence from zone or default."""
+        return self.vt1_zone.confidence if self.vt1_zone else 0.5
+    
+    @property
+    def vt2_confidence(self) -> float:
+        """Get VT2 confidence from zone or default."""
+        return self.vt2_zone.confidence if self.vt2_zone else 0.5
 
 @dataclass
 class StepSmO2Result:
@@ -168,7 +188,11 @@ class StepSmO2Result:
     Set is_supporting_only=True by default - SmO₂ should influence
     interpretation of other thresholds, never be the sole decision maker.
     """
-    # Detection results
+    # NEW: Range-based thresholds (preferred)
+    smo2_1_zone: Optional[TransitionZone] = None
+    smo2_2_zone: Optional[TransitionZone] = None
+    
+    # Legacy point values (for backward compatibility)
     smo2_1_watts: Optional[float] = None
     smo2_1_hr: Optional[float] = None
     smo2_1_step_number: Optional[int] = None

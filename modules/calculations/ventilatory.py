@@ -137,24 +137,49 @@ def detect_vt_from_steps(
 
     v1_idx, v1_slope, v1_stage = search(vt1_start, vt1_slope_threshold)
     if v1_stage:
+        # Legacy point values (kept for backward compatibility)
         result.vt1_watts = round(v1_stage['avg_power'], 0)
         result.vt1_hr = round(v1_stage['avg_hr'], 0) if v1_stage['avg_hr'] else None
         result.vt1_ve = round(v1_stage['avg_ve'], 1)
         result.vt1_br = round(v1_stage['avg_br'], 0) if v1_stage['avg_br'] else None
         result.vt1_ve_slope = round(v1_slope, 4)
         result.vt1_step_number = v1_stage['step_number']
+        
+        # NEW: Create TransitionZone for range-based output
+        # Zone width based on step power difference (±10W default)
+        zone_width = 10.0
+        result.vt1_zone = TransitionZone(
+            range_watts=(result.vt1_watts - zone_width, result.vt1_watts + zone_width),
+            range_hr=(result.vt1_hr - 5, result.vt1_hr + 5) if result.vt1_hr else None,
+            confidence=min(0.9, 0.5 + v1_slope * 2),  # Higher slope = higher confidence
+            method="step_ve_slope",
+            description=f"VT1 at Step {v1_stage['step_number']}",
+            detection_sources=["VE"]
+        )
         result.notes.append(f"VT1 found at Step {v1_stage['step_number']} (Slope: {v1_slope:.4f})")
 
     v2_start = v1_idx if v1_stage else vt1_start
     _, v2_slope, v2_stage = search(v2_start, vt2_slope_threshold)
     if v2_stage:
         if not v1_stage or (v2_stage['avg_power'] > result.vt1_watts):
+            # Legacy point values
             result.vt2_watts = round(v2_stage['avg_power'], 0)
             result.vt2_hr = round(v2_stage['avg_hr'], 0) if v2_stage['avg_hr'] else None
             result.vt2_ve = round(v2_stage['avg_ve'], 1)
             result.vt2_br = round(v2_stage['avg_br'], 0) if v2_stage['avg_br'] else None
             result.vt2_ve_slope = round(v2_slope, 4)
             result.vt2_step_number = v2_stage['step_number']
+            
+            # NEW: Create TransitionZone for VT2
+            zone_width = 10.0
+            result.vt2_zone = TransitionZone(
+                range_watts=(result.vt2_watts - zone_width, result.vt2_watts + zone_width),
+                range_hr=(result.vt2_hr - 5, result.vt2_hr + 5) if result.vt2_hr else None,
+                confidence=min(0.9, 0.5 + v2_slope * 2),
+                method="step_ve_slope",
+                description=f"VT2 at Step {v2_stage['step_number']}",
+                detection_sources=["VE"]
+            )
             result.notes.append(f"VT2 found at Step {v2_stage['step_number']} (Slope: {v2_slope:.4f})")
 
     result.step_analysis = [

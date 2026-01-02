@@ -5,7 +5,7 @@ IMPORTANT: SmO₂ is a LOCAL/REGIONAL signal - see limitations below.
 """
 import pandas as pd
 from typing import List  # Optional removed - was only used by deleted legacy function
-from .threshold_types import StepSmO2Result, StepTestRange
+from .threshold_types import StepSmO2Result, StepTestRange, TransitionZone
 from .ventilatory import calculate_slope
 
 def detect_smo2_from_steps(
@@ -99,6 +99,18 @@ def detect_smo2_from_steps(
             result.smo2_1_step_number = item['step_number']
             result.smo2_1_slope = item['slope']
             lt1_idx = i
+            
+            # NEW: Create TransitionZone for range-based output
+            # SmO₂ is LOCAL signal → lower confidence (max 0.6)
+            zone_width = 10.0
+            result.smo2_1_zone = TransitionZone(
+                range_watts=(result.smo2_1_watts - zone_width, result.smo2_1_watts + zone_width),
+                range_hr=(result.smo2_1_hr - 5, result.smo2_1_hr + 5) if result.smo2_1_hr else None,
+                confidence=min(0.6, 0.3 + abs(item['slope']) * 10),  # Max 0.6 for local signal
+                method="smo2_slope",
+                description=f"SmO₂ LT1 at Step {item['step_number']} (LOCAL signal)",
+                detection_sources=["SmO2"]
+            )
             result.notes.append(f"LT1 (SmO2) found at Step {item['step_number']} (Slope: {item['slope']:.4f})")
             break
             
@@ -110,6 +122,17 @@ def detect_smo2_from_steps(
                 result.smo2_2_hr = all_steps[i]['avg_hr']
                 result.smo2_2_step_number = all_steps[i]['step_number']
                 result.smo2_2_slope = all_steps[i]['slope']
+                
+                # NEW: Create TransitionZone for SmO₂ LT2
+                zone_width = 10.0
+                result.smo2_2_zone = TransitionZone(
+                    range_watts=(result.smo2_2_watts - zone_width, result.smo2_2_watts + zone_width),
+                    range_hr=(result.smo2_2_hr - 5, result.smo2_2_hr + 5) if result.smo2_2_hr else None,
+                    confidence=min(0.6, 0.3 + abs(all_steps[i]['slope']) * 10),
+                    method="smo2_slope",
+                    description=f"SmO₂ LT2 at Step {all_steps[i]['step_number']} (LOCAL signal)",
+                    detection_sources=["SmO2"]
+                )
                 result.notes.append(f"LT2 (SmO2) found at Step {all_steps[i]['step_number']} (Slope: {all_steps[i]['slope']:.4f})")
                 break
     result.step_analysis = all_steps

@@ -2,30 +2,21 @@ import streamlit as st
 import plotly.graph_objects as go
 import pandas as pd
 import numpy as np
-from modules.calculations import calculate_dynamic_dfa
+from modules.calculations import calculate_dynamic_dfa_v2
 import importlib
 import modules.calculations.hrv
 importlib.reload(modules.calculations.hrv)
-from modules.calculations.hrv import calculate_dynamic_dfa
+from modules.calculations.hrv import calculate_dynamic_dfa_v2
 
 def render_hrv_tab(df_clean_pl):
     st.header("Analiza Zmienności Rytmu Serca (HRV)")
 
-    # 1. Inicjalizacja "Pamięci" (Session State)
-    if 'df_dfa' not in st.session_state:
-        st.session_state.df_dfa = None
-    if 'dfa_error' not in st.session_state:
-        st.session_state.dfa_error = None
+    # ... (skipping context)
 
-    # 2. Obsługa Przycisku
-    if st.session_state.df_dfa is None and st.session_state.dfa_error is None:
-        st.info("💡 Analiza DFA Alpha-1 wymaga zaawansowanych obliczeń fraktalnych.")
-        st.markdown("Kliknij przycisk poniżej, aby uruchomić algorytm. Może to zająć od kilku do kilkunastu sekund.")
-        
         if st.button("🚀 Oblicz HRV i DFA Alpha-1"):
             with st.spinner("Analiza geometrii rytmu serca... Proszę czekać..."):
                 try:
-                    result_df, error_msg = calculate_dynamic_dfa(df_clean_pl)
+                    result_df, error_msg = calculate_dynamic_dfa_v2(df_clean_pl)
                     
                     st.session_state.df_dfa = result_df
                     st.session_state.dfa_error = error_msg

@@ -37,7 +37,7 @@ from .w_prime import (
 )
 
 from .hrv import (
-    calculate_dynamic_dfa,
+    calculate_dynamic_dfa_v2,
 )
 
 from .thermal import (
@@ -167,7 +167,7 @@ __all__ = [
     'get_recovery_recommendation',
     'estimate_w_prime_reconstitution',
     # HRV
-    'calculate_dynamic_dfa',
+    'calculate_dynamic_dfa_v2',
     # Thermal
     'calculate_heat_strain_index',
     'calculate_thermal_decay',

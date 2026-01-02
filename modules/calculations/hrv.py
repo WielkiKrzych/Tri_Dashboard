@@ -206,7 +206,7 @@ def validate_dfa_quality(
     return is_uncertain, reasons, quality_grade
 
 
-def calculate_dynamic_dfa(
+def calculate_dynamic_dfa_v2(
     df_pl, 
     window_sec: int = 300, 
     step_sec: int = 30,

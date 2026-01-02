@@ -193,8 +193,8 @@ if uploaded_file is not None:
     m3.metric("Praca [kJ]", f"{df_plot['watts'].sum()/1000:.0f}")
 
     # Layout Tabs
-    tab_overview, tab_performance, tab_physiology, tab_intelligence = st.tabs([
-        "📊 Overview", "⚡ Performance", "🫀 Physiology", "🧠 Intelligence"
+    tab_overview, tab_performance, tab_intelligence, tab_physiology = st.tabs([
+        "📊 Overview", "⚡ Performance", "🧠 Intelligence", "🫀 Physiology"
     ])
 
     with tab_overview:
@@ -218,26 +218,26 @@ if uploaded_file is not None:
         filename = uploaded_file.name if uploaded_file else "manual_upload"
         with t9: render_tab_content("tte", df_plot, cp_input, filename)
 
-    with tab_physiology:
-        UIComponents.show_breadcrumb("🫀 Physiology")
-        t1, t2, t3, t4, t5, t6, t7, t8, t9 = st.tabs(["💓 HRV", "🩸 SmO2", "🫁 Ventilation", "🎯 Vent - Progi", "🛠️ Vent - Progi Manuals", "🎯 SmO2 - Progi", "🛠️ SmO2 - Progi Manuals", "🌡️ Thermal", "🗄️ Ramp Archive"])
-        with t1: render_tab_content("hrv", df_clean_pl)
-        with t2: render_tab_content("smo2", df_plot, training_notes, uploaded_file.name)
-        max_hr = int(208 - 0.7 * rider_age) if rider_age else 185
-        with t3: render_tab_content("vent", df_plot, training_notes, uploaded_file.name)
-        with t4: render_tab_content("vent_thresholds", df_plot, training_notes, uploaded_file.name, cp_input)
-        with t5: render_tab_content("manual_thresholds", df_plot, training_notes, uploaded_file.name, cp_input, max_hr)
-        with t6: render_tab_content("smo2_thresholds", df_plot, training_notes, uploaded_file.name, cp_input)
-        with t7: render_tab_content("smo2_manual_thresholds", df_plot, training_notes, uploaded_file.name, cp_input)
-        with t8: render_tab_content("thermal", df_plot)
-        with t9: render_tab_content("ramp_archive")
-
     with tab_intelligence:
         UIComponents.show_breadcrumb("🧠 Intelligence")
         t1, t2, t3 = st.tabs(["🍎 Nutrition", "🚧 Limiters", "🤖 AI Coach"])
         with t1: render_tab_content("nutrition", df_plot, cp_input, vt1_watts, vt2_watts)
         with t2: render_tab_content("limiters", df_plot, cp_input, vt2_vent)
         with t3: render_tab_content("ai_coach", df_plot_resampled)
+
+    with tab_physiology:
+        UIComponents.show_breadcrumb("🫀 Physiology")
+        t1, t2, t3, t4, t5, t6, t7, t8, t9 = st.tabs(["💓 HRV", "🩸 SmO2", "🫁 Ventilation", "🌡️ Thermal", "🎯 Vent - Progi", "🛠️ Vent - Progi Manuals", "🎯 SmO2 - Progi", "🛠️ SmO2 - Progi Manuals", "🗄️ Ramp Archive"])
+        with t1: render_tab_content("hrv", df_clean_pl)
+        with t2: render_tab_content("smo2", df_plot, training_notes, uploaded_file.name)
+        max_hr = int(208 - 0.7 * rider_age) if rider_age else 185
+        with t3: render_tab_content("vent", df_plot, training_notes, uploaded_file.name)
+        with t4: render_tab_content("thermal", df_plot)
+        with t5: render_tab_content("vent_thresholds", df_plot, training_notes, uploaded_file.name, cp_input)
+        with t6: render_tab_content("manual_thresholds", df_plot, training_notes, uploaded_file.name, cp_input, max_hr)
+        with t7: render_tab_content("smo2_thresholds", df_plot, training_notes, uploaded_file.name, cp_input)
+        with t8: render_tab_content("smo2_manual_thresholds", df_plot, training_notes, uploaded_file.name, cp_input)
+        with t9: render_tab_content("ramp_archive")
 
 
 

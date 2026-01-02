@@ -12,6 +12,12 @@ import plotly.graph_objects as go
 import pandas as pd
 from typing import Optional
 
+from modules.calculations.thresholds import (
+    analyze_step_test,
+    calculate_training_zones_from_thresholds,
+    StepTestResult
+)
+
 
 def render_threshold_analysis_tab(target_df, training_notes, uploaded_file_name, 
                                    cp_input, ftp_input, max_hr_input):
@@ -167,12 +173,9 @@ def render_threshold_analysis_tab(target_df, training_notes, uploaded_file_name,
             if len(test_df) < 100:
                 st.error(f"Za mało danych w wybranym zakresie ({len(test_df)} rekordów). Rozszerz zakres.")
             else:
-                result = _analyze_step_test_internal(
+                result = analyze_step_test(
                     df=test_df,
-                    step_duration_sec=step_duration * 60,
-                    has_ve=has_ve,
-                    has_smo2=has_smo2,
-                    has_hr=has_hr
+                    step_duration_sec=step_duration * 60
                 )
                 st.session_state['threshold_result'] = result
     
@@ -183,44 +186,44 @@ def render_threshold_analysis_tab(target_df, training_notes, uploaded_file_name,
         col1, col2, col3, col4 = st.columns(4)
         
         with col1:
-            vt1 = result.get('vt1_watts')
+            vt1 = result.vt1_watts
             if vt1:
                 st.metric("🟢 VT1 (Próg Tlenowy)", f"{vt1:.0f} W")
-                if result.get('vt1_hr'):
-                    st.caption(f"@ {result['vt1_hr']:.0f} bpm")
+                if result.vt1_hr:
+                    st.caption(f"@ {result.vt1_hr:.0f} bpm")
             else:
                 st.metric("🟢 VT1", "—")
         
         with col2:
-            vt2 = result.get('vt2_watts')
+            vt2 = result.vt2_watts
             if vt2:
                 st.metric("🔴 VT2 (Próg Beztlenowy)", f"{vt2:.0f} W")
-                if result.get('vt2_hr'):
-                    st.caption(f"@ {result['vt2_hr']:.0f} bpm")
+                if result.vt2_hr:
+                    st.caption(f"@ {result.vt2_hr:.0f} bpm")
             else:
                 st.metric("🔴 VT2", "—")
         
         with col3:
-            lt1 = result.get('lt1_watts')
+            lt1 = result.smo2_1_watts  # SmO2 threshold 1
             if lt1:
                 st.metric("🟡 LT1 (SmO2)", f"{lt1:.0f} W")
             else:
                 st.metric("🟡 LT1", "—")
         
         with col4:
-            lt2 = result.get('lt2_watts')
+            lt2 = result.smo2_2_watts  # SmO2 threshold 2
             if lt2:
                 st.metric("🟠 LT2 (SmO2)", f"{lt2:.0f} W")
             else:
                 st.metric("🟠 LT2", "—")
         
-        if result.get('notes'):
+        if result.analysis_notes:
             with st.expander("📋 Notatki z analizy"):
-                for note in result['notes']:
+                for note in result.analysis_notes:
                     st.info(note)
         
-        detected_vt1 = result.get('vt1_watts') or result.get('lt1_watts') or int(ftp_input * 0.75)
-        detected_vt2 = result.get('vt2_watts') or result.get('lt2_watts') or ftp_input
+        detected_vt1 = result.vt1_watts or result.smo2_1_watts or int(ftp_input * 0.75)
+        detected_vt2 = result.vt2_watts or result.smo2_2_watts or ftp_input
         st.session_state['detected_vt1'] = detected_vt1
         st.session_state['detected_vt2'] = detected_vt2
     
@@ -244,184 +247,27 @@ def render_threshold_analysis_tab(target_df, training_notes, uploaded_file_name,
         with col2:
             vt2_for_zones = st.number_input("VT2 (W)", min_value=50, max_value=600, value=ftp_input)
     
-    zones = _calculate_zones(vt1_for_zones, vt2_for_zones, cp_input, max_hr_input)
+    zones = calculate_training_zones_from_thresholds(vt1_for_zones, vt2_for_zones, cp_input, max_hr_input)
     
     zone_data = []
-    for zone_name, (low, high) in zones['power'].items():
-        hr_range = zones['hr'].get(zone_name, (None, None))
+    for zone_name, (low, high) in zones['power_zones'].items():
+        hr_range = zones['hr_zones'].get(zone_name, (None, None))
         zone_data.append({
             "Strefa": zone_name.replace("_", " "),
             "Moc (W)": f"{low} - {high}",
             "Tętno (bpm)": f"{hr_range[0]} - {hr_range[1]}" if hr_range[0] else "—",
-            "Opis": zones['description'].get(zone_name, "")
+            "Opis": zones['zone_descriptions'].get(zone_name, "")
         })
     
     st.dataframe(pd.DataFrame(zone_data), use_container_width=True, hide_index=True)
-    _render_zones_bar(zones['power'])
+    _render_zones_bar(zones['power_zones'])
     
 
 
-# =================================================================
-# HELPER FUNCTIONS
-# =================================================================
 
-def _analyze_step_test_internal(df: pd.DataFrame, step_duration_sec: int, 
-                                 has_ve: bool, has_smo2: bool, has_hr: bool) -> dict:
-    """
-    Analyze step test and detect thresholds using step averages and delta ratios.
-    
-    Algorithm:
-    1. Calculate average VE/SmO2 for each step (last 60s)
-    2. Compute delta (change) between consecutive steps
-    3. Detect VT1/VT2 when delta ratio > threshold
-    4. Detect LT1/LT2 when SmO2 delta changes sign or drops significantly
-    """
-    result = {'vt1_watts': None, 'vt2_watts': None, 'lt1_watts': None, 'lt2_watts': None,
-              'vt1_hr': None, 'vt2_hr': None, 'notes': [], 'steps': []}
-    
-    df.columns = df.columns.str.lower().str.strip()
-    
-    if 'time' not in df.columns:
-        result['notes'].append("Brak kolumny czasu")
-        return result
-    
-    df = df.copy()
-    df['time'] = df['time'] - df['time'].min()
-    
-    total_duration = df['time'].max()
-    num_steps = int(total_duration / step_duration_sec)
-    
-    if num_steps < 3:
-        result['notes'].append(f"Za mało stopni ({num_steps}). Minimum 3 wymagane.")
-        return result
-    
-    result['notes'].append(f"Wykryto {num_steps} stopni po {step_duration_sec//60} min")
-    
-    steps = []
-    hr_col = 'hr' if 'hr' in df.columns else ('heartrate' if 'heartrate' in df.columns else None)
-    
-    for step in range(num_steps):
-        step_start = step * step_duration_sec
-        step_end = step_start + step_duration_sec
-        stable_start = step_end - 60
-        
-        mask = (df['time'] >= stable_start) & (df['time'] < step_end)
-        step_df = df[mask]
-        
-        if len(step_df) < 10:
-            continue
-        
-        step_info = {
-            'step_num': step + 1,
-            'power': step_df['watts'].mean() if 'watts' in step_df.columns else None,
-            'hr': step_df[hr_col].mean() if hr_col and hr_col in step_df.columns else None,
-            've_avg': step_df['tymeventilation'].mean() if has_ve and 'tymeventilation' in step_df.columns else None,
-            'smo2_avg': step_df['smo2'].mean() if has_smo2 and 'smo2' in step_df.columns else None,
-        }
-        steps.append(step_info)
-    
-    if len(steps) < 3:
-        result['notes'].append(f"Za mało ważnych stopni ({len(steps)})")
-        return result
-    
-    result['notes'].append(f"Przeanalizowano {len(steps)} stopni")
-    result['steps'] = steps
-    
-    powers = [f"{s['power']:.0f}W" for s in steps if s['power']]
-    if powers:
-        result['notes'].append(f"Moce: {', '.join(powers)}")
-    
-    # Compute deltas
-    for i in range(1, len(steps)):
-        if steps[i]['ve_avg'] and steps[i-1]['ve_avg']:
-            steps[i]['ve_delta'] = steps[i]['ve_avg'] - steps[i-1]['ve_avg']
-        else:
-            steps[i]['ve_delta'] = None
-        
-        if steps[i]['smo2_avg'] and steps[i-1]['smo2_avg']:
-            steps[i]['smo2_delta'] = steps[i]['smo2_avg'] - steps[i-1]['smo2_avg']
-        else:
-            steps[i]['smo2_delta'] = None
-    
-    # Detect VT1/VT2 from VE delta ratios
-    if has_ve:
-        ve_steps = [s for s in steps if s.get('ve_delta') is not None]
-        for i in range(1, len(ve_steps)):
-            curr_delta = ve_steps[i]['ve_delta']
-            prev_delta = ve_steps[i-1].get('ve_delta')
-            
-            if prev_delta and prev_delta > 0:
-                delta_ratio = curr_delta / prev_delta
-                
-                if result['vt1_watts'] is None and delta_ratio > 1.5:
-                    result['vt1_watts'] = ve_steps[i-1]['power']
-                    result['vt1_hr'] = ve_steps[i-1]['hr']
-                    result['notes'].append(f"VT1: delta ratio = {delta_ratio:.2f}")
-                
-                if result['vt2_watts'] is None and delta_ratio > 2.0:
-                    result['vt2_watts'] = ve_steps[i-1]['power']
-                    result['vt2_hr'] = ve_steps[i-1]['hr']
-                    result['notes'].append(f"VT2: delta ratio = {delta_ratio:.2f}")
-    
-    # Detect LT1/LT2 from SmO2 delta
-    if has_smo2:
-        smo2_steps = [s for s in steps if s.get('smo2_delta') is not None]
-        for i, s in enumerate(smo2_steps):
-            delta = s['smo2_delta']
-            
-            if result['lt1_watts'] is None and delta <= 0:
-                prev = smo2_steps[max(0, i-1)]
-                result['lt1_watts'] = prev['power']
-                result['notes'].append(f"LT1: SmO2 delta = {delta:.2f}%")
-            
-            if result['lt2_watts'] is None and delta < -2.0:
-                prev = smo2_steps[max(0, i-1)]
-                result['lt2_watts'] = prev['power']
-                result['notes'].append(f"LT2: SmO2 delta = {delta:.2f}%")
-    
-    if result['vt1_watts']:
-        result['notes'].append(f"✓ VT1: {result['vt1_watts']:.0f}W")
-    if result['vt2_watts']:
-        result['notes'].append(f"✓ VT2: {result['vt2_watts']:.0f}W")
-    if result['lt1_watts']:
-        result['notes'].append(f"✓ LT1: {result['lt1_watts']:.0f}W")
-    if result['lt2_watts']:
-        result['notes'].append(f"✓ LT2: {result['lt2_watts']:.0f}W")
-    
-    return result
-
-
-
-
-
-def _calculate_zones(vt1: int, vt2: int, cp: int, max_hr: int) -> dict:
-    """Calculate training zones from thresholds."""
-    return {
-        'power': {
-            'Z1_Recovery': (0, int(vt1 * 0.75)),
-            'Z2_Endurance': (int(vt1 * 0.75), vt1),
-            'Z3_Tempo': (vt1, int((vt1 + vt2) / 2)),
-            'Z4_Threshold': (int((vt1 + vt2) / 2), vt2),
-            'Z5_VO2max': (vt2, int(cp * 1.2)),
-            'Z6_Anaerobic': (int(cp * 1.2), int(cp * 1.5))
-        },
-        'hr': {
-            'Z1_Recovery': (0, int(max_hr * 0.6)),
-            'Z2_Endurance': (int(max_hr * 0.6), int(max_hr * 0.7)),
-            'Z3_Tempo': (int(max_hr * 0.7), int(max_hr * 0.8)),
-            'Z4_Threshold': (int(max_hr * 0.8), int(max_hr * 0.9)),
-            'Z5_VO2max': (int(max_hr * 0.9), max_hr),
-            'Z6_Anaerobic': (None, None)
-        },
-        'description': {
-            'Z1_Recovery': 'Regeneracja',
-            'Z2_Endurance': 'Baza tlenowa',
-            'Z3_Tempo': 'Tempo / Sweet Spot',
-            'Z4_Threshold': 'Próg FTP',
-            'Z5_VO2max': 'VO2max',
-            'Z6_Anaerobic': 'Beztlenowa'
-        }
-    }
+# _analyze_step_test_internal and _calculate_zones removed - using shared modules:
+# - analyze_step_test from modules.calculations.thresholds
+# - calculate_training_zones_from_thresholds from modules.calculations.thresholds
 
 
 def _render_zones_bar(power_zones: dict):

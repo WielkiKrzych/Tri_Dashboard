@@ -51,6 +51,14 @@ from modules.calculations.stamina import (
     calculate_durability_index,
 )
 
+# TTE (Time-to-Exhaustion)
+from modules.tte import (
+    compute_tte,
+    compute_tte_result,
+    rolling_tte,
+    TTEResult,
+)
+
 __all__ = [
     # HRV
     'calculate_dynamic_dfa',
@@ -79,4 +87,9 @@ __all__ = [
     'calculate_stamina_score',
     'estimate_vlamax_from_pdc',
     'calculate_durability_index',
+    # TTE
+    'compute_tte',
+    'compute_tte_result',
+    'rolling_tte',
+    'TTEResult',
 ]

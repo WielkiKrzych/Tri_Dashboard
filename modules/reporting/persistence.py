@@ -7,6 +7,7 @@ Per methodology/ramp_test/10_canonical_json_spec.md.
 import json
 import os
 import uuid
+import numpy as np
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, Optional, Union
@@ -18,6 +19,19 @@ from modules.calculations.version import RAMP_METHOD_VERSION
 CANONICAL_SCHEMA = "ramp_test_result_v1.json"
 CANONICAL_VERSION = "1.0.0"
 METHOD_VERSION = RAMP_METHOD_VERSION  # Pipeline version
+
+class NumpyEncoder(json.JSONEncoder):
+    """Custom encoder for NumPy data types."""
+    def default(self, obj):
+        if isinstance(obj, (np.int_, np.intc, np.intp, np.int8,
+                            np.int16, np.int32, np.int64, np.uint8,
+                            np.uint16, np.uint32, np.uint64)):
+            return int(obj)
+        elif isinstance(obj, (np.float_, np.float16, np.float32, np.float64)):
+            return float(obj)
+        elif isinstance(obj, (np.ndarray,)):
+            return obj.tolist()
+        return super(NumpyEncoder, self).default(obj)
 
 
 def save_ramp_test_report(
@@ -104,7 +118,7 @@ def save_ramp_test_report(
     
     try:
         with open(file_path, mode, encoding='utf-8') as f:
-            json.dump(final_json, f, indent=2, ensure_ascii=False)
+            json.dump(final_json, f, indent=2, ensure_ascii=False, cls=NumpyEncoder)
     except FileExistsError:
         # Should be rare given UUID, but protects against collision/logic errors
         if not dev_mode:

@@ -503,7 +503,6 @@ def build_result(
         vt1=integration.vt1,
         vt2=integration.vt2,
         conflicts=integration.conflicts,
-        conflicts=integration.conflicts,
         test_date=test_date,
         protocol=protocol,
         detailed_step_analysis={

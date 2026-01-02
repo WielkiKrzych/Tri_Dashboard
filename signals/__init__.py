@@ -5,10 +5,35 @@ This module contains signal processing and analysis functions.
 NO STREAMLIT OR UI DEPENDENCIES ALLOWED.
 
 Sub-modules:
-- processing: Signal filtering, smoothing
-- metrics: Signal-level metrics (SmO2, etc.)
+- preprocessing: Smoothing, detrending, interpolation, quality
+- validation: Input validation, artifact detection, warnings
+- processing: Data normalization
 - kinetics: O2/SmO2 kinetics analysis
 """
+
+# Preprocessing module
+from signals.preprocessing import (
+    SignalQualityFlags,
+    SeriesResult,
+    rolling_smooth,
+    exponential_smooth,
+    detrend_linear,
+    detrend_polynomial,
+    interpolate_gaps,
+    preprocess_signal,
+)
+
+# Validation module (new)
+from signals.validation import (
+    Severity,
+    ValidationWarning,
+    ValidationResult,
+    detect_missing_data,
+    detect_artifacts,
+    check_minimum_length,
+    check_data_range,
+    validate_signal,
+)
 
 # Re-export from modules.calculations for now (gradual migration)
 from modules.calculations.kinetics import (
@@ -38,6 +63,24 @@ from modules.calculations.quality import (
 )
 
 __all__ = [
+    # Preprocessing
+    'SignalQualityFlags',
+    'SeriesResult',
+    'rolling_smooth',
+    'exponential_smooth',
+    'detrend_linear',
+    'detrend_polynomial',
+    'interpolate_gaps',
+    'preprocess_signal',
+    # Validation
+    'Severity',
+    'ValidationWarning',
+    'ValidationResult',
+    'detect_missing_data',
+    'detect_artifacts',
+    'check_minimum_length',
+    'check_data_range',
+    'validate_signal',
     # Kinetics
     'fit_smo2_kinetics',
     'get_tau_interpretation',
@@ -59,3 +102,4 @@ __all__ = [
     'check_step_test_protocol',
     'check_data_suitability',
 ]
+

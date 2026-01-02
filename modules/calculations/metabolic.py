@@ -88,52 +88,102 @@ def detect_smo2_from_steps(
         if item['slope'] < smo2_t1_slope_threshold:
             if first_found_idx == -1:
                 first_found_idx = i
-                item['is_skipped'] = True  # Added for UI labeling
+                item['is_skipped'] = True
                 result.notes.append(f"Skipped initial SmO2 drop at Step {item['step_number']} (Slope: {item['slope']:.4f})")
                 continue
             
-            # This is the second encounter
+            # LT1 Detection with RANGE logic
             item['is_t1'] = True
-            result.smo2_1_watts = item['avg_power']
-            result.smo2_1_hr = item['avg_hr']
-            result.smo2_1_step_number = item['step_number']
-            result.smo2_1_slope = item['slope']
             lt1_idx = i
             
-            # NEW: Create TransitionZone for range-based output
-            # SmO₂ is LOCAL signal → lower confidence (max 0.6)
-            zone_width = 10.0
+            # Calculate RANGE from adjacent steps
+            lower_step_idx = max(0, i - 1)
+            lower_power = all_steps[lower_step_idx]['avg_power'] if lower_step_idx < len(all_steps) else item['avg_power']
+            upper_power = item['avg_power']
+            
+            # Central tendency (weighted toward detection step)
+            central_power = lower_power * 0.3 + upper_power * 0.7
+            
+            # Confidence: SmO₂ is LOCAL signal → max 0.6
+            # Components: slope sharpness + stability
+            slope_confidence = min(0.3, abs(item['slope']) * 10)
+            range_width = upper_power - lower_power
+            stability_confidence = max(0.0, 0.2 - range_width / 100)
+            base_confidence = 0.1  # Local signal gets lower base
+            total_confidence = min(0.6, base_confidence + slope_confidence + stability_confidence)
+            
+            # HR range
+            lower_hr = all_steps[lower_step_idx]['avg_hr']
+            upper_hr = item['avg_hr']
+            central_hr = (lower_hr * 0.3 + upper_hr * 0.7) if lower_hr and upper_hr else upper_hr
+            
+            # Create TransitionZone (PRIMARY OUTPUT)
             result.smo2_1_zone = TransitionZone(
-                range_watts=(result.smo2_1_watts - zone_width, result.smo2_1_watts + zone_width),
-                range_hr=(result.smo2_1_hr - 5, result.smo2_1_hr + 5) if result.smo2_1_hr else None,
-                confidence=min(0.6, 0.3 + abs(item['slope']) * 10),  # Max 0.6 for local signal
-                method="smo2_slope",
-                description=f"SmO₂ LT1 at Step {item['step_number']} (LOCAL signal)",
-                detection_sources=["SmO2"]
+                range_watts=(lower_power, upper_power),
+                range_hr=(lower_hr, upper_hr) if lower_hr and upper_hr else None,
+                confidence=total_confidence,
+                stability_score=stability_confidence / 0.2 if stability_confidence > 0 else 0.5,
+                method="smo2_slope_range",
+                description=f"SmO₂ LT1 zone Steps {all_steps[lower_step_idx]['step_number']}-{item['step_number']} (LOCAL)",
+                detection_sources=["SmO2"],
+                variability_watts=range_width
             )
-            result.notes.append(f"LT1 (SmO2) found at Step {item['step_number']} (Slope: {item['slope']:.4f})")
+            
+            # Legacy point values (DERIVED)
+            result.smo2_1_watts = round(central_power, 0)
+            result.smo2_1_hr = round(central_hr, 0) if central_hr else None
+            result.smo2_1_step_number = item['step_number']
+            result.smo2_1_slope = item['slope']
+            
+            result.notes.append(
+                f"LT1 (SmO2) zone: {lower_power:.0f}–{upper_power:.0f} W "
+                f"(central: {central_power:.0f} W, confidence: {total_confidence:.2f})"
+            )
             break
             
     if lt1_idx != -1:
         for i in range(lt1_idx + 1, len(all_steps)):
             if all_steps[i]['slope'] < smo2_t2_slope_threshold:
                 all_steps[i]['is_t2'] = True
-                result.smo2_2_watts = all_steps[i]['avg_power']
-                result.smo2_2_hr = all_steps[i]['avg_hr']
+                
+                # LT2 Detection with RANGE logic
+                lower_step_idx = max(0, i - 1)
+                lower_power = all_steps[lower_step_idx]['avg_power']
+                upper_power = all_steps[i]['avg_power']
+                central_power = lower_power * 0.3 + upper_power * 0.7
+                
+                # Confidence for LT2
+                slope_confidence = min(0.3, abs(all_steps[i]['slope']) * 10)
+                range_width = upper_power - lower_power
+                stability_confidence = max(0.0, 0.2 - range_width / 100)
+                total_confidence = min(0.6, 0.1 + slope_confidence + stability_confidence)
+                
+                lower_hr = all_steps[lower_step_idx]['avg_hr']
+                upper_hr = all_steps[i]['avg_hr']
+                central_hr = (lower_hr * 0.3 + upper_hr * 0.7) if lower_hr and upper_hr else upper_hr
+                
+                # Create TransitionZone (PRIMARY OUTPUT)
+                result.smo2_2_zone = TransitionZone(
+                    range_watts=(lower_power, upper_power),
+                    range_hr=(lower_hr, upper_hr) if lower_hr and upper_hr else None,
+                    confidence=total_confidence,
+                    stability_score=stability_confidence / 0.2 if stability_confidence > 0 else 0.5,
+                    method="smo2_slope_range",
+                    description=f"SmO₂ LT2 zone Steps {all_steps[lower_step_idx]['step_number']}-{all_steps[i]['step_number']} (LOCAL)",
+                    detection_sources=["SmO2"],
+                    variability_watts=range_width
+                )
+                
+                # Legacy point values (DERIVED)
+                result.smo2_2_watts = round(central_power, 0)
+                result.smo2_2_hr = round(central_hr, 0) if central_hr else None
                 result.smo2_2_step_number = all_steps[i]['step_number']
                 result.smo2_2_slope = all_steps[i]['slope']
                 
-                # NEW: Create TransitionZone for SmO₂ LT2
-                zone_width = 10.0
-                result.smo2_2_zone = TransitionZone(
-                    range_watts=(result.smo2_2_watts - zone_width, result.smo2_2_watts + zone_width),
-                    range_hr=(result.smo2_2_hr - 5, result.smo2_2_hr + 5) if result.smo2_2_hr else None,
-                    confidence=min(0.6, 0.3 + abs(all_steps[i]['slope']) * 10),
-                    method="smo2_slope",
-                    description=f"SmO₂ LT2 at Step {all_steps[i]['step_number']} (LOCAL signal)",
-                    detection_sources=["SmO2"]
+                result.notes.append(
+                    f"LT2 (SmO2) zone: {lower_power:.0f}–{upper_power:.0f} W "
+                    f"(central: {central_power:.0f} W, confidence: {total_confidence:.2f})"
                 )
-                result.notes.append(f"LT2 (SmO2) found at Step {all_steps[i]['step_number']} (Slope: {all_steps[i]['slope']:.4f})")
                 break
     result.step_analysis = all_steps
     return result

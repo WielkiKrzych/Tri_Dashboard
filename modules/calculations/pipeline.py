@@ -335,11 +335,14 @@ def integrate_signals(
     """
     Step 4: Integrate results from independent signal analysis.
     
+    IMPORTANT: SmO₂ does NOT detect thresholds independently.
+    SmO₂ ONLY MODULATES VT confidence and range.
+    
     Operations:
-    - Combine VT zones from different sources
-    - Detect conflicts between signals
-    - Calculate SmO2 deviation from VT
-    - Weight sources by hierarchy (VE > HR > SmO2)
+    - Build VT zones from VE (primary source)
+    - Use SmO₂ to MODULATE confidence (boost/reduce)
+    - Use SmO₂ to ADJUST range width (narrower if confirms)
+    - Flag SmO₂ as LOCAL signal in all outputs
     
     Returns:
         IntegrationResult with combined thresholds and conflicts
@@ -350,7 +353,7 @@ def integrate_signals(
     vt_result = analysis.vt_result
     smo2_result = analysis.smo2_result
     
-    # Build VT1 from VE result (primary source)
+    # Build VT1 from VE result (PRIMARY and ONLY source for thresholds)
     if vt_result and vt_result.vt1_zone:
         zone = vt_result.vt1_zone
         result.vt1 = ThresholdRange(
@@ -381,41 +384,73 @@ def integrate_signals(
             method=zone.method
         )
     
-    # Check SmO2 conflicts
+    # =========================================================
+    # SmO₂ MODULATION (not detection!)
+    # SmO₂ is a LOCAL signal - it can only CONFIRM or QUESTION VT
+    # SmO₂ does NOT create independent thresholds
+    # =========================================================
     if smo2_result and result.vt1:
-        result.conflicts.signals_analyzed.append("SmO2")
+        result.conflicts.signals_analyzed.append("SmO2 (LOCAL)")
         
-        if smo2_result.smo2_1_zone:
-            smo2_vt1 = smo2_result.smo2_1_zone.midpoint_watts
+        # Check if SmO₂ shows a drop near VT1
+        smo2_drop_power = _find_smo2_drop_power(smo2_result)
+        
+        if smo2_drop_power is not None:
             vt1_mid = result.vt1.midpoint_watts
-            deviation = smo2_vt1 - vt1_mid
+            deviation = smo2_drop_power - vt1_mid
             result.smo2_deviation_vt1 = deviation
             
-            # Detect conflict if deviation > 15W
-            if abs(deviation) > 15:
+            # SmO₂ MODULATES VT based on agreement
+            if abs(deviation) <= 10:
+                # SmO₂ CONFIRMS VT → boost confidence, narrow range
+                result.vt1.confidence = min(0.95, result.vt1.confidence + 0.15)
+                # Narrow the range (higher certainty)
+                shrink = 0.1
+                mid = result.vt1.midpoint_watts
+                width = result.vt1.width_watts
+                result.vt1.lower_watts = mid - width * (0.5 - shrink)
+                result.vt1.upper_watts = mid + width * (0.5 - shrink)
+                result.vt1.sources.append("SmO2 ✓")
+                result.integration_notes.append(
+                    f"✓ SmO₂ (LOCAL) potwierdza VT1 (różnica: {deviation:.0f} W) → confidence +0.15"
+                )
+            elif abs(deviation) <= 20:
+                # SmO₂ slightly off → minor confidence reduction
+                result.vt1.confidence = max(0.3, result.vt1.confidence - 0.05)
+                result.integration_notes.append(
+                    f"ℹ️ SmO₂ (LOCAL) bliski VT1 (różnica: {deviation:.0f} W) → confidence -0.05"
+                )
+            else:
+                # SmO₂ significantly different → conflict, reduce confidence
                 conflict_type = ConflictType.SMO2_EARLY if deviation < 0 else ConflictType.SMO2_LATE
                 result.conflicts.conflicts.append(SignalConflict(
                     conflict_type=conflict_type,
                     severity=ConflictSeverity.WARNING,
-                    signal_a="SmO2",
+                    signal_a="SmO2 (LOCAL)",
                     signal_b="VE",
-                    description=f"SmO₂ LT1 różni się od VT1 o {deviation:.0f} W",
+                    description=f"SmO₂ (LOCAL) różni się od VT1 o {deviation:.0f} W",
                     physiological_interpretation=(
-                        "SmO₂ jest sygnałem lokalnym - może reagować wcześniej/później niż VT"
+                        "SmO₂ jest sygnałem LOKALNYM (jeden mięsień). "
+                        "Rozbieżność z VT może oznaczać różnicę między lokalną a systemową odpowiedzią."
                     ),
                     magnitude=abs(deviation),
-                    confidence_penalty=0.1
+                    confidence_penalty=0.15
                 ))
+                result.vt1.confidence = max(0.3, result.vt1.confidence - 0.1)
+                # Widen the range (lower certainty)
+                expand = 0.15
+                mid = result.vt1.midpoint_watts
+                width = result.vt1.width_watts
+                result.vt1.lower_watts = mid - width * (0.5 + expand)
+                result.vt1.upper_watts = mid + width * (0.5 + expand)
                 result.integration_notes.append(
-                    f"⚠️ Konflikt SmO2 vs VE: {deviation:.0f} W"
+                    f"⚠️ SmO₂ (LOCAL) konflikt z VT1: {deviation:.0f} W → confidence -0.1, range +15%"
                 )
-            else:
-                # SmO2 confirms VT - boost confidence
-                result.vt1.sources.append("SmO2")
-                result.vt1.confidence = min(1.0, result.vt1.confidence + 0.1)
-                result.integration_notes.append(
-                    f"✓ SmO2 potwierdza VT1 (różnica: {deviation:.0f} W)"
-                )
+        else:
+            # No SmO₂ drop detected → cannot modulate, note this
+            result.integration_notes.append(
+                "ℹ️ SmO₂ (LOCAL): brak wyraźnego spadku - brak modulacji VT"
+            )
     
     # Calculate agreement score
     if result.conflicts.conflicts:
@@ -425,6 +460,18 @@ def integrate_signals(
         result.conflicts.agreement_score = 1.0
     
     return result
+
+
+def _find_smo2_drop_power(smo2_result: StepSmO2Result) -> Optional[float]:
+    """
+    Find the power at which SmO₂ shows a significant drop.
+    
+    This is NOT a threshold - it's just a reference point for VT modulation.
+    Returns midpoint if zone exists, else None.
+    """
+    if smo2_result.smo2_1_zone:
+        return smo2_result.smo2_1_zone.midpoint_watts
+    return None
 
 
 # ============================================================
@@ -460,16 +507,19 @@ def build_result(
         protocol=protocol
     )
     
-    # Add SmO2 context
+    # Add SmO2 context (LOCAL signal - for information only, not as threshold)
+    # SmO₂ already modulated VT in integrate_signals()
     if analysis.smo2_result:
         smo2 = analysis.smo2_result
+        # Store SmO₂ drop info for reference (NOT as independent threshold)
         if smo2.smo2_1_zone:
             result.smo2_lt1 = ThresholdRange(
                 lower_watts=smo2.smo2_1_zone.range_watts[0],
                 upper_watts=smo2.smo2_1_zone.range_watts[1],
                 midpoint_watts=smo2.smo2_1_zone.midpoint_watts,
                 confidence=smo2.smo2_1_zone.confidence,
-                sources=["SmO2"]
+                sources=["SmO2 (LOCAL)"],
+                method="local_signal_reference"  # NOT a threshold
             )
         if smo2.smo2_2_zone:
             result.smo2_lt2 = ThresholdRange(
@@ -477,17 +527,21 @@ def build_result(
                 upper_watts=smo2.smo2_2_zone.range_watts[1],
                 midpoint_watts=smo2.smo2_2_zone.midpoint_watts,
                 confidence=smo2.smo2_2_zone.confidence,
-                sources=["SmO2"]
+                sources=["SmO2 (LOCAL)"],
+                method="local_signal_reference"
             )
         result.smo2_deviation_from_vt = integration.smo2_deviation_vt1
         
+        # Interpretation explicitly marks LOCAL signal role
         if integration.smo2_deviation_vt1 is not None:
-            if abs(integration.smo2_deviation_vt1) < 15:
-                result.smo2_interpretation = "SmO₂ potwierdza VT"
+            if abs(integration.smo2_deviation_vt1) <= 10:
+                result.smo2_interpretation = "SmO₂ (LOCAL) potwierdza VT → confidence zwiększone"
+            elif abs(integration.smo2_deviation_vt1) <= 20:
+                result.smo2_interpretation = "SmO₂ (LOCAL) bliski VT → niewielka korekta"
             elif integration.smo2_deviation_vt1 < 0:
-                result.smo2_interpretation = "SmO₂ reaguje wcześniej niż VT (lokalna odpowiedź)"
+                result.smo2_interpretation = "SmO₂ (LOCAL) reaguje wcześniej niż VT → lokalna odpowiedź"
             else:
-                result.smo2_interpretation = "SmO₂ reaguje później niż VT (dobra rezerwa)"
+                result.smo2_interpretation = "SmO₂ (LOCAL) reaguje później niż VT → dobra rezerwa lokalna"
     
     # Calculate overall confidence
     confidence_factors = []

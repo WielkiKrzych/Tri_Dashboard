@@ -127,60 +127,113 @@ def detect_vt_from_steps(
                 if len(combined) < 5: continue
                 slope, _, _ = calculate_slope(combined[time_column], combined[ve_column])
                 if slope > threshold:
-                    return i + w, slope, stages[i + w - 1]
-        return None, None, None
+                    return i + w, slope, stages[i + w - 1], i  # Return start index too
+        return None, None, None, None
 
-    s_idx, s_slope, s_stage = search(0, 0.10)
+    s_idx, s_slope, s_stage, _ = search(0, 0.10)
     vt1_start = s_idx if s_stage else 0
     if s_stage:
         result.notes.append(f"Skipped spike > 0.1 at Step {s_stage['step_number']} (Slope: {s_slope:.4f})")
 
-    v1_idx, v1_slope, v1_stage = search(vt1_start, vt1_slope_threshold)
-    if v1_stage:
-        # Legacy point values (kept for backward compatibility)
-        result.vt1_watts = round(v1_stage['avg_power'], 0)
-        result.vt1_hr = round(v1_stage['avg_hr'], 0) if v1_stage['avg_hr'] else None
+    # VT1 Detection with RANGE logic
+    v1_idx, v1_slope, v1_stage, v1_start_idx = search(vt1_start, vt1_slope_threshold)
+    if v1_stage and v1_start_idx is not None:
+        # Calculate RANGE from adjacent steps (not a single point)
+        # Lower bound: step before detection, Upper bound: detection step
+        lower_step_idx = max(0, v1_start_idx - 1)
+        lower_power = stages[lower_step_idx]['avg_power'] if lower_step_idx < len(stages) else v1_stage['avg_power']
+        upper_power = v1_stage['avg_power']
+        
+        # Central tendency: weighted average (upper gets more weight due to detection there)
+        central_power = lower_power * 0.3 + upper_power * 0.7
+        
+        # CONFIDENCE based on:
+        # 1. Slope sharpness (higher = more confident)
+        # 2. Stability (narrow range = more confident)
+        # 3. Number of confirming steps
+        slope_confidence = min(0.4, v1_slope * 4)  # Max 0.4 from slope
+        range_width = upper_power - lower_power
+        stability_confidence = max(0.0, 0.4 - range_width / 100)  # Narrower = better
+        base_confidence = 0.2  # Base confidence
+        total_confidence = min(0.95, base_confidence + slope_confidence + stability_confidence)
+        
+        # HR range calculation
+        lower_hr = stages[lower_step_idx]['avg_hr'] if stages[lower_step_idx]['avg_hr'] else None
+        upper_hr = v1_stage['avg_hr']
+        central_hr = (lower_hr * 0.3 + upper_hr * 0.7) if lower_hr and upper_hr else upper_hr
+        
+        # Create TransitionZone (PRIMARY OUTPUT)
+        result.vt1_zone = TransitionZone(
+            range_watts=(lower_power, upper_power),
+            range_hr=(lower_hr, upper_hr) if lower_hr and upper_hr else None,
+            confidence=total_confidence,
+            stability_score=stability_confidence / 0.4 if stability_confidence > 0 else 0.5,
+            method="step_ve_slope_range",
+            description=f"VT1 zone spanning Steps {stages[lower_step_idx]['step_number']}-{v1_stage['step_number']}",
+            detection_sources=["VE"],
+            variability_watts=range_width
+        )
+        
+        # Legacy point values (DERIVED from zone, for backward compatibility only)
+        result.vt1_watts = round(central_power, 0)
+        result.vt1_hr = round(central_hr, 0) if central_hr else None
         result.vt1_ve = round(v1_stage['avg_ve'], 1)
         result.vt1_br = round(v1_stage['avg_br'], 0) if v1_stage['avg_br'] else None
         result.vt1_ve_slope = round(v1_slope, 4)
         result.vt1_step_number = v1_stage['step_number']
         
-        # NEW: Create TransitionZone for range-based output
-        # Zone width based on step power difference (±10W default)
-        zone_width = 10.0
-        result.vt1_zone = TransitionZone(
-            range_watts=(result.vt1_watts - zone_width, result.vt1_watts + zone_width),
-            range_hr=(result.vt1_hr - 5, result.vt1_hr + 5) if result.vt1_hr else None,
-            confidence=min(0.9, 0.5 + v1_slope * 2),  # Higher slope = higher confidence
-            method="step_ve_slope",
-            description=f"VT1 at Step {v1_stage['step_number']}",
-            detection_sources=["VE"]
+        result.notes.append(
+            f"VT1 zone: {lower_power:.0f}–{upper_power:.0f} W "
+            f"(central: {central_power:.0f} W, confidence: {total_confidence:.2f})"
         )
-        result.notes.append(f"VT1 found at Step {v1_stage['step_number']} (Slope: {v1_slope:.4f})")
 
+    # VT2 Detection with RANGE logic
     v2_start = v1_idx if v1_stage else vt1_start
-    _, v2_slope, v2_stage = search(v2_start, vt2_slope_threshold)
-    if v2_stage:
+    v2_idx, v2_slope, v2_stage, v2_start_idx = search(v2_start, vt2_slope_threshold)
+    if v2_stage and v2_start_idx is not None:
         if not v1_stage or (v2_stage['avg_power'] > result.vt1_watts):
-            # Legacy point values
-            result.vt2_watts = round(v2_stage['avg_power'], 0)
-            result.vt2_hr = round(v2_stage['avg_hr'], 0) if v2_stage['avg_hr'] else None
+            # Calculate VT2 RANGE
+            lower_step_idx = max(0, v2_start_idx - 1)
+            lower_power = stages[lower_step_idx]['avg_power'] if lower_step_idx < len(stages) else v2_stage['avg_power']
+            upper_power = v2_stage['avg_power']
+            central_power = lower_power * 0.3 + upper_power * 0.7
+            
+            # Confidence calculation for VT2
+            slope_confidence = min(0.4, v2_slope * 4)
+            range_width = upper_power - lower_power
+            stability_confidence = max(0.0, 0.4 - range_width / 100)
+            base_confidence = 0.2
+            total_confidence = min(0.95, base_confidence + slope_confidence + stability_confidence)
+            
+            # HR
+            lower_hr = stages[lower_step_idx]['avg_hr'] if stages[lower_step_idx]['avg_hr'] else None
+            upper_hr = v2_stage['avg_hr']
+            central_hr = (lower_hr * 0.3 + upper_hr * 0.7) if lower_hr and upper_hr else upper_hr
+            
+            # Create TransitionZone (PRIMARY OUTPUT)
+            result.vt2_zone = TransitionZone(
+                range_watts=(lower_power, upper_power),
+                range_hr=(lower_hr, upper_hr) if lower_hr and upper_hr else None,
+                confidence=total_confidence,
+                stability_score=stability_confidence / 0.4 if stability_confidence > 0 else 0.5,
+                method="step_ve_slope_range",
+                description=f"VT2 zone spanning Steps {stages[lower_step_idx]['step_number']}-{v2_stage['step_number']}",
+                detection_sources=["VE"],
+                variability_watts=range_width
+            )
+            
+            # Legacy point values (DERIVED)
+            result.vt2_watts = round(central_power, 0)
+            result.vt2_hr = round(central_hr, 0) if central_hr else None
             result.vt2_ve = round(v2_stage['avg_ve'], 1)
             result.vt2_br = round(v2_stage['avg_br'], 0) if v2_stage['avg_br'] else None
             result.vt2_ve_slope = round(v2_slope, 4)
             result.vt2_step_number = v2_stage['step_number']
             
-            # NEW: Create TransitionZone for VT2
-            zone_width = 10.0
-            result.vt2_zone = TransitionZone(
-                range_watts=(result.vt2_watts - zone_width, result.vt2_watts + zone_width),
-                range_hr=(result.vt2_hr - 5, result.vt2_hr + 5) if result.vt2_hr else None,
-                confidence=min(0.9, 0.5 + v2_slope * 2),
-                method="step_ve_slope",
-                description=f"VT2 at Step {v2_stage['step_number']}",
-                detection_sources=["VE"]
+            result.notes.append(
+                f"VT2 zone: {lower_power:.0f}–{upper_power:.0f} W "
+                f"(central: {central_power:.0f} W, confidence: {total_confidence:.2f})"
             )
-            result.notes.append(f"VT2 found at Step {v2_stage['step_number']} (Slope: {v2_slope:.4f})")
 
     result.step_analysis = [
         {

@@ -35,6 +35,19 @@ from signals.validation import (
     validate_signal,
 )
 
+# Conflict detection module (new)
+from signals.conflicts import (
+    ConflictSeverity,
+    ConflictType,
+    SignalConflict,
+    ConflictAnalysisResult,
+    detect_cardiac_drift,
+    detect_smo2_power_conflict,
+    detect_dfa_anomaly,
+    detect_decoupling,
+    detect_signal_conflicts,
+)
+
 # Re-export from modules.calculations for now (gradual migration)
 from modules.calculations.kinetics import (
     fit_smo2_kinetics,
@@ -81,6 +94,16 @@ __all__ = [
     'check_minimum_length',
     'check_data_range',
     'validate_signal',
+    # Conflict Detection
+    'ConflictSeverity',
+    'ConflictType',
+    'SignalConflict',
+    'ConflictAnalysisResult',
+    'detect_cardiac_drift',
+    'detect_smo2_power_conflict',
+    'detect_dfa_anomaly',
+    'detect_decoupling',
+    'detect_signal_conflicts',
     # Kinetics
     'fit_smo2_kinetics',
     'get_tau_interpretation',

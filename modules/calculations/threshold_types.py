@@ -6,12 +6,44 @@ from typing import Optional, List, Tuple
 
 @dataclass
 class TransitionZone:
-    """Represents a transition zone instead of a single point."""
-    range_watts: Tuple[float, float]
-    range_hr: Optional[Tuple[float, float]]
-    confidence: float  # 0.0 to 1.0
-    method: str
-    description: str = ""
+    """Represents a transition zone (intensity range) instead of a single point.
+    
+    Thresholds are not single values - they represent a physiological
+    transition that occurs over a range of intensities.
+    """
+    range_watts: Tuple[float, float]                    # (min, max) power range
+    range_hr: Optional[Tuple[float, float]] = None      # (min, max) HR range
+    confidence: float = 0.0                             # 0.0-1.0 detection confidence
+    stability_score: float = 0.0                        # 0.0-1.0 temporal stability
+    method: str = ""                                    # Detection method used
+    description: str = ""                               # Human-readable description
+    detection_sources: List[str] = field(default_factory=list)  # ["VE", "SmO2", "HR"]
+    variability_watts: float = 0.0                      # Std dev of detections
+    
+    @property
+    def midpoint_watts(self) -> float:
+        """Get the midpoint of the power range."""
+        return (self.range_watts[0] + self.range_watts[1]) / 2
+    
+    @property
+    def range_width_watts(self) -> float:
+        """Get the width of the power range."""
+        return self.range_watts[1] - self.range_watts[0]
+    
+    @property
+    def midpoint_hr(self) -> Optional[float]:
+        """Get the midpoint of the HR range if available."""
+        if self.range_hr:
+            return (self.range_hr[0] + self.range_hr[1]) / 2
+        return None
+    
+    def is_high_confidence(self, threshold: float = 0.7) -> bool:
+        """Check if confidence exceeds threshold."""
+        return self.confidence >= threshold
+    
+    def is_stable(self, threshold: float = 0.7) -> bool:
+        """Check if stability score exceeds threshold."""
+        return self.stability_score >= threshold
 
 @dataclass
 class ThresholdResult:
@@ -125,3 +157,168 @@ class StepSmO2Result:
     smo2_2_slope: Optional[float] = None
     step_analysis: List[dict] = field(default_factory=list)
     notes: List[str] = field(default_factory=list)
+
+
+# ============================================================
+# Helper Functions for Confidence and Stability
+# ============================================================
+
+def calculate_detection_confidence(
+    detections: List[float],
+    agreement_threshold: float = 20.0
+) -> Tuple[float, Tuple[float, float], float]:
+    """
+    Calculate confidence based on agreement between multiple detection methods.
+    
+    Confidence is higher when different methods agree on similar values.
+    
+    Args:
+        detections: List of threshold values from different methods (e.g., VE, SmO2)
+        agreement_threshold: Maximum W difference for perfect agreement (default: 20W)
+    
+    Returns:
+        Tuple of (confidence 0-1, range_watts, variability)
+    """
+    if not detections or len(detections) == 0:
+        return 0.0, (0.0, 0.0), 0.0
+    
+    valid_detections = [d for d in detections if d is not None and d > 0]
+    
+    if len(valid_detections) == 0:
+        return 0.0, (0.0, 0.0), 0.0
+    
+    if len(valid_detections) == 1:
+        # Single detection - moderate confidence
+        val = valid_detections[0]
+        return 0.5, (val - 10, val + 10), 0.0
+    
+    # Calculate range and variability
+    min_val = min(valid_detections)
+    max_val = max(valid_detections)
+    range_width = max_val - min_val
+    
+    import numpy as np
+    variability = float(np.std(valid_detections))
+    
+    # Calculate confidence based on agreement
+    # Perfect agreement (range_width = 0) -> confidence = 1.0
+    # Poor agreement (range_width > agreement_threshold) -> confidence decreases
+    if range_width <= agreement_threshold:
+        confidence = 1.0 - (range_width / agreement_threshold) * 0.4  # 1.0 to 0.6
+    else:
+        # Larger disagreement reduces confidence more
+        excess = range_width - agreement_threshold
+        confidence = max(0.2, 0.6 - excess / 100)
+    
+    # Boost confidence for more detection sources
+    source_bonus = min(0.1, (len(valid_detections) - 1) * 0.05)
+    confidence = min(1.0, confidence + source_bonus)
+    
+    return round(confidence, 2), (min_val, max_val), round(variability, 1)
+
+
+def calculate_temporal_stability(
+    threshold_history: List[float],
+    max_cv_for_stable: float = 0.05
+) -> Tuple[float, float]:
+    """
+    Calculate stability score based on historical threshold values.
+    
+    Uses coefficient of variation (CV) - lower CV means higher stability.
+    
+    Args:
+        threshold_history: List of historical threshold values
+        max_cv_for_stable: CV threshold for "stable" classification (default: 5%)
+    
+    Returns:
+        Tuple of (stability_score 0-1, variability_watts)
+    """
+    if not threshold_history or len(threshold_history) < 2:
+        return 0.0, 0.0
+    
+    valid_history = [v for v in threshold_history if v is not None and v > 0]
+    
+    if len(valid_history) < 2:
+        return 0.0, 0.0
+    
+    import numpy as np
+    mean_val = np.mean(valid_history)
+    std_val = np.std(valid_history)
+    
+    if mean_val == 0:
+        return 0.0, 0.0
+    
+    cv = std_val / mean_val
+    
+    # Convert CV to stability score
+    # CV = 0 -> stability = 1.0
+    # CV >= max_cv_for_stable -> stability decreases linearly
+    if cv <= max_cv_for_stable:
+        stability = 1.0 - (cv / max_cv_for_stable) * 0.3  # 1.0 to 0.7
+    else:
+        # Higher CV = lower stability
+        stability = max(0.0, 0.7 - (cv - max_cv_for_stable) * 5)
+    
+    return round(stability, 2), round(float(std_val), 1)
+
+
+def create_transition_zone(
+    detections: List[float],
+    detection_sources: List[str],
+    hr_detections: Optional[List[float]] = None,
+    historical_values: Optional[List[float]] = None,
+    method: str = "multi-source",
+    agreement_threshold: float = 20.0
+) -> TransitionZone:
+    """
+    Create a TransitionZone from multiple detection sources.
+    
+    Args:
+        detections: List of power threshold values from different methods
+        detection_sources: Names of detection sources (e.g., ["VE", "SmO2"])
+        hr_detections: Optional list of HR values at thresholds
+        historical_values: Optional historical threshold values for stability
+        method: Description of detection method
+        agreement_threshold: Max W difference for agreement
+    
+    Returns:
+        TransitionZone with confidence, stability, and range
+    """
+    # Calculate confidence and range
+    confidence, range_watts, variability = calculate_detection_confidence(
+        detections, agreement_threshold
+    )
+    
+    # Calculate stability if historical data available
+    stability_score = 0.0
+    if historical_values and len(historical_values) >= 2:
+        stability_score, _ = calculate_temporal_stability(historical_values)
+    
+    # Calculate HR range if available
+    range_hr = None
+    if hr_detections:
+        valid_hr = [h for h in hr_detections if h is not None and h > 0]
+        if valid_hr:
+            range_hr = (min(valid_hr), max(valid_hr))
+    
+    # Create description
+    sources_str = ", ".join(detection_sources) if detection_sources else "unknown"
+    desc = f"Detected via {sources_str}"
+    if confidence >= 0.8:
+        desc += " (high confidence)"
+    elif confidence >= 0.5:
+        desc += " (moderate confidence)"
+    else:
+        desc += " (low confidence)"
+    
+    return TransitionZone(
+        range_watts=range_watts,
+        range_hr=range_hr,
+        confidence=confidence,
+        stability_score=stability_score,
+        method=method,
+        description=desc,
+        detection_sources=detection_sources,
+        variability_watts=variability
+    )
+

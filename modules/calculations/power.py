@@ -10,8 +10,9 @@ from .common import ensure_pandas
 
 def calculate_normalized_power(
     df_pl: Union[pd.DataFrame, Any],
-    rolling_window_sec: int = 30
-) -> float:
+    rolling_window_sec: int = 30,
+    return_rich: bool = False
+) -> Union[float, 'NormalizedPowerResult']:
     """
     Calculate Normalized Power (NP) using Coggan's formula.
     
@@ -20,38 +21,59 @@ def calculate_normalized_power(
     Args:
         df_pl: DataFrame with 'watts' or 'watts_smooth' column
         rolling_window_sec: Rolling average window in seconds (default: 30)
+        return_rich: If True, return NormalizedPowerResult; if False, return float
     
     Returns:
-        Normalized Power value
+        NormalizedPowerResult object (or float if return_rich=False)
     """
+    from models import NormalizedPowerResult
+    
     df = ensure_pandas(df_pl)
     col = 'watts' if 'watts' in df.columns else ('watts_smooth' if 'watts_smooth' in df.columns else None)
     
     if col is None:
+        if return_rich:
+            return NormalizedPowerResult(value=0.0, rolling_window_sec=rolling_window_sec, samples_count=0, data_quality=0.0)
         return 0.0
-        
+    
+    samples_count = len(df)
+    
+    # Calculate data quality (based on NaN ratio and variance)
+    nan_ratio = df[col].isna().sum() / len(df) if len(df) > 0 else 1.0
+    data_quality = max(0.0, 1.0 - nan_ratio)
+    
     # Rolling average
     rolling_avg = df[col].rolling(window=rolling_window_sec, min_periods=1).mean()
     # 4th power
     rolling_pow4 = np.power(rolling_avg, 4)
     # Mean
-    avg_pow4 = np.mean(rolling_pow4)
+    avg_pow4 = np.nanmean(rolling_pow4)
     # 4th root
     np_val = np.power(avg_pow4, 0.25)
     
     if pd.isna(np_val):
         mean_val = df[col].mean()
-        return 0.0 if pd.isna(mean_val) else mean_val
-        
-    return float(np_val)
+        np_val = 0.0 if pd.isna(mean_val) else float(mean_val)
+    else:
+        np_val = float(np_val)
+    
+    if return_rich:
+        return NormalizedPowerResult(
+            value=np_val,
+            rolling_window_sec=rolling_window_sec,
+            samples_count=samples_count,
+            data_quality=data_quality
+        )
+    return np_val
 
 
 def calculate_pulse_power_stats(
     df_pl: Union[pd.DataFrame, Any],
     min_watts: float = 50.0,
     min_hr: float = 90.0,
-    min_samples_trend: int = 100
-) -> Tuple[float, float, pd.DataFrame]:
+    min_samples_trend: int = 100,
+    return_rich: bool = False
+) -> Union[Tuple[float, float, pd.DataFrame], 'PulsePowerResult']:
     """Calculate Pulse Power (Efficiency) statistics: Avg PP, Trend Drop %.
     
     Pulse Power = Watts / Heart Rate - indicates cardiac efficiency.
@@ -61,16 +83,25 @@ def calculate_pulse_power_stats(
         min_watts: Minimum power threshold for valid data (default: 50W)
         min_hr: Minimum heart rate threshold for valid data (default: 90 bpm)
         min_samples_trend: Minimum samples required for trend calculation (default: 100)
+        return_rich: If True, return PulsePowerResult; if False, return tuple
     
     Returns:
-        Tuple of (average PP, drop percentage, filtered DataFrame)
+        PulsePowerResult object (or tuple if return_rich=False)
     """
+    from models import PulsePowerResult
+    
     df = ensure_pandas(df_pl)
     
     col_w = 'watts_smooth' if 'watts_smooth' in df.columns else 'watts'
     col_hr = 'heartrate_smooth' if 'heartrate_smooth' in df.columns else 'heartrate'
     
     if col_w not in df.columns or col_hr not in df.columns:
+        if return_rich:
+            return PulsePowerResult(
+                avg_pulse_power=0.0, trend_drop_pct=0.0, df_filtered=pd.DataFrame(),
+                min_watts=min_watts, min_hr=min_hr, min_samples_trend=min_samples_trend,
+                samples_count=0, data_quality=0.0
+            )
         return 0.0, 0.0, pd.DataFrame()
         
     # Filter sensible values using explicit thresholds
@@ -78,12 +109,22 @@ def calculate_pulse_power_stats(
     df_pp = df[mask].copy()
     
     if df_pp.empty:
+        if return_rich:
+            return PulsePowerResult(
+                avg_pulse_power=0.0, trend_drop_pct=0.0, df_filtered=pd.DataFrame(),
+                min_watts=min_watts, min_hr=min_hr, min_samples_trend=min_samples_trend,
+                samples_count=0, data_quality=0.0
+            )
         return 0.0, 0.0, pd.DataFrame()
-        
+    
+    samples_count = len(df_pp)
+    data_quality = samples_count / len(df) if len(df) > 0 else 0.0
+    
     df_pp['pulse_power'] = df_pp[col_w] / df_pp[col_hr]
     avg_pp = df_pp['pulse_power'].mean()
     
     # Trend calculation
+    drop_pct = 0.0
     if len(df_pp) > min_samples_trend:
         x = df_pp['time'] if 'time' in df_pp.columns else np.arange(len(df_pp))
         y = df_pp['pulse_power'].values
@@ -92,19 +133,23 @@ def calculate_pulse_power_stats(
             z = np.polyfit(x[idx], y[idx], 1)
             slope = z[0]
             intercept = z[1]
-            # Total drop in % over the session
             start_val = intercept + slope * x.iloc[0]
             end_val = intercept + slope * x.iloc[-1]
              
             if start_val != 0:
                 drop_pct = (end_val - start_val) / start_val * 100
-            else:
-                drop_pct = 0.0
-        else:
-            drop_pct = 0.0
-    else:
-        drop_pct = 0.0
-        
+    
+    if return_rich:
+        return PulsePowerResult(
+            avg_pulse_power=avg_pp,
+            trend_drop_pct=drop_pct,
+            df_filtered=df_pp,
+            min_watts=min_watts,
+            min_hr=min_hr,
+            min_samples_trend=min_samples_trend,
+            samples_count=samples_count,
+            data_quality=data_quality
+        )
     return avg_pp, drop_pct, df_pp
 
 

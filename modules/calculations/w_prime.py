@@ -136,8 +136,9 @@ def calculate_recovery_score(
     w_prime_capacity: float,
     time_since_effort_sec: int = 0,
     tau_seconds: float = 400.0,
-    time_bonus_max: float = 30.0
-) -> float:
+    time_bonus_max: float = 30.0,
+    return_rich: bool = False
+) -> Union[float, 'RecoveryScoreResult']:
     """Calculate Recovery Score based on W' balance state.
     
     Estimates readiness for next high-intensity effort based on
@@ -156,26 +157,46 @@ def calculate_recovery_score(
         time_since_effort_sec: Time since last high-intensity effort
         tau_seconds: Time constant for W' reconstitution (default: 400s)
         time_bonus_max: Maximum time bonus points (default: 30)
+        return_rich: If True, return RecoveryScoreResult; if False, return float
         
     Returns:
-        Recovery Score (0-100)
+        RecoveryScoreResult object (or float if return_rich=False)
     """
+    from models import RecoveryScoreResult
+    
     if w_prime_capacity <= 0:
+        if return_rich:
+            return RecoveryScoreResult(
+                score=0.0, w_pct=0.0, time_bonus=0.0,
+                tau_seconds=tau_seconds, time_bonus_max=time_bonus_max,
+                recommendation=("❌ Brak danych", "Brak danych W'")
+            )
         return 0.0
     
     # Base score from W' percentage
     w_pct = (w_bal_end / w_prime_capacity) * 100
     
     # Time bonus (W' recovers over time)
-    time_bonus = 0
+    time_bonus = 0.0
     if time_since_effort_sec > 0:
         # Exponential recovery model
         recovery_factor = 1 - np.exp(-time_since_effort_sec / tau_seconds)
         time_bonus = recovery_factor * time_bonus_max
     
     score = min(100, w_pct + time_bonus)
+    score = round(max(0, score), 0)
     
-    return round(max(0, score), 0)
+    if return_rich:
+        recommendation = get_recovery_recommendation(score)
+        return RecoveryScoreResult(
+            score=score,
+            w_pct=w_pct,
+            time_bonus=time_bonus,
+            tau_seconds=tau_seconds,
+            time_bonus_max=time_bonus_max,
+            recommendation=recommendation
+        )
+    return score
 
 
 def get_recovery_recommendation(score: float) -> tuple:

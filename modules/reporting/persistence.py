@@ -95,8 +95,42 @@ def save_ramp_test_report(
     # 5. Save file
     with open(file_path, 'w', encoding='utf-8') as f:
         json.dump(final_json, f, indent=2, ensure_ascii=False)
+    
+    # 6. Update Index (CSV)
+    try:
+        _update_index(output_base_dir, final_json["metadata"], str(file_path.absolute()))
+    except Exception as e:
+        print(f"Warning: Failed to update report index: {e}")
         
     return str(file_path.absolute())
+
+
+def _update_index(base_dir: str, metadata: Dict, file_path: str):
+    """
+    Update CSV index with new test record.
+    
+    Columns: session_id, test_date, athlete_id, method_version, json_path
+    """
+    import csv
+    
+    index_path = Path(base_dir) / "index.csv"
+    file_exists = index_path.exists()
+    
+    fieldnames = ["session_id", "test_date", "athlete_id", "method_version", "json_path"]
+    
+    row = {
+        "session_id": metadata.get("session_id", ""),
+        "test_date": metadata.get("test_date", ""),
+        "athlete_id": metadata.get("athlete_id") or "anonymous",
+        "method_version": metadata.get("method_version", ""),
+        "json_path": file_path
+    }
+    
+    with open(index_path, 'a', newline='', encoding='utf-8') as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        if not file_exists:
+            writer.writeheader()
+        writer.writerow(row)
 
 
 def load_ramp_test_report(file_path: Union[str, Path]) -> Dict:

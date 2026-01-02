@@ -59,7 +59,15 @@ class PulsePowerResult:
 
 @dataclass
 class DFAResult:
-    """Result of DFA Alpha-1 (HRV) calculation."""
+    """Result of DFA Alpha-1 (HRV) calculation.
+    
+    ⚠️ DFA-a1 is HIGHLY SENSITIVE to artifacts in RR data.
+    
+    Uncertainty conditions:
+    1. Window < min_window_sec (default 120s) → uncertain
+    2. Data quality < 0.9 (>10% artifacts) → uncertain
+    3. Alpha1 outside [0.5, 1.5] at moderate intensity → uncertain
+    """
     df_results: Optional[pd.DataFrame]
     mean_alpha1: Optional[float]
     alpha1_range: Tuple[float, float]  # (min, max)
@@ -72,6 +80,33 @@ class DFAResult:
     windows_analyzed: int
     data_quality: float
     error: Optional[str] = None
+    
+    # NEW: Uncertainty and quality
+    is_uncertain: bool = False
+    uncertainty_reasons: List[str] = field(default_factory=list)
+    quality_grade: str = "A"  # A=excellent, B=good, C=acceptable, D=poor, F=unusable
+    
+    # NEW: Minimum window validation
+    min_window_sec: int = 120  # 2 min minimum for reliable DFA
+    window_meets_minimum: bool = True
+    
+    # NEW: Artifact sensitivity warning
+    artifact_sensitivity_note: str = field(default_factory=lambda: 
+        "⚠️ DFA-a1 jest BARDZO wrażliwy na artefakty. "
+        "Nawet 1-2% błędnych wartości RR może znacząco wpłynąć na wynik."
+    )
+    
+    def get_interpretation(self) -> str:
+        """Get interpretation of the result."""
+        if self.is_uncertain:
+            reasons = "; ".join(self.uncertainty_reasons)
+            return f"❓ NIEPEWNY: {reasons}"
+        if self.quality_grade in ["A", "B"]:
+            return "✅ Wynik wiarygodny"
+        elif self.quality_grade == "C":
+            return "⚠️ Wynik akceptowalny, ale z ograniczeniami"
+        else:
+            return "❌ Wynik niewiarygodny"
 
 
 @dataclass

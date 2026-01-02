@@ -131,12 +131,32 @@ def render_ai_coach_tab(df_plot_resampled):
         if 'ai_hr' in df_plot_resampled.columns:
             st.subheader("Analiza: Rzeczywistość vs AI")
             fig_ai_comp = go.Figure()
-            fig_ai_comp.add_trace(go.Scatter(x=df_plot_resampled['time_min'], y=df_plot_resampled['heartrate_smooth'], 
-                                         name='Rzeczywiste HR', line=dict(color='#ef553b', width=2)))
-            fig_ai_comp.add_trace(go.Scatter(x=df_plot_resampled['time_min'], y=df_plot_resampled['ai_hr'], 
-                                         name='AI Model HR (Oczekiwane)', line=dict(color='#00cc96', dash='dot', width=2)))
+            fig_ai_comp.add_trace(go.Scatter(
+                x=df_plot_resampled['time_min'], 
+                y=df_plot_resampled['heartrate_smooth'], 
+                name='Rzeczywiste HR', 
+                line=dict(color='#ef553b', width=2),
+                hovertemplate="<b>Czas:</b> %{x:.0f} min<br><b>Rzeczywiste HR:</b> %{y:.1f} bpm<extra></extra>"
+            ))
+            fig_ai_comp.add_trace(go.Scatter(
+                x=df_plot_resampled['time_min'], 
+                y=df_plot_resampled['ai_hr'], 
+                name='AI Model HR (Oczekiwane)', 
+                line=dict(color='#00cc96', dash='dot', width=2),
+                hovertemplate="<b>Czas:</b> %{x:.0f} min<br><b>AI Model HR (Oczekiwane):</b> %{y:.1f} bpm<extra></extra>"
+            ))
             
-            fig_ai_comp.update_layout(template="plotly_dark", title="Czy serce reagowało zgodnie z planem?", hovermode="x unified")
+            fig_ai_comp.update_layout(
+                template="plotly_dark", 
+                title="Czy serce reagowało zgodnie z planem?", 
+                xaxis=dict(
+                    title="Czas [min]",
+                    tickformat=".0f",
+                    hoverformat=".0f"
+                ),
+                hovermode="x unified",
+                legend=dict(orientation="h", y=1.1, x=0)
+            )
             st.plotly_chart(fig_ai_comp, use_container_width=True)
             
             diff = df_plot_resampled['heartrate_smooth'] - df_plot_resampled['ai_hr']

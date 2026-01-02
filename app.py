@@ -100,8 +100,9 @@ ThemeManager.load_css()
 state = StateManager()
 state.init_session_state()
 
-# Safety Check: Git Tracking of sensitive data
-check_git_tracking()
+# Safety Check: Git Tracking of sensitive data (reports & raw CSVs)
+check_git_tracking("reports/ramp_tests")
+check_git_tracking("treningi_csv")
 
 layout = AppLayout(state)
 uploaded_file, params = layout.render_sidebar()

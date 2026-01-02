@@ -12,11 +12,12 @@ from pathlib import Path
 from typing import Dict, Optional, Union
 
 from models.results import RampTestResult
+from modules.calculations.version import RAMP_METHOD_VERSION
 
 # canonical version of the JSON structure
 CANONICAL_SCHEMA = "ramp_test_result_v1.json"
 CANONICAL_VERSION = "1.0.0"
-METHOD_VERSION = "1.0.0"  # Pipeline version
+METHOD_VERSION = RAMP_METHOD_VERSION  # Pipeline version
 
 
 def save_ramp_test_report(

@@ -3,6 +3,10 @@ import plotly.graph_objects as go
 import pandas as pd
 import numpy as np
 from modules.calculations import calculate_dynamic_dfa
+import importlib
+import modules.calculations.hrv
+importlib.reload(modules.calculations.hrv)
+from modules.calculations.hrv import calculate_dynamic_dfa
 
 def render_hrv_tab(df_clean_pl):
     st.header("Analiza Zmienności Rytmu Serca (HRV)")

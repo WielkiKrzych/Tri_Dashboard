@@ -79,3 +79,7 @@ graph TD
 
 ## 📄 License
 This project is licensed under the MIT License.
+
+> [!WARNING]
+> **Generated Ramp Test reports are intentionally excluded from version control.**
+> They contain analysis artifacts and must not be committed.

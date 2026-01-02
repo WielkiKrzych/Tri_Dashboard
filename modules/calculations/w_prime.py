@@ -134,7 +134,9 @@ def calculate_w_prime_balance(_df_pl_active, cp: float, w_prime: float) -> pd.Da
 def calculate_recovery_score(
     w_bal_end: float,
     w_prime_capacity: float,
-    time_since_effort_sec: int = 0
+    time_since_effort_sec: int = 0,
+    tau_seconds: float = 400.0,
+    time_bonus_max: float = 30.0
 ) -> float:
     """Calculate Recovery Score based on W' balance state.
     
@@ -152,6 +154,8 @@ def calculate_recovery_score(
         w_bal_end: Current W' balance (J)
         w_prime_capacity: Full W' capacity (J)
         time_since_effort_sec: Time since last high-intensity effort
+        tau_seconds: Time constant for W' reconstitution (default: 400s)
+        time_bonus_max: Maximum time bonus points (default: 30)
         
     Returns:
         Recovery Score (0-100)
@@ -163,14 +167,11 @@ def calculate_recovery_score(
     w_pct = (w_bal_end / w_prime_capacity) * 100
     
     # Time bonus (W' recovers over time)
-    # Typical tau for W' reconstitution is 300-600 seconds
-    tau = 400  # Average reconstitution time constant
     time_bonus = 0
     if time_since_effort_sec > 0:
         # Exponential recovery model
-        recovery_factor = 1 - np.exp(-time_since_effort_sec / tau)
-        # Add up to 30 points with time
-        time_bonus = recovery_factor * 30
+        recovery_factor = 1 - np.exp(-time_since_effort_sec / tau_seconds)
+        time_bonus = recovery_factor * time_bonus_max
     
     score = min(100, w_pct + time_bonus)
     

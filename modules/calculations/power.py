@@ -8,14 +8,18 @@ import pandas as pd
 from .common import ensure_pandas
 
 
-def calculate_normalized_power(df_pl: Union[pd.DataFrame, Any]) -> float:
+def calculate_normalized_power(
+    df_pl: Union[pd.DataFrame, Any],
+    rolling_window_sec: int = 30
+) -> float:
     """
     Calculate Normalized Power (NP) using Coggan's formula.
     
-    NP = 4th root of (mean of 4th power of 30s rolling average power)
+    NP = 4th root of (mean of 4th power of rolling average power)
     
     Args:
         df_pl: DataFrame with 'watts' or 'watts_smooth' column
+        rolling_window_sec: Rolling average window in seconds (default: 30)
     
     Returns:
         Normalized Power value
@@ -26,10 +30,10 @@ def calculate_normalized_power(df_pl: Union[pd.DataFrame, Any]) -> float:
     if col is None:
         return 0.0
         
-    # Rolling 30s avg
-    rolling_30s = df[col].rolling(window=30, min_periods=1).mean()
+    # Rolling average
+    rolling_avg = df[col].rolling(window=rolling_window_sec, min_periods=1).mean()
     # 4th power
-    rolling_pow4 = np.power(rolling_30s, 4)
+    rolling_pow4 = np.power(rolling_avg, 4)
     # Mean
     avg_pow4 = np.mean(rolling_pow4)
     # 4th root
@@ -42,13 +46,21 @@ def calculate_normalized_power(df_pl: Union[pd.DataFrame, Any]) -> float:
     return float(np_val)
 
 
-def calculate_pulse_power_stats(df_pl: Union[pd.DataFrame, Any]) -> Tuple[float, float, pd.DataFrame]:
+def calculate_pulse_power_stats(
+    df_pl: Union[pd.DataFrame, Any],
+    min_watts: float = 50.0,
+    min_hr: float = 90.0,
+    min_samples_trend: int = 100
+) -> Tuple[float, float, pd.DataFrame]:
     """Calculate Pulse Power (Efficiency) statistics: Avg PP, Trend Drop %.
     
     Pulse Power = Watts / Heart Rate - indicates cardiac efficiency.
     
     Args:
         df_pl: DataFrame with power and HR data
+        min_watts: Minimum power threshold for valid data (default: 50W)
+        min_hr: Minimum heart rate threshold for valid data (default: 90 bpm)
+        min_samples_trend: Minimum samples required for trend calculation (default: 100)
     
     Returns:
         Tuple of (average PP, drop percentage, filtered DataFrame)
@@ -61,8 +73,8 @@ def calculate_pulse_power_stats(df_pl: Union[pd.DataFrame, Any]) -> Tuple[float,
     if col_w not in df.columns or col_hr not in df.columns:
         return 0.0, 0.0, pd.DataFrame()
         
-    # Filter sensible values
-    mask = (df[col_w] > 50) & (df[col_hr] > 90)
+    # Filter sensible values using explicit thresholds
+    mask = (df[col_w] > min_watts) & (df[col_hr] > min_hr)
     df_pp = df[mask].copy()
     
     if df_pp.empty:
@@ -71,8 +83,8 @@ def calculate_pulse_power_stats(df_pl: Union[pd.DataFrame, Any]) -> Tuple[float,
     df_pp['pulse_power'] = df_pp[col_w] / df_pp[col_hr]
     avg_pp = df_pp['pulse_power'].mean()
     
-    # Trend
-    if len(df_pp) > 100:
+    # Trend calculation
+    if len(df_pp) > min_samples_trend:
         x = df_pp['time'] if 'time' in df_pp.columns else np.arange(len(df_pp))
         y = df_pp['pulse_power'].values
         idx = np.isfinite(x) & np.isfinite(y)

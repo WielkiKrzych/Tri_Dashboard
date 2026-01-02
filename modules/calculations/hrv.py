@@ -135,15 +135,23 @@ def _fast_dfa_loop(time_values, rr_values, window_sec, step_sec):
     return results_time, results_alpha, results_rmssd, results_sdnn, results_mean_rr
 
 
-def calculate_dynamic_dfa(df_pl, window_sec: int = 300, step_sec: int = 30) -> Tuple[Optional[pd.DataFrame], Optional[str]]:
+def calculate_dynamic_dfa(
+    df_pl, 
+    window_sec: int = 300, 
+    step_sec: int = 30,
+    min_samples_hrv: int = 100,
+    alpha1_clip_range: Tuple[float, float] = (0.2, 1.8)
+) -> Tuple[Optional[pd.DataFrame], Optional[str]]:
     """
     Calculate HRV metrics (RMSSD, SDNN, Alpha-1) in a sliding window.
     Optimized version with Numba.
     
     Args:
         df_pl: DataFrame with RR data
-        window_sec: Window size in seconds
-        step_sec: Step size in seconds
+        window_sec: Window size in seconds (default: 300)
+        step_sec: Step size in seconds (default: 30)
+        min_samples_hrv: Minimum RR samples required (default: 100)
+        alpha1_clip_range: Min/max range for alpha1 clipping (default: 0.2-1.8)
     
     Returns:
         Tuple of (results DataFrame, error message or None)
@@ -158,8 +166,8 @@ def calculate_dynamic_dfa(df_pl, window_sec: int = 300, step_sec: int = 30) -> T
     rr_data = df[['time', rr_col]].dropna()
     rr_data = rr_data[rr_data[rr_col] > 0]
     
-    if len(rr_data) < MIN_SAMPLES_HRV:
-        return None, f"Za mało danych R-R ({len(rr_data)} < 100)"
+    if len(rr_data) < min_samples_hrv:
+        return None, f"Za mało danych R-R ({len(rr_data)} < {min_samples_hrv})"
 
     # Automatic unit detection
     mean_val = rr_data[rr_col].mean()

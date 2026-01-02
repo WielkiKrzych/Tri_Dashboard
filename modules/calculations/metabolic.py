@@ -4,7 +4,7 @@ Metabolic Threshold Detection (SmO2/LT).
 IMPORTANT: SmO₂ is a LOCAL/REGIONAL signal - see limitations below.
 """
 import pandas as pd
-from typing import Optional, List
+from typing import List  # Optional removed - was only used by deleted legacy function
 from .threshold_types import StepSmO2Result, StepTestRange
 from .ventilatory import calculate_slope
 
@@ -115,23 +115,6 @@ def detect_smo2_from_steps(
     result.step_analysis = all_steps
     return result
 
-def _detect_smo2_thresholds_legacy(step_data: List[dict]) -> Optional[dict]:
-    """Legacy LT1/LT2 detection logic."""
-    if len(step_data) < 3: return None
-    s_steps = [s for s in step_data if 'smo2_slope' in s and 'avg_power' in s]
-    if len(s_steps) < 3: return None
-    
-    lt1_idx = next((i for i, s in enumerate(s_steps) if s['smo2_slope'] <= 0.005), None)
-    if lt1_idx is not None: lt1_idx = max(0, lt1_idx - 1)
-    
-    lt2_idx = next((i for i, s in enumerate(s_steps) if s['smo2_slope'] < -0.01), None)
-    if lt2_idx is not None: lt2_idx = max(0, lt2_idx - 1)
-            
-    res = {}
-    if lt1_idx is not None:
-        res['lt1_power'] = s_steps[lt1_idx]['avg_power']
-        res['lt1_step'] = s_steps[lt1_idx]['step']
-    if lt2_idx is not None:
-        res['lt2_power'] = s_steps[lt2_idx]['avg_power']
-        res['lt2_step'] = s_steps[lt2_idx]['step']
-    return res if res else None
+# NOTE: _detect_smo2_thresholds_legacy was removed (2026-01-02)
+# REASON: Function was never called - detect_smo2_from_steps is the active implementation
+

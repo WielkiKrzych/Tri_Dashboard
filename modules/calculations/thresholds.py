@@ -15,9 +15,8 @@ from .ventilatory import (
     detect_vt_from_steps, detect_vt_transition_zone, 
     run_sensitivity_analysis
 )
-from .metabolic import (
-    detect_smo2_from_steps, _detect_smo2_thresholds_legacy
-)
+from .metabolic import detect_smo2_from_steps
+# NOTE: _detect_smo2_thresholds_legacy removed - was never called
 from .step_detection import (
     detect_step_test_range, segment_load_phases
 )

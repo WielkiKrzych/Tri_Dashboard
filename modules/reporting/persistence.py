@@ -166,6 +166,8 @@ def _update_index(base_dir: str, metadata: Dict, file_path: str):
         if not file_exists:
             writer.writeheader()
         writer.writerow(row)
+        
+    print(f"Ramp Test indexed: {row['session_id']}")
 
 
 def load_ramp_test_report(file_path: Union[str, Path]) -> Dict:

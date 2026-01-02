@@ -23,3 +23,10 @@ env/
 *.sqlite
 *.sqlite3
 data/
+# === Generated ramp test reports ===
+reports/ramp_tests/
+reports/**/*.json
+
+# Optional: other generated artifacts
+reports/**/*.pdf
+reports/**/*.html

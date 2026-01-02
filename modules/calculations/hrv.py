@@ -229,10 +229,16 @@ def calculate_dynamic_dfa(
     """
     df = ensure_pandas(df_pl)
     
-    rr_col = next((c for c in ['rr', 'rr_interval', 'hrv', 'ibi', 'r-r', 'rr_ms'] if c in df.columns), None)
+    # Robust column detection (case-insensitive)
+    search_terms = ['rr', 'rr_interval', 'hrv', 'ibi', 'r-r', 'rr_ms']
+    rr_col = next((c for c in df.columns if any(x == c.lower().strip() for x in search_terms)), None)
+    
+    # If not found, try partial match (e.g. "HRV (ms)")
+    if rr_col is None:
+        rr_col = next((c for c in df.columns if any(x in c.lower() for x in search_terms)), None)
     
     if rr_col is None:
-        return None, "Missing R-R/HRV data column"
+        return None, f"Missing R-R/HRV data column. Available: {list(df.columns)}"
 
     rr_data = df[['time', rr_col]].dropna()
     rr_data = rr_data[rr_data[rr_col] > 0]

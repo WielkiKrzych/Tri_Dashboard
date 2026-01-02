@@ -82,6 +82,8 @@ def analyze_step_test(
                 result.smo2_1_hr = smo2_res.smo2_1_hr
                 result.smo2_2_watts = smo2_res.smo2_2_watts
                 result.smo2_2_hr = smo2_res.smo2_2_hr
+                result.smo2_1_value = smo2_res.smo2_1_value
+                result.smo2_2_value = smo2_res.smo2_2_value
                 result.step_smo2_analysis = smo2_res.step_analysis
         else:
             notes = step_range.notes if step_range else ["Nie znaleziono prawidłowego testu schodkowego"]

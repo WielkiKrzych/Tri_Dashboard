@@ -103,6 +103,8 @@ class StepTestResult:
     smo2_2_watts: Optional[float] = None
     smo2_1_hr: Optional[float] = None
     smo2_2_hr: Optional[float] = None
+    smo2_1_value: Optional[float] = None
+    smo2_2_value: Optional[float] = None
     step_smo2_analysis: List[dict] = field(default_factory=list)
 
 @dataclass
@@ -201,6 +203,8 @@ class StepSmO2Result:
     smo2_2_hr: Optional[float] = None
     smo2_2_step_number: Optional[int] = None
     smo2_2_slope: Optional[float] = None
+    smo2_1_value: Optional[float] = None
+    smo2_2_value: Optional[float] = None
     step_analysis: List[dict] = field(default_factory=list)
     notes: List[str] = field(default_factory=list)
     

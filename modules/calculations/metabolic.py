@@ -117,6 +117,12 @@ def detect_smo2_from_steps(
             upper_hr = item['avg_hr']
             central_hr = (lower_hr * 0.3 + upper_hr * 0.7) if lower_hr and upper_hr else upper_hr
             
+            # SmO2 value
+            lower_smo2 = all_steps[lower_step_idx]['avg_smo2']
+            upper_smo2 = item['avg_smo2']
+            central_smo2 = lower_smo2 * 0.3 + upper_smo2 * 0.7
+            
+            
             # Create TransitionZone (PRIMARY OUTPUT)
             result.smo2_1_zone = TransitionZone(
                 range_watts=(lower_power, upper_power),
@@ -134,6 +140,7 @@ def detect_smo2_from_steps(
             result.smo2_1_hr = round(central_hr, 0) if central_hr else None
             result.smo2_1_step_number = item['step_number']
             result.smo2_1_slope = item['slope']
+            result.smo2_1_value = round(central_smo2, 1)
             
             result.notes.append(
                 f"LT1 (SmO2) zone: {lower_power:.0f}–{upper_power:.0f} W "
@@ -162,6 +169,12 @@ def detect_smo2_from_steps(
                 upper_hr = all_steps[i]['avg_hr']
                 central_hr = (lower_hr * 0.3 + upper_hr * 0.7) if lower_hr and upper_hr else upper_hr
                 
+                # SmO2 value
+                lower_smo2 = all_steps[lower_step_idx]['avg_smo2']
+                upper_smo2 = all_steps[i]['avg_smo2']
+                central_smo2 = lower_smo2 * 0.3 + upper_smo2 * 0.7
+                
+                
                 # Create TransitionZone (PRIMARY OUTPUT)
                 result.smo2_2_zone = TransitionZone(
                     range_watts=(lower_power, upper_power),
@@ -179,6 +192,7 @@ def detect_smo2_from_steps(
                 result.smo2_2_hr = round(central_hr, 0) if central_hr else None
                 result.smo2_2_step_number = all_steps[i]['step_number']
                 result.smo2_2_slope = all_steps[i]['slope']
+                result.smo2_2_value = round(central_smo2, 1)
                 
                 result.notes.append(
                     f"LT2 (SmO2) zone: {lower_power:.0f}–{upper_power:.0f} W "

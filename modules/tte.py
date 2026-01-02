@@ -4,12 +4,13 @@ Time-to-Exhaustion (TTE) Detection Module.
 Computes the maximum continuous duration an athlete can sustain
 a target power percentage (e.g., 100% FTP ±5%).
 """
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Callable
 import json
 import numpy as np
 import sqlite3
-import json
-from typing import List, Tuple, Dict, Optional, Callable
+import pandas as pd
+from datetime import datetime, timedelta
+from dataclasses import dataclass
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 from modules.config import Config

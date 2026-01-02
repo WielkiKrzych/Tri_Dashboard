@@ -17,22 +17,25 @@ def render_hrv_tab(df_clean_pl):
     if 'dfa_error' not in st.session_state:
         st.session_state.dfa_error = None
 
-    # 2. Obsługa Przycisku
-    if st.session_state.df_dfa is None and st.session_state.dfa_error is None:
+    # 2. Obsługa Przycisku i Stanu
+    if st.session_state.df_dfa is None:
         st.info("💡 Analiza DFA Alpha-1 wymaga zaawansowanych obliczeń fraktalnych.")
-        st.markdown("Kliknij przycisk poniżej, aby uruchomić algorytm. Może to zająć od kilku do kilkunastu sekund.")
+        st.markdown("Kliknij przycisk poniżej, aby uruchomić algorytm. Jeśli poprzednia próba się nie udała, upewnij się że dane są poprawne.")
         
-        if st.button("🚀 Oblicz HRV i DFA Alpha-1"):
+        col_btn1, col_btn2 = st.columns([1, 1])
+        if col_btn1.button("🚀 Oblicz HRV i DFA Alpha-1"):
             with st.spinner("Analiza geometrii rytmu serca... Proszę czekać..."):
                 try:
                     result_df, error_msg = calculate_dynamic_dfa_v2(df_clean_pl)
-                    
                     st.session_state.df_dfa = result_df
                     st.session_state.dfa_error = error_msg
-                    
                     st.rerun()
                 except Exception as e:
                     st.error(f"Wystąpił błąd krytyczny algorytmu: {e}")
+        
+        if st.session_state.dfa_error and col_btn2.button("🧹 Wyczyść błędy"):
+            st.session_state.dfa_error = None
+            st.rerun()
 
     # 3. Pobranie danych z pamięci do zmiennych lokalnych
     df_dfa = st.session_state.df_dfa

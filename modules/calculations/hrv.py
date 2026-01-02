@@ -214,6 +214,10 @@ def calculate_dynamic_dfa_v2(
     alpha1_clip_range: Tuple[float, float] = (0.2, 1.8)
 ) -> Tuple[Optional[pd.DataFrame], Optional[str]]:
     """
+    V2: Robust column detection and cache-busting.
+    """
+    print(f"[DEBUG] Executing calculate_dynamic_dfa_v2 logic...")
+    df = ensure_pandas(df_pl)
     Calculate HRV metrics (RMSSD, SDNN, Alpha-1) in a sliding window.
     Optimized version with Numba.
     

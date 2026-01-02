@@ -24,7 +24,8 @@ def save_ramp_test_report(
     result: RampTestResult,
     output_base_dir: str = "reports/ramp_tests",
     athlete_id: Optional[str] = None,
-    notes: Optional[str] = None
+    notes: Optional[str] = None,
+    dev_mode: bool = False
 ) -> str:
     """
     Save Ramp Test result to JSON file.
@@ -32,11 +33,17 @@ def save_ramp_test_report(
     Generates path: {output_base_dir}/YYYY/MM/ramp_test_{date}_{uuid}.json
     Enriches result with metadata (UUID, timestamps).
     
+    Safety:
+    - By default, writes with 'x' mode (exclusive creation).
+    - Checks for file existence to prevent overwrites.
+    - 'dev_mode=True' allows overwriting.
+    
     Args:
         result: Analysis result object
         output_base_dir: Base directory for reports
         athlete_id: Optional athlete identifier
         notes: Optional analysis notes
+        dev_mode: If True, allows overwriting existing files
         
     Returns:
         Absolute path to the saved file
@@ -92,9 +99,18 @@ def save_ramp_test_report(
     
     file_path = save_dir / filename
     
-    # 5. Save file
-    with open(file_path, 'w', encoding='utf-8') as f:
-        json.dump(final_json, f, indent=2, ensure_ascii=False)
+    # 5. Save file (Immutable by default)
+    mode = 'w' if dev_mode else 'x'
+    
+    try:
+        with open(file_path, mode, encoding='utf-8') as f:
+            json.dump(final_json, f, indent=2, ensure_ascii=False)
+    except FileExistsError:
+        # Should be rare given UUID, but protects against collision/logic errors
+        if not dev_mode:
+            # Regenerate UUID and try one more time or raise
+            # Simple strategy: Raise to indicate safety mechanism worked
+            raise FileExistsError(f"Ramp Test Report already exists and immutable: {file_path}")
     
     # 6. Update Index (CSV)
     try:

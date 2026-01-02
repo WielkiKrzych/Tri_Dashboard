@@ -48,8 +48,8 @@ def render_tte_tab(df_plot: pd.DataFrame, ftp: float, uploaded_file_name: str = 
     with col1:
         target_pct = st.slider(
             "Docelowy % FTP",
-            min_value=90,
-            max_value=110,
+            min_value=70,
+            max_value=120,
             value=100,
             step=5,
             help="Procent FTP, który chcesz analizować"

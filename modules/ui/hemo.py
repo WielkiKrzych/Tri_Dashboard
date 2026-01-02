@@ -112,7 +112,11 @@ def render_hemo_tab(target_df):
         fig_trend.update_layout(
             template="plotly_dark",
             title="SmO2 vs THb w Czasie",
-            xaxis_title="Czas [min]",
+            xaxis=dict(
+                title="Czas [min]",
+                tickformat=".0f",
+                hoverformat=".0f"
+            ),
             hovermode="x unified",
             yaxis=dict(
                 title=dict(text="SmO2 [%]", font=dict(color='#ab63fa'))

@@ -4,7 +4,6 @@ SRP: Moduł odpowiedzialny za analizę HRV i DFA Alpha-1.
 from typing import Union, Any, Optional, Tuple
 import numpy as np
 import pandas as pd
-import streamlit as st
 from numba import jit
 
 from .common import ensure_pandas, MIN_SAMPLES_HRV
@@ -136,7 +135,6 @@ def _fast_dfa_loop(time_values, rr_values, window_sec, step_sec):
     return results_time, results_alpha, results_rmssd, results_sdnn, results_mean_rr
 
 
-@st.cache_data
 def calculate_dynamic_dfa(df_pl, window_sec: int = 300, step_sec: int = 30) -> Tuple[Optional[pd.DataFrame], Optional[str]]:
     """
     Calculate HRV metrics (RMSSD, SDNN, Alpha-1) in a sliding window.

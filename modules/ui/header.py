@@ -114,37 +114,9 @@ def show_breadcrumb(group: str, section: str = None) -> None:
         ''', unsafe_allow_html=True)
 
 
-def calculate_header_metrics(df: pd.DataFrame, cp: float, min_records: int = 30):
-    """Calculate NP, IF, and TSS for the header display.
-    
-    Args:
-        df: DataFrame with 'watts' column
-        cp: Critical Power in watts
-        min_records: Minimum records for rolling calculation
-    
-    Returns:
-        Tuple of (NP, IF, TSS)
-    """
-    import numpy as np
-    
-    if 'watts' not in df.columns or len(df) < min_records:
-        return 0.0, 0.0, 0.0
-    
-    rolling_30s = df['watts'].rolling(window=30, min_periods=1).mean()
-    np_val = np.power(np.mean(np.power(rolling_30s, 4)), 0.25)
-    
-    if pd.isna(np_val):
-        np_val = df['watts'].mean()
-    
-    if cp > 0:
-        if_val = np_val / cp
-        duration_sec = len(df)
-        tss_val = (duration_sec * np_val * if_val) / (cp * 3600) * 100
-    else:
-        if_val = 0.0
-        tss_val = 0.0
-    
-    return float(np_val), float(if_val), float(tss_val)
+# DEPRECATED: Moved to services.session_analysis
+# Re-exported for backward compatibility
+from services.session_analysis import calculate_header_metrics
 
 
 def extract_header_data(df: pd.DataFrame, metrics: Dict[str, Any]) -> Dict[str, float]:

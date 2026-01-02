@@ -5,7 +5,6 @@ from typing import Union, Any
 import numpy as np
 import pandas as pd
 import io
-import streamlit as st
 from numba import jit
 
 from .common import ensure_pandas
@@ -58,7 +57,6 @@ def calculate_w_prime_fast(watts, time, cp, w_prime_cap):
     return w_bal
 
 
-@st.cache_data
 def _calculate_w_prime_balance_cached(df_bytes: bytes, cp: float, w_prime: float):
     """Cached version of W' Balance calculation."""
     try:

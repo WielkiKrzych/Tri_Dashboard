@@ -26,6 +26,7 @@ from modules.notes import TrainingNotes
 from modules.reports import generate_docx_report, export_all_charts_as_png
 from modules.db import SessionStore, SessionRecord
 from modules.health_alerts import HealthMonitor
+from modules.reporting.persistence import check_git_tracking
 
 # --- SERVICES IMPORTS ---
 from services import (
@@ -98,6 +99,9 @@ ThemeManager.load_css()
 
 state = StateManager()
 state.init_session_state()
+
+# Safety Check: Git Tracking of sensitive data
+check_git_tracking()
 
 layout = AppLayout(state)
 uploaded_file, params = layout.render_sidebar()

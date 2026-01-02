@@ -11,6 +11,8 @@ import numpy as np
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, Optional, Union
+import subprocess
+import streamlit as st
 
 from models.results import RampTestResult
 from modules.calculations.version import RAMP_METHOD_VERSION
@@ -182,3 +184,39 @@ def load_ramp_test_report(file_path: Union[str, Path]) -> Dict:
     """
     with open(file_path, 'r', encoding='utf-8') as f:
         return json.load(f)
+
+def check_git_tracking(directory: str = "reports/ramp_tests"):
+    """
+    Check if a directory contains any files tracked by git.
+    Display a warning in Streamlit if tracked files are found.
+    
+    This is a safeguard against accidental committing of sensitive subject data.
+    """
+    # Only check in local development environment (could verify env vars but simple check is enough)
+    if not os.path.exists(".git"):
+        return
+        
+    try:
+        # Check if any files in the directory are tracked
+        # git ls-files returns output if files are tracked
+        result = subprocess.run(
+            ["git", "ls-files", directory],
+            capture_output=True,
+            text=True,
+            check=False
+        )
+        
+        if result.returncode == 0 and result.stdout.strip():
+            # Tracked files found!
+            st.error(
+                f"🚨 **SECURITY WARNING**: Folder `{directory}` zawiera pliki śledzone przez Git!\n\n"
+                "Dane badanych mogą trafić do repozytorium. "
+                "Usuń je z historii gita:\n"
+                "```bash\n"
+                f"git rm --cached -r {directory}\n"
+                "```"
+            )
+            
+    except Exception:
+        # Git command failed or not available - ignore
+        pass

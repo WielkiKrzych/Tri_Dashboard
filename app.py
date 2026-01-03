@@ -46,7 +46,6 @@ class TabRegistry:
         "report": ("modules.ui.report", "render_report_tab"),
         "kpi": ("modules.ui.kpi", "render_kpi_tab"),
         "power": ("modules.ui.power", "render_power_tab"),
-        "pdc": ("modules.ui.pdc_ui", "render_pdc_tab"),
         "intervals": ("modules.ui.intervals_ui", "render_intervals_tab"),
         "biomech": ("modules.ui.biomech", "render_biomech_tab"),
         "model": ("modules.ui.model", "render_model_tab"),
@@ -207,9 +206,8 @@ if uploaded_file is not None:
 
     with tab_performance:
         UIComponents.show_breadcrumb("⚡ Performance")
-        t1, t2, t3, t4, t5, t6, t7, t8, t9 = st.tabs(["🔋 Power", "📊 PDC", "⏱️ Intervals", "🦵 Biomech", "📐 Model", "❤️ HR", "🧬 Hematology", "📈 Drift Maps", "⏳ TTE"])
-        with t1: render_tab_content("power", df_plot, df_plot_resampled, cp_input, w_prime_input)
-        with t2: render_tab_content("pdc", df_plot, cp_input, w_prime_input, rider_weight, metrics.get('vo2_max_est', 0))
+        t1, t3, t4, t5, t6, t7, t8, t9 = st.tabs(["🔋 Power", "⏱️ Intervals", "🦵 Biomech", "📐 Model", "❤️ HR", "🧬 Hematology", "📈 Drift Maps", "⏳ TTE"])
+        with t1: render_tab_content("power", df_plot, df_plot_resampled, cp_input, w_prime_input, rider_weight, metrics.get('vo2_max_est', 0))
         with t3: render_tab_content("intervals", df_plot, df_plot_resampled, cp_input, rider_weight, rider_age, is_male)
         with t4: render_tab_content("biomech", df_plot, df_plot_resampled)
         with t5: render_tab_content("model", df_plot, cp_input, w_prime_input)

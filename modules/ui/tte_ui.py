@@ -12,13 +12,10 @@ from datetime import datetime, timedelta
 from modules.tte import (
     compute_tte,
     compute_tte_result,
-    rolling_tte,
     format_tte,
     export_tte_json,
     TTEResult,
-    get_tte_history_from_db,
     save_tte_to_db,
-    batch_compute_tte_for_all_sessions
 )
 
 
@@ -142,10 +139,6 @@ def render_tte_tab(df_plot: pd.DataFrame, ftp: float, uploaded_file_name: str = 
     # Power distribution chart
     _render_power_distribution_chart(df_plot, result)
     
-    # Trend section
-    st.divider()
-    _render_trend_section(target_pct, ftp, tol_pct)
-    
     # Export section
     st.divider()
     with st.expander("📥 Eksport JSON"):
@@ -236,108 +229,3 @@ def _render_power_distribution_chart(df_plot: pd.DataFrame, result: TTEResult) -
     )
     
     st.plotly_chart(fig, use_container_width=True)
-
-
-def _render_trend_section(target_pct: float, ftp: float, tol_pct: float) -> None:
-    """Render TTE trend section pulling data from DB."""
-    st.subheader(f"📈 Trend TTE @ {target_pct:.0f}% FTP (30/90 dni)")
-    
-    # Batch processing button
-    col1, col2 = st.columns([2, 1])
-    with col2:
-        if st.button("🔄 Przelicz TTE dla całej historii", help="Przetwarza wszystkie treningi z folderu treningi_csv"):
-            with st.spinner("Przetwarzam pliki historyczne..."):
-                success, fail = batch_compute_tte_for_all_sessions(
-                    ftp=ftp,
-                    target_pcts=[target_pct],
-                    tol_pct=tol_pct
-                )
-                st.toast(f"Gotowe! Sukces: {success}, Błędy: {fail}", icon="✅")
-                st.rerun()
-    
-    # Fetch data from DB
-    history = get_tte_history_from_db(days=90, target_pct=target_pct)
-    
-    if not history:
-        st.info(f"""
-        📊 **Brak danych historycznych dla {target_pct:.0f}% FTP w bazie.**
-        
-        Użyj przełącznika 'Zalicz trening do historii TTE' powyżej, 
-        aby dodać wyniki z zaimportowanych plików do bazy.
-        """)
-        return
-    
-    # If we have data, render the trend chart
-    _render_trend_chart(history)
-
-
-def _render_trend_chart(history: List[Dict]) -> None:
-    """Render TTE trend chart from historical data."""
-    if not history:
-        return
-    
-    # Prepare data
-    df_trend = pd.DataFrame(history)
-    df_trend['date'] = pd.to_datetime(df_trend['date'])
-    df_trend = df_trend.sort_values('date')
-    
-    # Calculate rolling statistics
-    df_trend['rolling_30d'] = df_trend['tte_seconds'].rolling(
-        window=7, min_periods=1
-    ).median()
-    
-    fig = go.Figure()
-    
-    # Individual session points
-    fig.add_trace(go.Scatter(
-        x=df_trend['date'],
-        y=df_trend['tte_seconds'] / 60,  # Convert to minutes
-        mode='markers',
-        name='Sesje',
-        marker=dict(size=8, color='#1f77b4'),
-        hovertemplate='TTE: %{y:.0f} min<extra></extra>'
-    ))
-    
-    # Rolling median line
-    fig.add_trace(go.Scatter(
-        x=df_trend['date'],
-        y=df_trend['rolling_30d'] / 60,
-        mode='lines',
-        name='Mediana 30d',
-        line=dict(color='#ff7f0e', width=2),
-        hovertemplate='Mediana: %{y:.0f} min<extra></extra>'
-    ))
-    
-    fig.update_layout(
-        template="plotly_dark",
-        title="Trend TTE w Czasie",
-        hovermode="x unified",
-        xaxis=dict(title="Data"),
-        yaxis=dict(
-            title="TTE [min]",
-            tickformat=".0f"
-        ),
-        height=400,
-        margin=dict(l=10, r=10, t=40, b=10),
-        legend=dict(orientation="h", y=1.1, x=0)
-    )
-    
-    st.plotly_chart(fig, use_container_width=True)
-    
-    # Show summary stats
-    stats_30 = rolling_tte(history, 30)
-    stats_90 = rolling_tte(history, 90)
-    
-    col1, col2 = st.columns(2)
-    with col1:
-        st.metric(
-            "Mediana 30d",
-            format_tte(int(stats_30['median'])),
-            delta=f"{stats_30['count']} sesji"
-        )
-    with col2:
-        st.metric(
-            "Mediana 90d",
-            format_tte(int(stats_90['median'])),
-            delta=f"{stats_90['count']} sesji"
-        )

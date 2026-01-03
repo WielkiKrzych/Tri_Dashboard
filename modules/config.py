@@ -9,6 +9,7 @@ load_dotenv()
 BASE_DIR = Path(__file__).parent.parent
 
 class Config:
+    BASE_DIR = BASE_DIR
     # --- Application Settings ---
     APP_TITLE = os.getenv("APP_TITLE", "Pro Athlete Dashboard")
     APP_ICON = os.getenv("APP_ICON", "⚡")

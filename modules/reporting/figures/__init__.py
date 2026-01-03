@@ -3,19 +3,78 @@ Static Figure Generator for Ramp Test PDF Reports.
 
 Generates PNG/SVG charts based on JSON report data.
 No Streamlit dependency - pure matplotlib.
+
+Module Structure:
+- common.py: Shared configuration and utilities
+- ramp_profile.py: Ramp test power profile chart
+- smo2_vs_power.py: SmO₂ vs power scatter chart
+- cp_curve.py: Power-duration curve chart
 """
-from .ramp_figures import (
-    generate_ramp_profile_chart,
-    generate_smo2_power_chart,
-    generate_pdc_chart,
-    generate_all_ramp_figures,
-    FigureConfig,
-)
+from pathlib import Path
+from typing import Dict, Any, Optional
+
+from .common import FigureConfig, DPI, COLORS, save_figure
+from .ramp_profile import generate_ramp_profile_chart
+from .smo2_vs_power import generate_smo2_power_chart
+from .cp_curve import generate_cp_curve_chart, generate_pdc_chart
+
+
+def generate_all_ramp_figures(
+    report_data: Dict[str, Any],
+    output_dir: str,
+    config: Optional[FigureConfig] = None
+) -> Dict[str, str]:
+    """Generate all ramp test figures and save to directory.
+    
+    Orchestrates generation of all three chart types:
+    1. Ramp profile (power + HR over time)
+    2. SmO₂ vs Power (with LT markers)
+    3. Power-Duration Curve (with CP model)
+    
+    Args:
+        report_data: Canonical JSON report dictionary
+        output_dir: Directory to save figures
+        config: Figure configuration
+        
+    Returns:
+        Dict mapping figure name to file path
+    """
+    config = config or FigureConfig()
+    output_path = Path(output_dir)
+    output_path.mkdir(parents=True, exist_ok=True)
+    
+    session_id = report_data.get("metadata", {}).get("session_id", "unknown")[:8]
+    ext = config.format
+    
+    paths = {}
+    
+    # 1. Ramp profile
+    ramp_path = output_path / f"ramp_profile_{session_id}.{ext}"
+    generate_ramp_profile_chart(report_data, config, str(ramp_path))
+    paths["ramp_profile"] = str(ramp_path)
+    
+    # 2. SmO2 vs Power
+    smo2_path = output_path / f"smo2_power_{session_id}.{ext}"
+    generate_smo2_power_chart(report_data, config, str(smo2_path))
+    paths["smo2_power"] = str(smo2_path)
+    
+    # 3. PDC / CP Curve
+    pdc_path = output_path / f"pdc_{session_id}.{ext}"
+    generate_pdc_chart(report_data, config, str(pdc_path))
+    paths["pdc"] = str(pdc_path)
+    
+    return paths
+
 
 __all__ = [
-    "generate_ramp_profile_chart",
-    "generate_smo2_power_chart", 
-    "generate_pdc_chart",
+    # Main API
     "generate_all_ramp_figures",
+    "generate_ramp_profile_chart",
+    "generate_smo2_power_chart",
+    "generate_pdc_chart",
+    "generate_cp_curve_chart",
+    # Configuration
     "FigureConfig",
+    "DPI",
+    "COLORS",
 ]

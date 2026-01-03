@@ -149,6 +149,9 @@ class ThresholdRange:
     upper_hr: Optional[float] = None
     midpoint_hr: Optional[float] = None
     
+    # VE equivalent (optional)
+    midpoint_ve: Optional[float] = None     # Ventilation at threshold (L/min)
+    
     # Detection metadata
     sources: List[str] = field(default_factory=list)  # ["VE", "HR", "SmO2"]
     method: str = ""                    # Detection method used
@@ -186,16 +189,17 @@ class ThresholdRange:
     def to_dict(self) -> Dict:
         """Serialize to dict for JSON export per canonical spec."""
         return {
-            "range_watts": [self.lower_watts, self.upper_watts],
-            "midpoint_watts": self.midpoint_watts,
-            "range_hr": [self.lower_hr, self.upper_hr] if self.lower_hr and self.upper_hr else None,
-            "midpoint_hr": self.midpoint_hr,
-            "confidence": self.confidence,
+            "range_watts": [round(self.lower_watts), round(self.upper_watts)],
+            "midpoint_watts": round(self.midpoint_watts),
+            "range_hr": [round(self.lower_hr), round(self.upper_hr)] if self.lower_hr and self.upper_hr else None,
+            "midpoint_hr": round(self.midpoint_hr) if self.midpoint_hr else None,
+            "midpoint_ve": round(self.midpoint_ve, 1) if self.midpoint_ve else None,
+            "confidence": round(self.confidence, 2),
             "confidence_level": self.confidence_level.value,
             "sources": self.sources,
             "method": self.method,
-            "stability_score": self.stability_score,
-            "variability_watts": self.variability_watts
+            "stability_score": round(self.stability_score, 2) if self.stability_score else None,
+            "variability_watts": round(self.variability_watts) if self.variability_watts else None
         }
 
 

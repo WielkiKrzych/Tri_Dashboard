@@ -233,6 +233,9 @@ def build_page_smo2(smo2_data, smo2_manual, figure_paths, styles):
     lt1 = smo2_manual.get("lt1_watts", "brak danych")
     lt2 = smo2_manual.get("lt2_watts", "brak danych")
     
+    lt1_hr = smo2_manual.get("lt1_hr", "brak danych")
+    lt2_hr = smo2_manual.get("lt2_hr", "brak danych")
+    
     # helper for formatting
     def fmt(val):
         if val == "brak danych" or val is None: return "brak danych"
@@ -242,12 +245,12 @@ def build_page_smo2(smo2_data, smo2_manual, figure_paths, styles):
             return str(val)
 
     data = [
-        ["Próg", "Moc [W]", "Opis"],
-        ["LT1 (Manual)", fmt(lt1), "Początek desaturacji (Manual)"],
-        ["LT2 (Manual)", fmt(lt2), "Punkt załamania (Manual)"]
+        ["Próg", "Moc [W]", "HR [bpm]", "Opis"],
+        ["Próg Tlenowy Mięśni", fmt(lt1), fmt(lt1_hr), "Początek desaturacji"],
+        ["Próg Beztlenowy Mięśni", fmt(lt2), fmt(lt2_hr), "Punkt załamania"]
     ]
     
-    t = Table(data, colWidths=[50*mm, 40*mm, 80*mm])
+    t = Table(data, colWidths=[50*mm, 35*mm, 35*mm, 60*mm])
     t.setStyle(get_table_style())
     elements.append(t)
     
@@ -660,10 +663,28 @@ def build_page_theory(styles: Dict) -> List:
     elements.append(Paragraph("FatMax (Metabolizm Tłuszczowy)", styles["heading"]))
     elements.append(Paragraph(
         "Moc, przy której spalasz najwięcej tłuszczu (zwykle strefa Z2). "
-        "Trening w tej strefie uczy organizm oszczędzania glikogenu. "
-        "Im wyższa moc na FatMax, tym szybciej możesz jechać bez „odcięcia” paliwa.",
+        "Trening w tej strefie uczy organizm oszczędzania glikogenu.",
         styles["body"]
     ))
+    elements.append(Spacer(1, 4 * mm))
+    
+    # Advanced INSCYD Theory Table
+    elements.append(Paragraph("Typy Zawodników i Strategie", styles["heading"]))
+    data = [
+        ["Typ", "VO2max", "VLaMax", "Charakterystyka"],
+        ["Sprinter", "Średni", "Wysoki", "Dynamika, punch, sprinty"],
+        ["Climber", "Wysoki", "Niski", "Długie wspinaczki, tempo"],
+        ["Time Trialist", "Wysoki", "Niski", "Równe tempo, aerodynamika"],
+        ["Puncheur", "Wysoki", "Średni", "Ataki, krótkie górki"]
+    ]
+    t = Table(data, colWidths=[30*mm, 30*mm, 30*mm, 80*mm])
+    t.setStyle(get_table_style())
+    elements.append(t)
+    
+    elements.append(Spacer(1, 4 * mm))
+    elements.append(Paragraph("Jak Zmienić Swój Profil?", styles["heading"]))
+    elements.append(Paragraph("⬇️ Obniżyć VLaMax: Długie jazdy Z2, trening na czczo.", styles["body"]))
+    elements.append(Paragraph("⬆️ Podnieść FTP: Sweet Spot (88-94%), Threshold (95-105%).", styles["body"]))
     
     return elements
 
@@ -693,18 +714,27 @@ def build_page_thermal(
     if figure_paths and "thermal_hsi" in figure_paths:
         elements.extend(_build_chart(figure_paths["thermal_hsi"], "Temp. Głęboka vs Indeks Zmęczenia (HSI)", styles))
         elements.append(Spacer(1, 4 * mm))
+    else:
+        elements.append(Paragraph("Brak wykresu Temp vs HSI (brak danych)", styles["small"]))
         
     elements.append(Paragraph(
         "<b>Heat Strain Index (HSI):</b> Skumulowane obciążenie cieplne. "
-        "Powyżej 38.5°C organizm wchodzi w strefę krytyczną, gdzie wydajność drastycznie spada.",
+        "Powyżej 38.5°C organizm wchodzi w strefę krytyczną.",
         styles["body"]
     ))
+    
+    # FORCE PAGE BREAK BEFORE EFFICIENCY
+    elements.append(PageBreak())
+    
+    # Chart 2: Efficiency (Start of new page)
+    elements.append(Paragraph("Spadek Efektywności (Cardiac Drift)", styles["title"])) # Use title style for new page
     elements.append(Spacer(1, 6 * mm))
     
-    # Chart 2: Efficiency
     if figure_paths and "thermal_efficiency" in figure_paths:
-        elements.extend(_build_chart(figure_paths["thermal_efficiency"], "Spadek Efektywności (Cardiac Drift)", styles))
+        elements.extend(_build_chart(figure_paths["thermal_efficiency"], "Efektywność vs Temperatura", styles))
         elements.append(Spacer(1, 4 * mm))
+    else:
+        elements.append(Paragraph("Brak wykresu Efektywności (brak danych)", styles["small"]))
         
     elements.append(Paragraph(
         "<b>Efficiency Factor (W/bpm):</b> Wykres pokazuje, jak spada generowana moc na jedno uderzenie serca w miarę wzrostu temperatury. "
@@ -754,7 +784,7 @@ def build_page_limiters(
         ["Metaboliczny (VLaMax)", "Szybki spadek mocy", "Trening Sweet Spot / Low Cadence"]
     ]
     
-    table = Table(data, colWidths=[40 * mm, 60 * mm, 60 * mm])
+    table = Table(data, colWidths=[35 * mm, 65 * mm, 65 * mm])
     table.setStyle(get_table_style())
     elements.append(table)
     
@@ -787,7 +817,13 @@ def build_page_extra(
         elements.extend(_build_chart(figure_paths["drift_hr"], "Moc vs Tętno", styles))
         elements.append(Spacer(1, 4 * mm))
         
+    # PAGE BREAK FOR SECOND DRIFT MAP
+    elements.append(PageBreak())
+        
     if figure_paths and "drift_smo2" in figure_paths:
-        elements.extend(_build_chart(figure_paths["drift_smo2"], "Moc vs Saturacja Mięśniowa", styles))
+        # Title moved to new page
+        elements.append(Paragraph("Moc vs Saturacja Mięśniowa", styles["title"]))
+        elements.append(Spacer(1, 6 * mm))
+        elements.extend(_build_chart(figure_paths["drift_smo2"], "Decoupling Mięśniowy", styles))
         
     return elements

@@ -496,7 +496,9 @@ def build_result(
     smo2_manual_lt2: Optional[float] = None,
     mmp_curve: Optional[Dict[int, float]] = None,
     rider_weight: Optional[float] = None,
-    max_hr: Optional[float] = None
+    max_hr: Optional[float] = None,
+    smo2_manual_lt1_hr: Optional[float] = None,
+    smo2_manual_lt2_hr: Optional[float] = None
 ) -> RampTestResult:
     """
     Step 5: Build final RampTestResult with overall confidence.
@@ -525,6 +527,8 @@ def build_result(
         w_prime_joules=w_prime_joules,
         smo2_manual_lt1=smo2_manual_lt1,
         smo2_manual_lt2=smo2_manual_lt2,
+        smo2_manual_lt1_hr=smo2_manual_lt1_hr,
+        smo2_manual_lt2_hr=smo2_manual_lt2_hr,
         mmp_curve=mmp_curve,
         rider_weight=rider_weight,
         max_hr=max_hr
@@ -689,18 +693,42 @@ def run_ramp_test_pipeline(
     # Calculate MMP curve (PDC)
     mmp_curve = calculate_power_duration_curve(preprocessed.df)
     
+    # Calculate HR for manual thresholds
+    smo2_manual_lt1_hr = None
+    smo2_manual_lt2_hr = None
+    
+    if not preprocessed.df.empty:
+        df_p = preprocessed.df
+        p_col = power_column if power_column in df_p.columns else 'watts'
+        h_col = hr_column if hr_column in df_p.columns else 'hr'
+        
+        if p_col in df_p.columns and h_col in df_p.columns:
+            if smo2_manual_lt1 is not None:
+                try:
+                    idx = (df_p[p_col] - smo2_manual_lt1).abs().idxmin()
+                    smo2_manual_lt1_hr = float(df_p.loc[idx, h_col])
+                except: pass
+            
+            if smo2_manual_lt2 is not None:
+                try:
+                    idx = (df_p[p_col] - smo2_manual_lt2).abs().idxmin()
+                    smo2_manual_lt2_hr = float(df_p.loc[idx, h_col])
+                except: pass
+
     result = build_result(
         validity=validity,
         preprocessed=preprocessed,
         analysis=analysis,
         integration=integration,
-        mmp_curve=mmp_curve, # Added mmp_curve
+        mmp_curve=mmp_curve,
         test_date=test_date,
         protocol=protocol,
         cp_watts=cp_watts,
         w_prime_joules=w_prime_joules,
         smo2_manual_lt1=smo2_manual_lt1,
         smo2_manual_lt2=smo2_manual_lt2,
+        smo2_manual_lt1_hr=smo2_manual_lt1_hr,
+        smo2_manual_lt2_hr=smo2_manual_lt2_hr,
         rider_weight=rider_weight,
         max_hr=max_hr
     )

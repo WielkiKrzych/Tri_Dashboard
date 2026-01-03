@@ -9,6 +9,7 @@ NO LOGIC IMPLEMENTED — structure only.
 from dataclasses import dataclass, field
 from typing import List, Optional, Tuple, Dict
 from enum import Enum
+from datetime import datetime
 
 
 # ============================================================
@@ -441,6 +442,8 @@ class RampTestResult:
     w_prime_joules: Optional[float] = None
     smo2_manual_lt1: Optional[float] = None
     smo2_manual_lt2: Optional[float] = None
+    smo2_manual_lt1_hr: Optional[float] = None
+    smo2_manual_lt2_hr: Optional[float] = None
     
     # Power Duration Curve (MMP)
     mmp_curve: Optional[Dict[int, float]] = None
@@ -499,7 +502,9 @@ class RampTestResult:
             },
             "smo2_manual": {
                 "lt1_watts": self.smo2_manual_lt1,
-                "lt2_watts": self.smo2_manual_lt2
+                "lt2_watts": self.smo2_manual_lt2,
+                "lt1_hr": self.smo2_manual_lt1_hr,
+                "lt2_hr": self.smo2_manual_lt2_hr
             },
             "power_duration_curve": {
                 "durations_sec": list(self.mmp_curve.keys()) if self.mmp_curve else [],

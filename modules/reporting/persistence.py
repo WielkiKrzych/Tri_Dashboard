@@ -272,6 +272,15 @@ def _auto_generate_pdf(json_path: str, report_data: Dict, is_conditional: bool =
     # Generate PDF
     generate_ramp_pdf(report_data, figure_paths, str(pdf_path), pdf_config)
     
+    # Generate DOCX (optional)
+    try:
+        from .docx_builder import build_ramp_docx
+        docx_path = pdf_path.with_suffix(".docx")
+        build_ramp_docx(report_data, figure_paths, str(docx_path))
+        print(f"Ramp Test DOCX generated: {docx_path}")
+    except Exception as e:
+        print(f"DOCX generation failed: {e}")
+    
     print(f"Ramp Test PDF generated: {pdf_path}")
     
     return str(pdf_path.absolute())
@@ -416,6 +425,15 @@ def generate_and_save_pdf(
     
     # Generate PDF (can overwrite existing)
     generate_ramp_pdf(report_data, figure_paths, str(pdf_path), pdf_config)
+    
+    # Generate DOCX (optional)
+    try:
+        from .docx_builder import build_ramp_docx
+        docx_path = pdf_path.with_suffix(".docx")
+        build_ramp_docx(report_data, figure_paths, str(docx_path))
+        print(f"DOCX generated: {docx_path}")
+    except Exception as e:
+        print(f"DOCX failure: {e}")
     
     # Update index with PDF path
     session_id = report_data.get("metadata", {}).get("session_id", "")

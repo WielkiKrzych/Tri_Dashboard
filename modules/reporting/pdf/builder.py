@@ -164,7 +164,9 @@ def map_ramp_json_to_pdf_data(report_json: Dict[str, Any]) -> Dict[str, Any]:
     smo2_manual = report_json.get("smo2_manual", {})
     mapped_smo2_manual = {
         "lt1_watts": get_num("smo2_manual", "lt1_watts", ["lt1_watts"]),
-        "lt2_watts": get_num("smo2_manual", "lt2_watts", ["lt2_watts"])
+        "lt2_watts": get_num("smo2_manual", "lt2_watts", ["lt2_watts"]),
+        "lt1_hr": get_num("smo2_manual", "lt1_hr", ["lt1_hr"]),
+        "lt2_hr": get_num("smo2_manual", "lt2_hr", ["lt2_hr"])
     }
 
     return {

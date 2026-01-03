@@ -1,0 +1,222 @@
+"""
+PDF Styles Module.
+
+Defines typography, colors, and reusable styles for PDF generation.
+Uses ReportLab library. No physiological logic.
+"""
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.units import mm
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.colors import HexColor, black, white
+from reportlab.lib.enums import TA_LEFT, TA_CENTER, TA_RIGHT
+from dataclasses import dataclass
+from typing import Dict
+
+
+# ============================================================================
+# PAGE CONFIGURATION
+# ============================================================================
+
+PAGE_SIZE = A4
+PAGE_WIDTH, PAGE_HEIGHT = PAGE_SIZE
+MARGIN = 15 * mm
+
+
+# ============================================================================
+# COLOR PALETTE
+# ============================================================================
+
+COLORS = {
+    "primary": HexColor("#1F77B4"),
+    "secondary": HexColor("#7F8C8D"),
+    "success": HexColor("#2ECC71"),
+    "warning": HexColor("#F1C40F"),
+    "danger": HexColor("#E74C3C"),
+    "vt1": HexColor("#FFA15A"),
+    "vt2": HexColor("#EF553B"),
+    "text": HexColor("#2C3E50"),
+    "text_light": HexColor("#7F8C8D"),
+    "background": HexColor("#F8F9FA"),
+    "border": HexColor("#DEE2E6"),
+    "white": white,
+    "black": black,
+}
+
+
+# ============================================================================
+# TYPOGRAPHY
+# ============================================================================
+
+FONT_FAMILY = "Helvetica"
+FONT_FAMILY_BOLD = "Helvetica-Bold"
+FONT_SIZE_BODY = 10
+FONT_SIZE_SMALL = 8
+FONT_SIZE_HEADING = 14
+FONT_SIZE_TITLE = 18
+
+
+@dataclass
+class PDFConfig:
+    """Configuration for PDF generation."""
+    page_size: tuple = A4
+    margin: float = MARGIN
+    title: str = "Raport z testu Ramp"
+    author: str = "Tri_Dashboard"
+    include_charts: bool = True
+    is_conditional: bool = False  # True if RAMP_TEST_CONDITIONAL
+
+
+def create_styles() -> Dict[str, ParagraphStyle]:
+    """Create and return all paragraph styles for PDF.
+    
+    Returns:
+        Dictionary mapping style names to ParagraphStyle objects.
+    """
+    base_styles = getSampleStyleSheet()
+    
+    styles = {}
+    
+    # Title style (main report title)
+    styles["title"] = ParagraphStyle(
+        "Title",
+        parent=base_styles["Heading1"],
+        fontName=FONT_FAMILY_BOLD,
+        fontSize=FONT_SIZE_TITLE,
+        textColor=COLORS["text"],
+        spaceAfter=8 * mm,
+        alignment=TA_CENTER,
+    )
+    
+    # Heading style (section headers)
+    styles["heading"] = ParagraphStyle(
+        "Heading",
+        parent=base_styles["Heading2"],
+        fontName=FONT_FAMILY_BOLD,
+        fontSize=FONT_SIZE_HEADING,
+        textColor=COLORS["primary"],
+        spaceBefore=6 * mm,
+        spaceAfter=4 * mm,
+        alignment=TA_LEFT,
+    )
+    
+    # Subheading style
+    styles["subheading"] = ParagraphStyle(
+        "Subheading",
+        parent=base_styles["Heading3"],
+        fontName=FONT_FAMILY_BOLD,
+        fontSize=12,
+        textColor=COLORS["text"],
+        spaceBefore=4 * mm,
+        spaceAfter=2 * mm,
+        alignment=TA_LEFT,
+    )
+    
+    # Body text style
+    styles["body"] = ParagraphStyle(
+        "Body",
+        parent=base_styles["Normal"],
+        fontName=FONT_FAMILY,
+        fontSize=FONT_SIZE_BODY,
+        textColor=COLORS["text"],
+        leading=14,
+        spaceAfter=3 * mm,
+        alignment=TA_LEFT,
+    )
+    
+    # Small text style (captions, footnotes)
+    styles["small"] = ParagraphStyle(
+        "Small",
+        parent=base_styles["Normal"],
+        fontName=FONT_FAMILY,
+        fontSize=FONT_SIZE_SMALL,
+        textColor=COLORS["text_light"],
+        leading=10,
+        alignment=TA_LEFT,
+    )
+    
+    # Footer style
+    styles["footer"] = ParagraphStyle(
+        "Footer",
+        parent=base_styles["Normal"],
+        fontName=FONT_FAMILY,
+        fontSize=FONT_SIZE_SMALL,
+        textColor=COLORS["text_light"],
+        alignment=TA_CENTER,
+    )
+    
+    # Centered text
+    styles["center"] = ParagraphStyle(
+        "Center",
+        parent=styles["body"],
+        alignment=TA_CENTER,
+    )
+    
+    # Warning text (for conditional tests)
+    styles["warning"] = ParagraphStyle(
+        "Warning",
+        parent=base_styles["Normal"],
+        fontName=FONT_FAMILY_BOLD,
+        fontSize=FONT_SIZE_BODY,
+        textColor=HexColor("#856404"),
+        backColor=HexColor("#FFF3CD"),
+        leading=14,
+        spaceBefore=2 * mm,
+        spaceAfter=2 * mm,
+        alignment=TA_LEFT,
+    )
+    
+    return styles
+
+
+def get_table_style():
+    """Get standard table style for data tables.
+    
+    Returns:
+        List of table style commands.
+    """
+    from reportlab.platypus import TableStyle
+    
+    return TableStyle([
+        # Header row
+        ("BACKGROUND", (0, 0), (-1, 0), COLORS["primary"]),
+        ("TEXTCOLOR", (0, 0), (-1, 0), COLORS["white"]),
+        ("FONTNAME", (0, 0), (-1, 0), FONT_FAMILY_BOLD),
+        ("FONTSIZE", (0, 0), (-1, 0), FONT_SIZE_BODY),
+        ("ALIGN", (0, 0), (-1, 0), "CENTER"),
+        
+        # Data rows
+        ("FONTNAME", (0, 1), (-1, -1), FONT_FAMILY),
+        ("FONTSIZE", (0, 1), (-1, -1), FONT_SIZE_BODY),
+        ("ALIGN", (0, 1), (-1, -1), "CENTER"),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        
+        # Alternating row colors
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [COLORS["white"], COLORS["background"]]),
+        
+        # Borders
+        ("GRID", (0, 0), (-1, -1), 0.5, COLORS["border"]),
+        ("BOX", (0, 0), (-1, -1), 1, COLORS["border"]),
+        
+        # Padding
+        ("TOPPADDING", (0, 0), (-1, -1), 6),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+        ("LEFTPADDING", (0, 0), (-1, -1), 8),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+    ])
+
+
+def get_card_style():
+    """Get style for card-like containers.
+    
+    Returns:
+        List of table style commands for cards.
+    """
+    from reportlab.platypus import TableStyle
+    
+    return TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), COLORS["background"]),
+        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("PADDING", (0, 0), (-1, -1), 10),
+        ("BOX", (0, 0), (-1, -1), 1, COLORS["border"]),
+    ])

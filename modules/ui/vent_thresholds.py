@@ -8,7 +8,7 @@ from modules.calculations.pipeline import run_ramp_test_pipeline
 from modules.reporting.persistence import save_ramp_test_report
 from models.results import ValidityLevel
 
-def render_vent_thresholds_tab(target_df, training_notes, uploaded_file_name, cp_input):
+def render_vent_thresholds_tab(target_df, training_notes, uploaded_file_name, cp_input, w_prime_input=20000):
     """Detekcja progów wentylacyjnych VT1/VT2 - wymaga Ramp Test."""
     st.header("🎯 Detekcja Progów Wentylacyjnych (VT1 / VT2)")
     st.markdown("Automatyczna detekcja progów wentylacyjnych. **Wymaga testu stopniowanego (Ramp Test).**")
@@ -82,7 +82,11 @@ def render_vent_thresholds_tab(target_df, training_notes, uploaded_file_name, cp
                 smo2_column='smo2' if 'smo2' in target_df.columns else None,
                 time_column='time',
                 test_date=pd.Timestamp.now().strftime("%Y-%m-%d"),
-                protocol="Ramp Test"
+                protocol="Ramp Test",
+                cp_watts=float(cp_input),
+                w_prime_joules=float(w_prime_input),
+                smo2_manual_lt1=st.session_state.get('smo2_lt1_m'),
+                smo2_manual_lt2=st.session_state.get('smo2_lt2_m')
             )
             
             # Automatyczny zapis jeśli test jest ważny

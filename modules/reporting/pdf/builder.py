@@ -31,6 +31,7 @@ from .layout import (
     build_page_interpretation,
     build_page_zones,
     build_page_limitations,
+    build_page_smo2,
 )
 
 
@@ -155,11 +156,19 @@ def map_ramp_json_to_pdf_data(report_json: Dict[str, Any]) -> Dict[str, Any]:
         "notes": interp.get("notes", [])
     }
 
+    # 6. SmO2 Manual
+    smo2_manual = report_json.get("smo2_manual", {})
+    mapped_smo2_manual = {
+        "lt1_watts": get_num("smo2_manual", "lt1_watts", ["lt1_watts"]),
+        "lt2_watts": get_num("smo2_manual", "lt2_watts", ["lt2_watts"])
+    }
+
     return {
         "metadata": mapped_meta,
         "thresholds": mapped_thresholds,
         "smo2": mapped_smo2,
         "cp_model": mapped_cp,
+        "smo2_manual": mapped_smo2_manual,
         "confidence": mapped_confidence
     }
 
@@ -248,6 +257,15 @@ def build_ramp_pdf(
     story.extend(build_page_thresholds(
         thresholds=thresholds,
         smo2=pdf_data["smo2"],
+        figure_paths=figure_paths,
+        styles=styles
+    ))
+    story.append(PageBreak())
+    
+    # === PAGE 3: Analiza SmO2 ===
+    story.extend(build_page_smo2(
+        smo2_data=pdf_data["smo2"],
+        smo2_manual=pdf_data["smo2_manual"],
         figure_paths=figure_paths,
         styles=styles
     ))

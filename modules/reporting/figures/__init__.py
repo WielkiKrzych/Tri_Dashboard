@@ -65,7 +65,7 @@ def generate_all_ramp_figures(
     # 3. PDC / CP Curve
     pdc_path = output_path / f"pdc_{session_id}.{ext}"
     generate_pdc_chart(report_data, config, str(pdc_path))
-    paths["pdc"] = str(pdc_path)
+    paths["pdc_curve"] = str(pdc_path)
     
     # 4. VE Profile
     ve_path = output_path / f"ve_profile_{session_id}.{ext}"

@@ -28,6 +28,7 @@ from modules.calculations.threshold_types import (
 from modules.calculations.step_detection import detect_step_test_range
 from modules.calculations.ventilatory import detect_vt_from_steps
 from modules.calculations.metabolic import detect_smo2_from_steps
+from modules.calculations.power import calculate_power_duration_curve
 
 
 # ============================================================
@@ -488,7 +489,12 @@ def build_result(
     analysis: IndependentAnalysisResults,
     integration: IntegrationResult,
     test_date: str = "",
-    protocol: str = "Ramp Test"
+    protocol: str = "Ramp Test",
+    cp_watts: Optional[float] = None,
+    w_prime_joules: Optional[float] = None,
+    smo2_manual_lt1: Optional[float] = None,
+    smo2_manual_lt2: Optional[float] = None,
+    mmp_curve: Optional[Dict[int, float]] = None
 ) -> RampTestResult:
     """
     Step 5: Build final RampTestResult with overall confidence.
@@ -512,7 +518,12 @@ def build_result(
         detailed_step_analysis={
              "vt": analysis.vt_result,
              "smo2": analysis.smo2_result
-        }
+        },
+        cp_watts=cp_watts,
+        w_prime_joules=w_prime_joules,
+        smo2_manual_lt1=smo2_manual_lt1,
+        smo2_manual_lt2=smo2_manual_lt2,
+        mmp_curve=mmp_curve
     )
     
     # Add SmO2 context (LOCAL signal - for information only, not as threshold)
@@ -600,7 +611,11 @@ def run_ramp_test_pipeline(
     smo2_column: str = 'smo2',
     time_column: str = 'time',
     test_date: str = "",
-    protocol: str = "Ramp Test"
+    protocol: str = "Ramp Test",
+    cp_watts: Optional[float] = None,
+    w_prime_joules: Optional[float] = None,
+    smo2_manual_lt1: Optional[float] = None,
+    smo2_manual_lt2: Optional[float] = None
 ) -> RampTestResult:
     """
     Run complete Ramp Test analysis pipeline.
@@ -664,14 +679,22 @@ def run_ramp_test_pipeline(
     # Step 4: Integrate signals
     integration = integrate_signals(analysis)
     
-    # Step 5: Build result
+    # Step 5: Build final result
+    # Calculate MMP curve (PDC)
+    mmp_curve = calculate_power_duration_curve(preprocessed.df)
+    
     result = build_result(
         validity=validity,
         preprocessed=preprocessed,
         analysis=analysis,
         integration=integration,
+        mmp_curve=mmp_curve, # Added mmp_curve
         test_date=test_date,
-        protocol=protocol
+        protocol=protocol,
+        cp_watts=cp_watts,
+        w_prime_joules=w_prime_joules,
+        smo2_manual_lt1=smo2_manual_lt1,
+        smo2_manual_lt2=smo2_manual_lt2
     )
     
     return result

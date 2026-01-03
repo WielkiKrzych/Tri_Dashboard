@@ -436,6 +436,15 @@ class RampTestResult:
     protocol: str = ""
     test_date: str = ""
     
+    # External Metrics (CP / Manual)
+    cp_watts: Optional[float] = None
+    w_prime_joules: Optional[float] = None
+    smo2_manual_lt1: Optional[float] = None
+    smo2_manual_lt2: Optional[float] = None
+    
+    # Power Duration Curve (MMP)
+    mmp_curve: Optional[Dict[int, float]] = None
+    
     # Transient / Debug data (not for JSON)
     detailed_step_analysis: Optional[Dict] = field(default=None, repr=False)
     
@@ -480,6 +489,18 @@ class RampTestResult:
                 "deviation_from_vt1_watts": self.smo2_deviation_from_vt,
                 "interpretation": self.smo2_interpretation
             } if self.smo2_lt1 or self.smo2_interpretation else None,
+            "cp_model": {
+                "cp_watts": self.cp_watts,
+                "w_prime_joules": self.w_prime_joules
+            },
+            "smo2_manual": {
+                "lt1_watts": self.smo2_manual_lt1,
+                "lt2_watts": self.smo2_manual_lt2
+            },
+            "power_duration_curve": {
+                "durations_sec": list(self.mmp_curve.keys()) if self.mmp_curve else [],
+                "powers_watts": list(self.mmp_curve.values()) if self.mmp_curve else []
+            },
             "conflicts": self.conflicts.to_dict(),
             "interpretation": {
                 "overall_confidence": self.overall_confidence,

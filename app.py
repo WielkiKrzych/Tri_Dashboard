@@ -283,7 +283,7 @@ if uploaded_file is not None:
         max_hr = int(208 - 0.7 * rider_age) if rider_age else 185
         with t3: render_tab_content("vent", df_plot, training_notes, uploaded_file.name)
         with t4: render_tab_content("thermal", df_plot)
-        with t5: render_tab_content("vent_thresholds", df_plot, training_notes, uploaded_file.name, cp_input)
+        with t5: render_tab_content("vent_thresholds", df_plot, training_notes, uploaded_file.name, cp_input, w_prime_input)
         with t6: render_tab_content("manual_thresholds", df_plot, training_notes, uploaded_file.name, cp_input, max_hr)
         with t7: render_tab_content("smo2_thresholds", df_plot, training_notes, uploaded_file.name, cp_input)
         with t8: render_tab_content("smo2_manual_thresholds", df_plot, training_notes, uploaded_file.name, cp_input)

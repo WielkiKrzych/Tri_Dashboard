@@ -132,10 +132,9 @@ def build_page_cover(
         ["Parametr", "Wartość", "Interpretacja"],
         ["VT1 (Próg tlenowy)", f"{vt1_watts} W", "Strefa komfortowa"],
         ["VT2 (Próg beztlenowy)", f"{vt2_watts} W", "Strefa wysiłku"],
-        ["Zakres VT1–VT2", f"{vt_range} W", "Strefa tempo/threshold"],
-        ["Moc maksymalna (Pmax)", f"{pmax} W", "Szczyt testu"],
+        ["Zakres VT1–VT2", vt_range, "Strefa tempo/threshold"],
         ["Critical Power (CP)", f"{cp_watts} W", "Moc progowa"],
-        ["W' (Rezerwa)", f"{w_prime_kj} kJ", "Rezerwa anaerobowa"],
+        ["W' (Rezerwa)", f"{w_prime_kj} kJ", "Rezerwa anaerobowa"]
     ]
     
     table = Table(data, colWidths=[55 * mm, 35 * mm, 55 * mm])
@@ -221,7 +220,7 @@ def build_page_thresholds(
         ["VT2 (Próg beztlenowy)", format_thresh(vt2_watts, vt2_range), fmt(vt2_hr), fmt(vt2_ve)],
     ]
     
-    table = Table(data, colWidths=[50 * mm, 35 * mm, 35 * mm, 35 * mm])
+    table = Table(data, colWidths=[50 * mm, 50 * mm, 30 * mm, 30 * mm])
     table.setStyle(get_table_style())
     elements.append(table)
     elements.append(Spacer(1, 8 * mm))
@@ -231,14 +230,58 @@ def build_page_thresholds(
         elements.extend(_build_chart(figure_paths["ve_profile"], "Wizualizacja Progów (Wentylacja)", styles))
         elements.append(Spacer(1, 8 * mm))
     
-    # === SMO2 CHART ===
+    return elements
+
+
+def build_page_smo2(smo2_data, smo2_manual, figure_paths, styles):
+    """Build SmO2 analysis page (Page 3)."""
+    elements = []
+    
+    # Title
+    elements.append(Paragraph("Analiza SmO₂ (Saturacja Mięśniowa)", styles['heading']))
+    elements.append(Spacer(1, 4 * mm))
+    
+    elements.append(Paragraph(
+        "SmO₂ odzwierciedla równowagę między dostarczaniem a zużyciem tlenu w mięśniach. "
+        "Spadek saturacji oznacza, że zużycie tlenu przewyższa jego dostarczanie.",
+        styles['body']
+    ))
+    elements.append(Spacer(1, 8 * mm))
+
+    # Chart
     if figure_paths and "smo2_power" in figure_paths:
         elements.extend(_build_chart(figure_paths["smo2_power"], "SmO₂ vs Moc", styles))
+        elements.append(Spacer(1, 8 * mm))
+        
+    # Manual Thresholds Section
+    elements.append(Paragraph("Manualne Progi SmO₂", styles['subheading']))
+    elements.append(Spacer(1, 2 * mm))
+    
+    lt1 = smo2_manual.get("lt1_watts", "brak danych")
+    lt2 = smo2_manual.get("lt2_watts", "brak danych")
+    
+    # helper for formatting
+    def fmt(val):
+        if val == "brak danych" or val is None: return "brak danych"
+        try:
+            return f"{float(val):.0f}"
+        except:
+            return str(val)
+
+    data = [
+        ["Próg", "Moc [W]", "Opis"],
+        ["LT1 (Manual)", fmt(lt1), "Początek desaturacji (Manual)"],
+        ["LT2 (Manual)", fmt(lt2), "Punkt załamania (Manual)"]
+    ]
+    
+    t = Table(data, colWidths=[50*mm, 40*mm, 80*mm])
+    t.setStyle(get_table_style())
+    elements.append(t)
     
     # === SMO2 ANALYSIS ===
     elements.append(Paragraph("Analiza SmO₂ (Lokalna)", styles["subheading"]))
-    drop_point = smo2.get("drop_point_watts", "brak danych")
-    interpretation = smo2.get("interpretation", "nie przeanalizowano")
+    drop_point = smo2_data.get("drop_point_watts", "brak danych")
+    interpretation = smo2_data.get("interpretation", "nie przeanalizowano")
     
     smo2_text = (
         f"<b>Punkt spadku SmO₂:</b> {drop_point} W<br/>"
@@ -319,8 +362,8 @@ def build_page_pdc(
     elements.append(Spacer(1, 8 * mm))
     
     # === PDC CHART ===
-    if figure_paths and "pdc" in figure_paths:
-        elements.extend(_build_chart(figure_paths["pdc"], "Power-Duration Curve", styles))
+    if figure_paths and "pdc_curve" in figure_paths:
+        elements.extend(_build_chart(figure_paths["pdc_curve"], "Power-Duration Curve", styles))
     
     return elements
 

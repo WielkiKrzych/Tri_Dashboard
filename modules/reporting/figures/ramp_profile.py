@@ -74,10 +74,24 @@ def generate_ramp_profile_chart(
             power_data = df[power_col].fillna(0).tolist()
         else:
             power_data = []
+            
+        # Get HR data
+        hr_col = None
+        for col in ['hr', 'heart_rate', 'bpm', 'heartrate']:
+            if col in df.columns:
+                hr_col = col
+                break
+        
+        if hr_col:
+            hr_data = df[hr_col].fillna(0).tolist()
+        else:
+            hr_data = []
+
     else:
         # Fallback to time_series from JSON
         time_data = time_series.get("time_sec", [])
         power_data = time_series.get("power_watts", [])
+        hr_data = time_series.get("hr_bpm", [])
     
     # Handle missing data
     if not power_data or not time_data:
@@ -100,11 +114,21 @@ def generate_ramp_profile_chart(
     # Create figure
     fig, ax = plt.subplots(figsize=config.figsize, dpi=config.dpi)
     
-    # Power trace
-    ax.plot(time_min, power_data, color=config.get_color("power"), 
+    # Power trace (Axis 1)
+    l1, = ax.plot(time_min, power_data, color=config.get_color("power"), 
             linewidth=1.5, label="Moc", zorder=3)
     ax.fill_between(time_min, power_data, alpha=0.15, 
                     color=config.get_color("power"), zorder=2)
+    
+    # HR trace (Axis 2)
+    lines = [l1]
+    if hr_data:
+        ax2 = ax.twinx()
+        l2, = ax2.plot(time_min, hr_data, color="red", linestyle=":", label="HR", alpha=0.6, linewidth=1)
+        ax2.set_ylabel("HR [bpm]", color="red", fontsize=config.font_size)
+        ax2.tick_params(axis='y', labelcolor="red")
+        ax2.spines['right'].set_color('red')
+        lines.append(l2)
     
     # VT1 horizontal band (semi-transparent)
     if vt1_range:
@@ -133,8 +157,17 @@ def generate_ramp_profile_chart(
     ax.set_title(f"Profil Ramp Test – {test_date}", 
                  fontsize=config.title_size, fontweight='bold', pad=15)
     
-    # Legend
-    ax.legend(loc='upper left', fontsize=config.font_size - 1, 
+    # Legend (Combined)
+    # Create proxy artists for the bands (already handled by label in axhspan?) 
+    # Actually axhspan adds patch to legend automatically if label provided.
+    # But for lines[0] and lines[1] we might want to manually create legend handles.
+    
+    handles, labels = ax.get_legend_handles_labels()
+    if hr_data and 'l2' in locals():
+        handles.append(l2)
+        labels.append("HR")
+
+    ax.legend(handles, labels, loc='upper left', fontsize=config.font_size - 1, 
               framealpha=0.9, edgecolor='none')
     
     # Apply common styling

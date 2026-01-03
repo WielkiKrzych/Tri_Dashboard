@@ -43,9 +43,18 @@ def render_ramp_archive():
         df['test_date'] = pd.to_datetime(df['test_date'])
         df = df.sort_values(by='test_date', ascending=False)
     
+    # Ensure pdf_path is string
+    if 'pdf_path' not in df.columns:
+        df['pdf_path'] = ""
+    else:
+        df['pdf_path'] = df['pdf_path'].fillna("").astype(str)
+        
+    # Add visual indicator for PDF availability
+    df['PDF'] = df['pdf_path'].apply(lambda x: "✅" if x and x.strip() and x != "nan" else "❌")
+    
     # Select columns to display
-    display_cols = ['test_date', 'session_id', 'athlete_id', 'method_version']
-    # Filter only existing columns
+    display_cols = ['test_date', 'session_id', 'athlete_id', 'PDF', 'method_version']
+    # Filter only existing columns (PDF is synthetic, so it exists)
     display_cols = [c for c in display_cols if c in df.columns]
     
     # Interactive dataframe
@@ -60,6 +69,13 @@ def render_ramp_archive():
     # 4. Handle Selection
     if selection and selection.selection.rows:
         idx = selection.selection.rows[0]
+        # Map back to original dataframe row using index if needed, 
+        # but since we filtered/sorted "df" in place (mostly), we need to be careful.
+        # Streamlit 1.35+ returns integer index relative to the displayed data?
+        # Actually, st.dataframe returns keys relative to the original index if not hidden?
+        # Let's rely on the fact that we sorted 'df' and passed it directly.
+        # BUT: we modified 'df' above with fillna/columns.
+        
         record = df.iloc[idx]
         
         st.divider()
@@ -94,7 +110,8 @@ def render_ramp_archive():
         # PDF Download (existing file only, no generation)
         with btn_col1:
             # 1. Check if column exists and get path
-            pdf_path = record.get('pdf_path', '')
+            raw_path = record.get('pdf_path', '')
+            pdf_path = str(raw_path).strip() if raw_path and str(raw_path).lower() != 'nan' else ""
             session_id = record.get('session_id', 'unknown')
             
             # 2. Developer logs

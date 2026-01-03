@@ -364,6 +364,8 @@ def integrate_signals(
             lower_hr=zone.range_hr[0] if zone.range_hr else None,
             upper_hr=zone.range_hr[1] if zone.range_hr else None,
             midpoint_hr=zone.midpoint_hr,
+            midpoint_ve=zone.midpoint_ve,
+            range_ve=zone.range_ve,
             sources=["VE"],
             method=zone.method
         )
@@ -380,6 +382,8 @@ def integrate_signals(
             lower_hr=zone.range_hr[0] if zone.range_hr else None,
             upper_hr=zone.range_hr[1] if zone.range_hr else None,
             midpoint_hr=zone.midpoint_hr,
+            midpoint_ve=zone.midpoint_ve,
+            range_ve=zone.range_ve,
             sources=["VE"],
             method=zone.method
         )

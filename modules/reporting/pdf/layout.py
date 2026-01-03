@@ -252,7 +252,7 @@ def build_page_pdc(
     ))
     elements.append(Paragraph(
         "<b>W' (W-prime)</b> to Twoja rezerwa energetyczna powyżej CP. "
-        "Możesz ją „spalić" na ataki, podjazdy lub sprint.",
+        "Możesz ją „spalić” na ataki, podjazdy lub sprint.",
         styles["body"]
     ))
     elements.append(Spacer(1, 6 * mm))
@@ -270,7 +270,7 @@ def build_page_pdc(
     
     data = [
         ["Parametr", "Wartość", "Znaczenie"],
-        ["CP", f"{cp_watts} W", "Moc „długotrwała""],
+        ["CP", f"{cp_watts} W", "Moc „długotrwała”"],
         ["CP/kg", f"{cp_per_kg} W/kg", "Względna wydolność"],
         ["W'", f"{w_prime_kj} kJ", "Rezerwa anaerobowa"],
     ]
@@ -338,7 +338,7 @@ def build_page_interpretation(
     # === TEMPO ZONE ===
     elements.append(Paragraph("Strefa Tempo", styles["heading"]))
     elements.append(Paragraph(
-        f"Strefa między <b>{vt1_watts}</b> a <b>{vt2_watts} W</b> to Twoja strefa „tempo". "
+        f"Strefa między <b>{vt1_watts}</b> a <b>{vt2_watts} W</b> to Twoja strefa „tempo”. "
         "Jest idealna do treningu wytrzymałościowego i poprawy progu. "
         "W tej strefie możesz spędzać znaczną część czasu treningowego bez nadmiernego zmęczenia.",
         styles["body"]

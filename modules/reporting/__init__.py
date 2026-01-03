@@ -11,7 +11,7 @@ from .persistence import (
     update_index_pdf_path,
 )
 from .html_generator import generate_html_report
-from .pdf import generate_ramp_pdf, PDFConfig
+from .pdf import build_ramp_pdf, generate_ramp_pdf, PDFConfig
 from .figures import (
     generate_ramp_profile_chart,
     generate_smo2_power_chart,
@@ -30,6 +30,7 @@ __all__ = [
     # HTML
     "generate_html_report",
     # PDF
+    "build_ramp_pdf",
     "generate_ramp_pdf",
     "PDFConfig",
     # Figures

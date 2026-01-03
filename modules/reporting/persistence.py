@@ -198,6 +198,12 @@ def _auto_generate_pdf(json_path: str, report_data: Dict, is_conditional: bool =
     Called automatically after save_ramp_test_report.
     PDF is saved next to JSON with same basename.
     
+    Works for:
+    - RAMP_TEST
+    - RAMP_TEST_CONDITIONAL
+    
+    Does NOT generate for TRAINING.
+    
     Args:
         json_path: Absolute path to saved JSON
         report_data: The report data dictionary
@@ -206,7 +212,7 @@ def _auto_generate_pdf(json_path: str, report_data: Dict, is_conditional: bool =
     Returns:
         PDF path if successful, None otherwise
     """
-    from .pdf import generate_ramp_pdf, PDFConfig
+    from .pdf import build_ramp_pdf, PDFConfig
     from .figures import generate_all_ramp_figures, FigureConfig
     import tempfile
     
@@ -217,17 +223,21 @@ def _auto_generate_pdf(json_path: str, report_data: Dict, is_conditional: bool =
     temp_dir = tempfile.mkdtemp()
     method_version = report_data.get("metadata", {}).get("method_version", "1.0.0")
     fig_config = FigureConfig(method_version=method_version)
+    
+    print(f"Generating figures for PDF...")
     figure_paths = generate_all_ramp_figures(report_data, temp_dir, fig_config)
     
     # Configure PDF with conditional flag
     pdf_config = PDFConfig(is_conditional=is_conditional)
     
-    # Generate PDF
-    generate_ramp_pdf(report_data, figure_paths, str(pdf_path), pdf_config)
+    # Generate PDF using the new builder
+    print(f"Building PDF report...")
+    build_ramp_pdf(report_data, figure_paths, str(pdf_path), pdf_config)
     
-    print(f"Ramp Test PDF generated: {pdf_path}")
+    print(f"✅ Ramp Test PDF generated: {pdf_path}")
     
     return str(pdf_path.absolute())
+
 
 
 

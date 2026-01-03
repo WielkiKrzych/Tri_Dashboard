@@ -161,25 +161,26 @@ def save_ramp_test_report(
     }
 
 
-def _update_index(base_dir: str, metadata: Dict, file_path: str):
+def _update_index(base_dir: str, metadata: Dict, file_path: str, pdf_path: Optional[str] = None):
     """
     Update CSV index with new test record.
     
-    Columns: session_id, test_date, athlete_id, method_version, json_path
+    Columns: session_id, test_date, athlete_id, method_version, json_path, pdf_path
     """
     import csv
     
     index_path = Path(base_dir) / "index.csv"
     file_exists = index_path.exists()
     
-    fieldnames = ["session_id", "test_date", "athlete_id", "method_version", "json_path"]
+    fieldnames = ["session_id", "test_date", "athlete_id", "method_version", "json_path", "pdf_path"]
     
     row = {
         "session_id": metadata.get("session_id", ""),
         "test_date": metadata.get("test_date", ""),
         "athlete_id": metadata.get("athlete_id") or "anonymous",
         "method_version": metadata.get("method_version", ""),
-        "json_path": file_path
+        "json_path": file_path,
+        "pdf_path": pdf_path or ""
     }
     
     with open(index_path, 'a', newline='', encoding='utf-8') as f:
@@ -189,6 +190,106 @@ def _update_index(base_dir: str, metadata: Dict, file_path: str):
         writer.writerow(row)
         
     print(f"Ramp Test indexed: {row['session_id']}")
+
+
+def update_index_pdf_path(base_dir: str, session_id: str, pdf_path: str):
+    """
+    Update existing index row with PDF path.
+    
+    PDF can be regenerated, so this updates an existing row.
+    JSON is never modified (immutable).
+    
+    Args:
+        base_dir: Base directory containing index.csv
+        session_id: Session ID to update
+        pdf_path: Path to generated PDF
+    """
+    import csv
+    
+    index_path = Path(base_dir) / "index.csv"
+    
+    if not index_path.exists():
+        print(f"Warning: Index not found at {index_path}")
+        return
+    
+    # Read all rows
+    rows = []
+    fieldnames = ["session_id", "test_date", "athlete_id", "method_version", "json_path", "pdf_path"]
+    
+    with open(index_path, 'r', newline='', encoding='utf-8') as f:
+        reader = csv.DictReader(f)
+        existing_fieldnames = reader.fieldnames or fieldnames
+        
+        # Ensure pdf_path column exists
+        if "pdf_path" not in existing_fieldnames:
+            existing_fieldnames = list(existing_fieldnames) + ["pdf_path"]
+        
+        for row in reader:
+            if row.get("session_id") == session_id:
+                row["pdf_path"] = pdf_path
+            rows.append(row)
+    
+    # Write back with updated row
+    with open(index_path, 'w', newline='', encoding='utf-8') as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(rows)
+    
+    print(f"Updated PDF path for session {session_id}")
+
+
+def generate_and_save_pdf(
+    json_path: Union[str, Path],
+    output_base_dir: str = "reports/ramp_tests"
+) -> Optional[str]:
+    """
+    Generate PDF from existing JSON report and save alongside it.
+    
+    - PDF is saved next to the JSON with .pdf extension
+    - PDF can be regenerated (overwritten)
+    - JSON is NEVER modified (immutable)
+    - Index is updated with PDF path
+    
+    Args:
+        json_path: Path to the canonical JSON report
+        output_base_dir: Base directory for index update
+        
+    Returns:
+        Path to generated PDF or None on failure
+    """
+    from .pdf_generator import generate_ramp_pdf
+    from .figures import generate_all_ramp_figures, FigureConfig
+    import tempfile
+    
+    json_path = Path(json_path)
+    
+    if not json_path.exists():
+        print(f"Error: JSON report not found: {json_path}")
+        return None
+    
+    # Load JSON report
+    report_data = load_ramp_test_report(json_path)
+    
+    # Generate figure paths
+    temp_dir = tempfile.mkdtemp()
+    fig_config = FigureConfig(method_version=report_data.get("metadata", {}).get("method_version", "1.0.0"))
+    figure_paths = generate_all_ramp_figures(report_data, temp_dir, fig_config)
+    
+    # Generate PDF path (same name as JSON but .pdf)
+    pdf_path = json_path.with_suffix(".pdf")
+    
+    # Generate PDF (can overwrite existing)
+    generate_ramp_pdf(report_data, figure_paths, str(pdf_path))
+    
+    # Update index with PDF path
+    session_id = report_data.get("metadata", {}).get("session_id", "")
+    if session_id:
+        update_index_pdf_path(output_base_dir, session_id, str(pdf_path.absolute()))
+    
+    print(f"PDF generated: {pdf_path}")
+    
+    return str(pdf_path.absolute())
+
 
 
 def load_ramp_test_report(file_path: Union[str, Path]) -> Dict:

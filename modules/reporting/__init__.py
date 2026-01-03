@@ -7,6 +7,8 @@ from .persistence import (
     save_ramp_test_report,
     load_ramp_test_report,
     check_git_tracking,
+    generate_and_save_pdf,
+    update_index_pdf_path,
 )
 from .html_generator import generate_html_report
 from .pdf_generator import generate_ramp_pdf, PDFConfig
@@ -23,6 +25,8 @@ __all__ = [
     "save_ramp_test_report",
     "load_ramp_test_report",
     "check_git_tracking",
+    "generate_and_save_pdf",
+    "update_index_pdf_path",
     # HTML
     "generate_html_report",
     # PDF

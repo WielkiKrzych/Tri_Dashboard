@@ -62,8 +62,8 @@ def analyze_step_test(
                     power_column=power_column,
                     hr_column=hr_column,
                     time_column=time_column,
-                    vt1_slope_threshold=0.05,
-                    vt2_slope_threshold=0.08
+                    vt1_slope_threshold=0.05,  # First breakpoint in VE slope
+                    vt2_slope_threshold=0.10   # Accelerated VE rise per INSCYD/WKO5
                 )
                 result.vt1_watts = vt_res.vt1_watts
                 result.vt1_hr = vt_res.vt1_hr

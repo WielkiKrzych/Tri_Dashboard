@@ -73,6 +73,8 @@ def render_ramp_archive():
         on_select="rerun"
     )
     
+    st.caption("💡 Kliknij na wiersz, aby zobaczyć szczegóły i opcje PDF")
+    
     # 4. Handle Selection
     if selection and selection.selection.rows:
         idx = selection.selection.rows[0]

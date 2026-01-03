@@ -23,7 +23,7 @@ from typing import Dict, Any, Optional, List
 from dataclasses import dataclass
 from datetime import datetime
 
-from .figures import generate_all_ramp_figures, FigureConfig
+from ..figures import generate_all_ramp_figures, FigureConfig
 
 
 # Colors from spec

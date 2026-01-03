@@ -141,6 +141,7 @@ def save_ramp_test_report(
     try:
         with open(file_path, mode, encoding='utf-8') as f:
             json.dump(final_json, f, indent=2, ensure_ascii=False, cls=NumpyEncoder)
+        print(f"Ramp Test JSON saved: {session_id}")
     except FileExistsError:
         # Should be rare given UUID, but protects against collision/logic errors
         if not dev_mode:
@@ -148,17 +149,70 @@ def save_ramp_test_report(
             # Simple strategy: Raise to indicate safety mechanism worked
             raise FileExistsError(f"Ramp Test Report already exists and immutable: {file_path}")
     
-    # 6. Update Index (CSV)
+    # 6. Check validity for PDF generation
+    validity = final_json.get("validity", {})
+    test_validity = validity.get("overall", "unknown")
+    should_generate_pdf = test_validity in ["valid", "conditional"]
+    
+    pdf_path = None
+    
+    # 7. Auto-generate PDF if valid
+    if should_generate_pdf:
+        try:
+            pdf_path = _auto_generate_pdf(str(file_path.absolute()), final_json)
+        except Exception as e:
+            # PDF failure does NOT affect JSON or index
+            print(f"Warning: PDF generation failed for {session_id}: {e}")
+    
+    # 8. Update Index (CSV)
     try:
-        _update_index(output_base_dir, final_json["metadata"], str(file_path.absolute()))
+        _update_index(output_base_dir, final_json["metadata"], str(file_path.absolute()), pdf_path)
+        print(f"Ramp Test indexed: {session_id}")
     except Exception as e:
         print(f"Warning: Failed to update report index: {e}")
         
     return {
         "path": str(file_path.absolute()),
+        "pdf_path": pdf_path,
         "session_id": session_id,
         "uuid": session_id  # alias
     }
+
+
+def _auto_generate_pdf(json_path: str, report_data: Dict) -> Optional[str]:
+    """
+    Auto-generate PDF from JSON report.
+    
+    Called automatically after save_ramp_test_report.
+    PDF is saved next to JSON with same basename.
+    
+    Args:
+        json_path: Absolute path to saved JSON
+        report_data: The report data dictionary
+        
+    Returns:
+        PDF path if successful, None otherwise
+    """
+    from .pdf import generate_ramp_pdf
+    from .figures import generate_all_ramp_figures, FigureConfig
+    import tempfile
+    
+    json_path = Path(json_path)
+    pdf_path = json_path.with_suffix(".pdf")
+    
+    # Generate figures in temp directory
+    temp_dir = tempfile.mkdtemp()
+    method_version = report_data.get("metadata", {}).get("method_version", "1.0.0")
+    fig_config = FigureConfig(method_version=method_version)
+    figure_paths = generate_all_ramp_figures(report_data, temp_dir, fig_config)
+    
+    # Generate PDF
+    generate_ramp_pdf(report_data, figure_paths, str(pdf_path))
+    
+    print(f"Ramp Test PDF generated: {pdf_path}")
+    
+    return str(pdf_path.absolute())
+
 
 
 def _update_index(base_dir: str, metadata: Dict, file_path: str, pdf_path: Optional[str] = None):

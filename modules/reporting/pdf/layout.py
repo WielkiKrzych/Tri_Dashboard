@@ -219,6 +219,10 @@ def build_page_thresholds(
     elements.append(table)
     elements.append(Spacer(1, 8 * mm))
     
+    # === VE PROFILE CHART ===
+    if figure_paths and "ve_profile" in figure_paths:
+        elements.extend(_build_chart(figure_paths["ve_profile"], "Profil Wentylacji", styles))
+    
     # === SMO2 CHART ===
     if figure_paths and "smo2_power" in figure_paths:
         elements.extend(_build_chart(figure_paths["smo2_power"], "SmO₂ vs Moc", styles))

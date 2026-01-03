@@ -1,21 +1,38 @@
 """
 Power-Duration Curve (CP Curve) Chart Generator.
 
-Generates MMP scatter with CP model overlay.
+Generates MMP scatter with CP model overlay on logarithmic time axis.
 Input: Canonical JSON report
 Output: PNG file
+
+Chart shows:
+- X axis: Time (logarithmic scale)
+- Y axis: Power (W)
+- MMP points from session
+- CP model curve overlay
+- Key duration markers (1min, 5min, 20min)
+- Critical Power horizontal line
+- Footer with test_id and method version
 """
 import matplotlib.pyplot as plt
 import numpy as np
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List, Tuple
 
 from .common import (
     FigureConfig, 
     apply_common_style, 
-    add_version_footer, 
     save_figure,
     create_empty_figure,
+    COLORS,
 )
+
+
+# Key durations to highlight (in seconds)
+KEY_DURATIONS = [
+    (60, "1 min"),
+    (300, "5 min"),
+    (1200, "20 min"),
+]
 
 
 def generate_cp_curve_chart(
@@ -23,9 +40,10 @@ def generate_cp_curve_chart(
     config: Optional[FigureConfig] = None,
     output_path: Optional[str] = None
 ) -> bytes:
-    """Generate Power-Duration Curve chart with CP model.
+    """Generate Power-Duration Curve chart with CP model and key markers.
     
-    Shows Mean Maximal Power points and fitted CP/W' model curve.
+    Shows Mean Maximal Power points with logarithmic time scale,
+    fitted CP/W' model curve, and key duration markers.
     
     Args:
         report_data: Canonical JSON report dictionary
@@ -40,6 +58,7 @@ def generate_cp_curve_chart(
     # Extract data
     pdc_data = report_data.get("power_duration_curve", {})
     cp_model = report_data.get("cp_model", {})
+    metadata = report_data.get("metadata", {})
     
     durations = pdc_data.get("durations_sec", [])
     powers = pdc_data.get("powers_watts", [])
@@ -52,52 +71,121 @@ def generate_cp_curve_chart(
         fig = create_empty_figure("Brak danych PDC", "Power-Duration Curve", config)
         return save_figure(fig, config, output_path)
     
-    # Convert to minutes for display
-    durations_min = [d / 60 for d in durations]
-    
     # Create figure
     fig, ax = plt.subplots(figsize=config.figsize, dpi=config.dpi)
     
-    # MMP points
-    ax.scatter(durations_min, powers, c=config.get_color("mmp"), 
+    # MMP points (using seconds for plotting, will format later)
+    ax.scatter(durations, powers, c=config.get_color("mmp"), 
                s=60, zorder=5, label="Twoje MMP", 
                edgecolors='white', linewidths=1)
     
     # CP model curve
     if cp_watts > 0 and w_prime_j > 0:
-        t_model = np.linspace(30, max(durations) if durations else 1800, 100)
+        t_model = np.logspace(np.log10(30), np.log10(max(durations) if durations else 3600), 100)
         p_model = [cp_watts + (w_prime_j / t) for t in t_model]
-        t_model_min = [t / 60 for t in t_model]
-        ax.plot(t_model_min, p_model, color=config.get_color("cp"), 
+        ax.plot(t_model, p_model, color=config.get_color("cp"), 
                 linewidth=2, linestyle='--',
-                label=f"Model CP ({cp_watts}W)")
+                label=f"Model CP ({cp_watts} W)")
         
         # CP horizontal line
         ax.axhline(y=cp_watts, color=config.get_color("cp"), 
-                   linewidth=1.5, linestyle=':', alpha=0.7)
-        ax.annotate(f"CP = {cp_watts}W", 
-                    xy=(max(durations_min) * 0.8, cp_watts + 5),
-                    fontsize=config.font_size, color=config.get_color("cp"))
+                   linewidth=1.5, linestyle=':', alpha=0.7, zorder=2)
     
-    ax.set_xlabel("Czas [min]", fontsize=config.font_size)
-    ax.set_ylabel("Moc [W]", fontsize=config.font_size)
+    # Key duration markers (1min, 5min, 20min)
+    for dur_sec, dur_label in KEY_DURATIONS:
+        if dur_sec <= max(durations):
+            # Find closest power value at this duration
+            power_at_dur = _interpolate_power(durations, powers, dur_sec)
+            if power_at_dur:
+                ax.axvline(x=dur_sec, color=COLORS["secondary"], 
+                           linewidth=1, linestyle=':', alpha=0.5, zorder=1)
+                ax.scatter([dur_sec], [power_at_dur], c=config.get_color("primary"), 
+                           s=100, zorder=6, marker='D', edgecolors='white', linewidths=1.5)
+                ax.annotate(f"{dur_label}\n{power_at_dur:.0f} W", 
+                            xy=(dur_sec, power_at_dur),
+                            xytext=(dur_sec * 1.15, power_at_dur + 15),
+                            fontsize=config.font_size - 1,
+                            ha='left', va='bottom',
+                            bbox=dict(boxstyle='round,pad=0.3', facecolor='white', alpha=0.8, edgecolor='none'))
+    
+    # Set logarithmic X scale
+    ax.set_xscale('log')
+    
+    # Custom X axis formatter (seconds to readable labels)
+    ax.set_xticks([30, 60, 120, 300, 600, 1200, 1800, 3600])
+    ax.set_xticklabels(['30s', '1min', '2min', '5min', '10min', '20min', '30min', '60min'])
+    
+    # Axis labels
+    ax.set_xlabel("Czas (skala logarytmiczna)", fontsize=config.font_size, fontweight='medium')
+    ax.set_ylabel("Moc [W]", fontsize=config.font_size, fontweight='medium')
+    
+    # Title
     ax.set_title("Power-Duration Curve (PDC)", 
-                 fontsize=config.title_size, fontweight='bold')
-    ax.legend(loc='upper right', fontsize=config.font_size - 1)
+                 fontsize=config.title_size, fontweight='bold', pad=15)
     
-    # W' annotation box
-    if w_prime_j > 0:
-        ax.text(0.15, 0.85, f"W' = {w_prime_j/1000:.1f} kJ", 
+    # Legend
+    ax.legend(loc='upper right', fontsize=config.font_size - 1, 
+              framealpha=0.9, edgecolor='none')
+    
+    # W' and CP annotation box
+    if cp_watts > 0:
+        info_text = f"CP = {cp_watts} W"
+        if w_prime_j > 0:
+            info_text += f"\nW' = {w_prime_j/1000:.1f} kJ"
+        ax.text(0.02, 0.98, info_text, 
                 fontsize=config.font_size,
-                transform=ax.transAxes, 
-                bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
+                transform=ax.transAxes, va='top', ha='left',
+                bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8, edgecolor='none'))
     
+    # Apply common styling
     apply_common_style(fig, ax, config)
-    add_version_footer(fig, config)
+    
+    # Footer with test_id and method version
+    session_id = metadata.get("session_id", "unknown")[:8]
+    fig.text(0.01, 0.01, f"ID: {session_id}", 
+             ha='left', va='bottom', fontsize=8, 
+             color=COLORS["secondary"], style='italic')
+    fig.text(0.99, 0.01, f"v{config.method_version}", 
+             ha='right', va='bottom', fontsize=8, 
+             color=COLORS["secondary"], style='italic')
     
     plt.tight_layout()
     
     return save_figure(fig, config, output_path)
+
+
+def _interpolate_power(durations: List[float], powers: List[float], target_sec: float) -> Optional[float]:
+    """Interpolate power value at a specific duration.
+    
+    Args:
+        durations: List of durations in seconds
+        powers: List of power values
+        target_sec: Target duration to interpolate
+        
+    Returns:
+        Interpolated power or None if out of range
+    """
+    if not durations or not powers:
+        return None
+    
+    # Find closest duration
+    if target_sec < min(durations) or target_sec > max(durations):
+        return None
+    
+    # Simple linear interpolation
+    for i in range(len(durations) - 1):
+        if durations[i] <= target_sec <= durations[i + 1]:
+            # Linear interpolation
+            t1, t2 = durations[i], durations[i + 1]
+            p1, p2 = powers[i], powers[i + 1]
+            ratio = (target_sec - t1) / (t2 - t1) if t2 != t1 else 0
+            return p1 + ratio * (p2 - p1)
+    
+    # Exact match
+    if target_sec in durations:
+        return powers[durations.index(target_sec)]
+    
+    return None
 
 
 # Alias for backward compatibility

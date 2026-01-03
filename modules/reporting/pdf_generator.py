@@ -413,7 +413,7 @@ def _build_cp_section(cp_model: Dict, styles: Dict) -> List:
     
     data = [
         ["Parametr", "Wartość", "Znaczenie"],
-        ["CP", f"{cp} W", "Moc „długotrwała""],
+        ["CP", f"{cp} W", "Moc „długotrwała”"],
         ["CP/kg", f"{cp_kg:.2f} W/kg", "Względna wydolność"],
         ["W'", f"{w_prime_kj:.1f} kJ", "Rezerwa anaerobowa"],
     ]

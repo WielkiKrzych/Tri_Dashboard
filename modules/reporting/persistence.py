@@ -42,10 +42,14 @@ def save_ramp_test_report(
     output_base_dir: str = "reports/ramp_tests",
     athlete_id: Optional[str] = None,
     notes: Optional[str] = None,
-    dev_mode: bool = False
+    dev_mode: bool = False,
+    session_type = None,
+    ramp_confidence: float = 0.0
 ) -> Dict:
     """
     Save Ramp Test result to JSON file.
+    
+    GATING: Only saves if session_type is RAMP_TEST and confidence >= threshold.
     
     Generates path: {output_base_dir}/YYYY/MM/ramp_test_{date}_{uuid}.json
     Enriches result with metadata (UUID, timestamps).
@@ -61,10 +65,25 @@ def save_ramp_test_report(
         athlete_id: Optional athlete identifier
         notes: Optional analysis notes
         dev_mode: If True, allows overwriting existing files
+        session_type: SessionType enum (must be RAMP_TEST to save)
+        ramp_confidence: Classification confidence (must be >= threshold)
         
     Returns:
-        Absolute path to the saved file
+        Dict with path, session_id, or None if gated
+        
+    Raises:
+        ValueError: If called without RAMP_TEST session type
     """
+    # --- GATING: Check SessionType and confidence ---
+    from modules.domain import SessionType, RAMP_CONFIDENCE_THRESHOLD
+    
+    if session_type is not None and session_type != SessionType.RAMP_TEST:
+        # NOT a ramp test - do not save
+        return {"gated": True, "reason": f"SessionType is {session_type}, not RAMP_TEST"}
+    
+    if ramp_confidence > 0 and ramp_confidence < RAMP_CONFIDENCE_THRESHOLD:
+        # Confidence too low
+        return {"gated": True, "reason": f"Confidence {ramp_confidence:.2f} < threshold {RAMP_CONFIDENCE_THRESHOLD}"}
     # 1. Prepare data dictionary
     data = result.to_dict()
     

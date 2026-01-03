@@ -140,9 +140,21 @@ if uploaded_file is not None:
             df_raw = load_data(uploaded_file)
             
             # --- SESSION TYPE CLASSIFICATION (MUST run first) ---
-            from modules.domain import SessionType, classify_session_type
+            from modules.domain import (
+                SessionType, classify_session_type, 
+                classify_ramp_test, RAMP_CONFIDENCE_THRESHOLD
+            )
             session_type = classify_session_type(df_raw, uploaded_file.name)
             st.session_state['session_type'] = session_type
+            
+            # Store detailed ramp classification for gating decisions
+            ramp_classification = None
+            if 'watts' in df_raw.columns or 'power' in df_raw.columns:
+                power_col = 'watts' if 'watts' in df_raw.columns else 'power'
+                power = df_raw[power_col].dropna()
+                if len(power) >= 300:
+                    ramp_classification = classify_ramp_test(power)
+                    st.session_state['ramp_classification'] = ramp_classification
             
             # --- PROCESSING PIPELINE (SRP/DIP) ---
             from services.session_orchestrator import process_uploaded_session

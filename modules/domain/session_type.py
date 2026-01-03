@@ -12,6 +12,10 @@ import pandas as pd
 import numpy as np
 
 
+# Threshold for classifying as Ramp Test (must meet at least 75% of criteria)
+RAMP_CONFIDENCE_THRESHOLD = 0.75
+
+
 class SessionType(Enum):
     """Domain enum for classifying training session types."""
     RAMP_TEST = auto()

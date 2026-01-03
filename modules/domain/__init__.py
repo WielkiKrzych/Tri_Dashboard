@@ -8,6 +8,7 @@ from .session_type import (
     classify_session_type,
     RampClassificationResult,
     classify_ramp_test,
+    RAMP_CONFIDENCE_THRESHOLD,
 )
 
 __all__ = [
@@ -15,4 +16,5 @@ __all__ = [
     "classify_session_type",
     "RampClassificationResult",
     "classify_ramp_test",
+    "RAMP_CONFIDENCE_THRESHOLD",
 ]

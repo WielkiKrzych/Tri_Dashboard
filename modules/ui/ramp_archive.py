@@ -49,8 +49,15 @@ def render_ramp_archive():
     else:
         df['pdf_path'] = df['pdf_path'].fillna("").astype(str)
         
-    # Add visual indicator for PDF availability
-    df['PDF'] = df['pdf_path'].apply(lambda x: "✅" if x and x.strip() and x != "nan" else "❌")
+    # Add visual indicator for PDF availability (single source of truth: pdf_path + file exists)
+    def _check_pdf_exists(path: str) -> str:
+        """Check if PDF file exists at given path."""
+        if not path or not path.strip() or path.lower() == 'nan':
+            return "❌"
+        exists = os.path.exists(path)
+        return "✅" if exists else "❌"
+    
+    df['PDF'] = df['pdf_path'].apply(_check_pdf_exists)
     
     # Select columns to display
     display_cols = ['test_date', 'session_id', 'athlete_id', 'PDF', 'method_version']
@@ -108,25 +115,28 @@ def render_ramp_archive():
         btn_col1, btn_col2 = st.columns(2)
         
         # PDF Download (existing file only, no generation)
+        # Single source of truth: pdf_path column + os.path.exists()
         with btn_col1:
-            # 1. Check if column exists and get path
+            # 1. Get pdf_path from record (single source of truth)
             raw_path = record.get('pdf_path', '')
             pdf_path = str(raw_path).strip() if raw_path and str(raw_path).lower() != 'nan' else ""
             session_id = record.get('session_id', 'unknown')
             
-            # 2. Developer logs
-            print(f"PDF path from index: {pdf_path}")
-            pdf_exists = os.path.exists(pdf_path) if pdf_path and isinstance(pdf_path, str) else False
-            print(f"PDF exists: {pdf_exists}")
+            # 2. Check file existence
+            pdf_exists = os.path.exists(pdf_path) if pdf_path else False
             
-            # 3. Visibility logic
-            if pdf_exists:
+            # 3. Developer logs (pdf_path + exists status)
+            print(f"[RampArchive] pdf_path: {pdf_path!r}")
+            print(f"[RampArchive] exists: {pdf_exists}")
+            
+            # 4. Visibility logic (based solely on pdf_path existence)
+            if pdf_path and pdf_exists:
                 try:
                     with open(pdf_path, 'rb') as f:
                         pdf_data = f.read()
                     
                     st.download_button(
-                        label="📕 Pobierz raport PDF",
+                        label="📕 Pobierz PDF",
                         data=pdf_data,
                         file_name=f"raport_ramp_{record['test_date'].date()}.pdf",
                         mime="application/pdf",
@@ -136,7 +146,7 @@ def render_ramp_archive():
                 except Exception as e:
                     st.error(f"Błąd odczytu pliku PDF: {e}")
             else:
-                st.info("PDF niedostępny.")
+                st.info("Brak PDF")
         
         # HTML Generation on demand
         with btn_col2:

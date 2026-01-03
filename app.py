@@ -138,6 +138,12 @@ if uploaded_file is not None:
     with st.spinner('Przetwarzanie danych...'):
         try:
             df_raw = load_data(uploaded_file)
+            
+            # --- SESSION TYPE CLASSIFICATION (MUST run first) ---
+            from modules.domain import SessionType, classify_session_type
+            session_type = classify_session_type(df_raw, uploaded_file.name)
+            st.session_state['session_type'] = session_type
+            
             # --- PROCESSING PIPELINE (SRP/DIP) ---
             from services.session_orchestrator import process_uploaded_session
             
@@ -191,6 +197,16 @@ if uploaded_file is not None:
     m1.metric("NP (Norm. Power)", f"{np_header:.0f} W")
     m2.metric("TSS", f"{tss_header:.0f}", help=f"IF: {if_header:.2f}")
     m3.metric("Praca [kJ]", f"{df_plot['watts'].sum()/1000:.0f}")
+
+    # Session Type Badge
+    session_type = st.session_state.get('session_type')
+    if session_type:
+        st.markdown(f"""
+        <div style="background: linear-gradient(90deg, rgba(100,100,255,0.2), transparent); 
+                    padding: 8px 15px; border-radius: 8px; margin-bottom: 10px; display: inline-block;">
+            <span style="font-size: 1.1em;">{session_type.emoji} <b>Typ sesji:</b> {session_type}</span>
+        </div>
+        """, unsafe_allow_html=True)
 
     # Layout Tabs
     tab_overview, tab_performance, tab_intelligence, tab_physiology = st.tabs([

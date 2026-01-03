@@ -14,6 +14,7 @@ from reportlab.platypus.tableofcontents import TableOfContents
 from reportlab.lib.units import mm
 from reportlab.lib.enums import TA_CENTER
 import os
+import logging
 from typing import Dict, Any, List, Optional
 
 from .styles import (
@@ -21,6 +22,9 @@ from .styles import (
     create_styles, get_table_style, get_card_style,
     FONT_FAMILY_BOLD, FONT_SIZE_BODY,
 )
+
+# Setup logger
+logger = logging.getLogger("Tri_Dashboard.PDFLayout")
 
 
 # ============================================================================
@@ -543,15 +547,17 @@ def _build_chart(chart_path: str, title: str, styles: Dict) -> List:
         List of flowables
     """
     elements = []
-    
     elements.append(Paragraph(title, styles["subheading"]))
     
+    # 1. Check if file exists
+    if not chart_path or not os.path.exists(chart_path):
+        logger.warning(f"PDF Layout: Chart file missing for '{title}' at path: {chart_path}")
+        elements.append(Paragraph("Wykres niedostępny", styles["small"]))
+        return elements
+    
+    # 2. Embed image
     try:
         available_width = PAGE_WIDTH - 2 * MARGIN
-        
-        if not chart_path or not os.path.exists(chart_path):
-            raise FileNotFoundError(f"Plik wykresu nie istnieje: {chart_path}")
-            
         img = Image(chart_path)
         
         # Scale to fit width
@@ -569,6 +575,7 @@ def _build_chart(chart_path: str, title: str, styles: Dict) -> List:
         
         elements.append(img)
     except Exception as e:
-        elements.append(Paragraph(f"[Wykres niedostępny: {e}]", styles["small"]))
+        logger.error(f"PDF Layout: Error embedding chart '{title}' from {chart_path}: {e}")
+        elements.append(Paragraph(f"Wykres niedostępny (błąd: {e})", styles["small"]))
     
     return elements

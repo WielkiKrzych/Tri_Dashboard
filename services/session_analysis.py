@@ -82,12 +82,21 @@ def calculate_extended_metrics(
         Extended metrics dictionary
     """
     # Import here to avoid circular dependency
-    from modules.calculations import calculate_normalized_power, estimate_carbs_burned
+    from modules.calculations import (
+        calculate_normalized_power, 
+        estimate_carbs_burned,
+        calculate_power_duration_curve,
+        estimate_vlamax_from_pdc
+    )
     
     if 'watts' in df.columns:
         metrics['np'] = calculate_normalized_power(df)
         metrics['work_kj'] = df['watts'].sum() / 1000
         metrics['carbs_total'] = estimate_carbs_burned(df, vt1_watts, vt2_watts)
+        
+        # Power Duration Curve & VLamax estimation
+        pdc = calculate_power_duration_curve(df)
+        metrics['vlamax_est'] = estimate_vlamax_from_pdc(pdc, rider_weight) if pdc and rider_weight > 0 else 0
         
         # VO2max estimation
         mmp_5m = df['watts'].rolling(Config.ROLLING_WINDOW_5MIN).mean().max()

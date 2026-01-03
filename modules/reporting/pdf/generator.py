@@ -43,6 +43,7 @@ class PDFConfig:
     title: str = "Raport z testu Ramp"
     author: str = "Tri_Dashboard"
     include_charts: bool = True
+    is_conditional: bool = False  # True if RAMP_TEST_CONDITIONAL
 
 
 def generate_ramp_pdf(
@@ -97,6 +98,11 @@ def generate_ramp_pdf(
     
     story.extend(_build_confidence_badge(confidence, styles))
     story.append(Spacer(1, 8 * mm))
+    
+    # Conditional warning for RAMP_TEST_CONDITIONAL
+    if config.is_conditional:
+        story.extend(_build_conditional_warning(styles))
+        story.append(Spacer(1, 8 * mm))
     
     story.extend(_build_results_summary(thresholds, cp_model, metadata, styles))
     story.append(Spacer(1, 8 * mm))
@@ -297,6 +303,35 @@ def _build_confidence_badge(confidence: Dict, styles: Dict) -> List:
     ]))
     
     elements.append(table)
+    
+    return elements
+
+
+def _build_conditional_warning(styles: Dict) -> List:
+    """Build warning block for conditional ramp test."""
+    elements = []
+    
+    warning_text = (
+        "<b>⚠️ Test rozpoznany warunkowo</b><br/>"
+        "Interpretacja obarczona zwiększoną niepewnością. "
+        "Profil mocy lub czas kroków wykazują odchylenia od standardowego protokołu Ramp Test. "
+        "Skonsultuj wyniki z trenerem lub powtórz test w bardziej kontrolowanych warunkach."
+    )
+    
+    warning_table = Table(
+        [[Paragraph(warning_text, styles["body"])]],
+        colWidths=[160 * mm]
+    )
+    warning_table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), HexColor("#FFF3CD")),
+        ("TEXTCOLOR", (0, 0), (-1, -1), HexColor("#856404")),
+        ("ALIGN", (0, 0), (-1, -1), "LEFT"),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("PADDING", (0, 0), (-1, -1), 12),
+        ("BOX", (0, 0), (-1, -1), 2, HexColor("#FFECB5")),
+    ]))
+    
+    elements.append(warning_table)
     
     return elements
 

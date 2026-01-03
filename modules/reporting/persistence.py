@@ -159,14 +159,19 @@ def save_ramp_test_report(
     # 6. Check validity for PDF generation
     validity = final_json.get("validity", {})
     test_validity = validity.get("overall", "unknown")
-    should_generate_pdf = test_validity in ["valid", "conditional"]
+    
+    # Block PDF ONLY if TestValidity == invalid
+    should_generate_pdf = test_validity != "invalid"
+    
+    # Determine if conditional (for PDF warning)
+    is_conditional = session_type == SessionType.RAMP_TEST_CONDITIONAL
     
     pdf_path = None
     
     # 7. Auto-generate PDF if valid
     if should_generate_pdf:
         try:
-            pdf_path = _auto_generate_pdf(str(file_path.absolute()), final_json)
+            pdf_path = _auto_generate_pdf(str(file_path.absolute()), final_json, is_conditional)
         except Exception as e:
             # PDF failure does NOT affect JSON or index
             print(f"Warning: PDF generation failed for {session_id}: {e}")
@@ -186,7 +191,7 @@ def save_ramp_test_report(
     }
 
 
-def _auto_generate_pdf(json_path: str, report_data: Dict) -> Optional[str]:
+def _auto_generate_pdf(json_path: str, report_data: Dict, is_conditional: bool = False) -> Optional[str]:
     """
     Auto-generate PDF from JSON report.
     
@@ -196,11 +201,12 @@ def _auto_generate_pdf(json_path: str, report_data: Dict) -> Optional[str]:
     Args:
         json_path: Absolute path to saved JSON
         report_data: The report data dictionary
+        is_conditional: If True, PDF will include conditional warning
         
     Returns:
         PDF path if successful, None otherwise
     """
-    from .pdf import generate_ramp_pdf
+    from .pdf import generate_ramp_pdf, PDFConfig
     from .figures import generate_all_ramp_figures, FigureConfig
     import tempfile
     
@@ -213,8 +219,11 @@ def _auto_generate_pdf(json_path: str, report_data: Dict) -> Optional[str]:
     fig_config = FigureConfig(method_version=method_version)
     figure_paths = generate_all_ramp_figures(report_data, temp_dir, fig_config)
     
+    # Configure PDF with conditional flag
+    pdf_config = PDFConfig(is_conditional=is_conditional)
+    
     # Generate PDF
-    generate_ramp_pdf(report_data, figure_paths, str(pdf_path))
+    generate_ramp_pdf(report_data, figure_paths, str(pdf_path), pdf_config)
     
     print(f"Ramp Test PDF generated: {pdf_path}")
     

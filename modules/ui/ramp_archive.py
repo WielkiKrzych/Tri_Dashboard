@@ -93,11 +93,17 @@ def render_ramp_archive():
         
         # PDF Download (existing file only, no generation)
         with btn_col1:
+            # 1. Check if column exists and get path
             pdf_path = record.get('pdf_path', '')
-            session_id_short = record.get('session_id', 'unknown')[:8]
+            session_id = record.get('session_id', 'unknown')
             
-            if pdf_path and isinstance(pdf_path, str) and os.path.exists(pdf_path):
-                print(f"PDF available for test_id: {session_id_short}")
+            # 2. Developer logs
+            print(f"PDF path from index: {pdf_path}")
+            pdf_exists = os.path.exists(pdf_path) if pdf_path and isinstance(pdf_path, str) else False
+            print(f"PDF exists: {pdf_exists}")
+            
+            # 3. Visibility logic
+            if pdf_exists:
                 try:
                     with open(pdf_path, 'rb') as f:
                         pdf_data = f.read()
@@ -107,12 +113,12 @@ def render_ramp_archive():
                         data=pdf_data,
                         file_name=f"raport_ramp_{record['test_date'].date()}.pdf",
                         mime="application/pdf",
-                        type="primary"
+                        type="primary",
+                        key=f"pdf_btn_{session_id}"
                     )
                 except Exception as e:
                     st.error(f"Błąd odczytu pliku PDF: {e}")
             else:
-                print(f"PDF path missing or invalid for test_id: {session_id_short} (Path: {pdf_path})")
                 st.info("PDF niedostępny.")
         
         # HTML Generation on demand

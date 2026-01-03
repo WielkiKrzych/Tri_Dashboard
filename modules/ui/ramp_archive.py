@@ -88,22 +88,43 @@ def render_ramp_archive():
              st.write(f"**Timestamp:** `{meta.get('analysis_timestamp')}`")
              st.write(f"**Notatka:** {meta.get('notes', '-')}")
 
-        # 5. Generate HTML Report on demand
-        if st.button("📄 Wygeneruj raport HTML"):
-            with st.spinner("Generowanie raportu..."):
-                html_content = generate_html_report(report_data)
-                
-                # Setup download button
-                file_name = f"raport_ramp_{record['test_date'].date()}.html"
+        # 5. Download buttons
+        st.markdown("#### 📥 Pobierz raport")
+        
+        btn_col1, btn_col2 = st.columns(2)
+        
+        # PDF Download (existing file only, no generation)
+        with btn_col1:
+            pdf_path = record.get('pdf_path', '')
+            
+            if pdf_path and os.path.exists(pdf_path):
+                with open(pdf_path, 'rb') as f:
+                    pdf_data = f.read()
                 
                 st.download_button(
-                    label="⬇️ Pobierz plik HTML",
-                    data=html_content,
-                    file_name=file_name,
-                    mime="text/html"
+                    label="📕 Pobierz PDF",
+                    data=pdf_data,
+                    file_name=f"raport_ramp_{record['test_date'].date()}.pdf",
+                    mime="application/pdf",
+                    type="primary"
                 )
-                
-                # Preview (in expander)
-                with st.expander("Podgląd raportu"):
-                     st.components.v1.html(html_content, height=800, scrolling=True)
+            else:
+                st.info("PDF niedostępny. Wygeneruj najpierw raport.")
+        
+        # HTML Generation on demand
+        with btn_col2:
+            if st.button("📄 Wygeneruj HTML"):
+                with st.spinner("Generowanie..."):
+                    html_content = generate_html_report(report_data)
+                    
+                    st.download_button(
+                        label="⬇️ Pobierz HTML",
+                        data=html_content,
+                        file_name=f"raport_ramp_{record['test_date'].date()}.html",
+                        mime="text/html"
+                    )
+        
+        # Preview (in expander)
+        with st.expander("📋 Podgląd danych JSON"):
+            st.json(report_data)
 

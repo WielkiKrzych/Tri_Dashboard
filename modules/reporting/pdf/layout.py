@@ -58,7 +58,7 @@ def build_page_cover(
     elements.append(Spacer(1, 8 * mm))
     
     # === CONFIDENCE BADGE ===
-    score = confidence.get("overall_score", 0)
+    score = confidence.get("overall_confidence", 0)
     
     if score >= 0.75:
         badge_color = COLORS["success"]

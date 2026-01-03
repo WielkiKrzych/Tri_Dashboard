@@ -90,7 +90,7 @@ def render_vent_thresholds_tab(target_df, training_notes, uploaded_file_name, cp
                 # Pobierz typ sesji i pewność z session_state dla metadanych
                 session_type = st.session_state.get('session_type')
                 ramp_classification = st.session_state.get('ramp_classification')
-                ramp_confidence = ramp_classification.overall_score if ramp_classification else 0.0
+                ramp_confidence = ramp_classification.confidence if ramp_classification else 0.0
                 
                 save_result = save_ramp_test_report(
                     pipeline_result,

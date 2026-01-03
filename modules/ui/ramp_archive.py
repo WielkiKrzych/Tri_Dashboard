@@ -146,7 +146,20 @@ def render_ramp_archive():
                 except Exception as e:
                     st.error(f"Błąd odczytu pliku PDF: {e}")
             else:
-                st.info("Brak PDF")
+                st.warning("Brak PDF")
+                # Offer regeneration from JSON
+                if st.button("🔄 Wygeneruj PDF", key=f"regen_pdf_{session_id}"):
+                    from modules.reporting.persistence import generate_and_save_pdf
+                    with st.spinner("Generowanie PDF..."):
+                        try:
+                            new_pdf_path = generate_and_save_pdf(json_path)
+                            if new_pdf_path and os.path.exists(new_pdf_path):
+                                st.success(f"PDF wygenerowany: {new_pdf_path}")
+                                st.rerun()
+                            else:
+                                st.error("Generowanie PDF nie powiodło się.")
+                        except Exception as e:
+                            st.error(f"Błąd generowania PDF: {e}")
         
         # HTML Generation on demand
         with btn_col2:

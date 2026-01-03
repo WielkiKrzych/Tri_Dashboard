@@ -18,7 +18,7 @@ from io import BytesIO
 from pathlib import Path
 from datetime import datetime
 import logging
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 
 from reportlab.platypus import SimpleDocTemplate, PageBreak, Spacer, Paragraph
 from reportlab.lib.units import mm

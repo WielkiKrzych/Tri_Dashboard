@@ -32,6 +32,10 @@ from .layout import (
     build_page_zones,
     build_page_limitations,
     build_page_smo2,
+    build_page_theory,
+    build_page_thermal,
+    build_page_limiters,
+    build_page_extra,
 )
 
 
@@ -101,7 +105,7 @@ def map_ramp_json_to_pdf_data(report_json: Dict[str, Any]) -> Dict[str, Any]:
         "protocol": meta.get("protocol", "Ramp Test"),
         "notes": meta.get("notes", "-"),
         "pmax_watts": pmax_val,
-        "athlete_weight_kg": meta.get("athlete_weight_kg", 0)
+        "athlete_weight_kg": meta.get("athlete_weight_kg", meta.get("rider_weight", 0))
     }
 
     # 2. Thresholds (midpoints and ranges)
@@ -288,14 +292,43 @@ def build_ramp_pdf(
     ))
     story.append(PageBreak())
     
-    # === PAGE 5: Strefy Treningowe ===
+    story.append(PageBreak())
+    
+    # === PAGE 5: Teoria Fizjologiczna ===
+    story.extend(build_page_theory(styles=styles))
+    story.append(PageBreak())
+    
+    # === PAGE 6: Analiza Termoregulacji ===
+    story.extend(build_page_thermal(
+        figure_paths=figure_paths,
+        styles=styles
+    ))
+    story.append(PageBreak())
+    
+    # === PAGE 7: Profil Metaboliczny (Limitery) ===
+    story.extend(build_page_limiters(
+        metadata=metadata,
+        cp_model=cp_model,
+        figure_paths=figure_paths,
+        styles=styles
+    ))
+    story.append(PageBreak())
+    
+    # === PAGE 8: Dodatkowe Analizy (Vent/Drift) ===
+    story.extend(build_page_extra(
+        figure_paths=figure_paths,
+        styles=styles
+    ))
+    story.append(PageBreak())
+    
+    # === PAGE 9: Strefy Treningowe ===
     story.extend(build_page_zones(
         thresholds=thresholds,
         styles=styles
     ))
     story.append(PageBreak())
     
-    # === PAGE 6: Ograniczenia Interpretacji ===
+    # === PAGE 10: Ograniczenia Interpretacji ===
     story.extend(build_page_limitations(
         styles=styles,
         is_conditional=config.is_conditional

@@ -494,7 +494,9 @@ def build_result(
     w_prime_joules: Optional[float] = None,
     smo2_manual_lt1: Optional[float] = None,
     smo2_manual_lt2: Optional[float] = None,
-    mmp_curve: Optional[Dict[int, float]] = None
+    mmp_curve: Optional[Dict[int, float]] = None,
+    rider_weight: Optional[float] = None,
+    max_hr: Optional[float] = None
 ) -> RampTestResult:
     """
     Step 5: Build final RampTestResult with overall confidence.
@@ -523,7 +525,9 @@ def build_result(
         w_prime_joules=w_prime_joules,
         smo2_manual_lt1=smo2_manual_lt1,
         smo2_manual_lt2=smo2_manual_lt2,
-        mmp_curve=mmp_curve
+        mmp_curve=mmp_curve,
+        rider_weight=rider_weight,
+        max_hr=max_hr
     )
     
     # Add SmO2 context (LOCAL signal - for information only, not as threshold)
@@ -615,7 +619,9 @@ def run_ramp_test_pipeline(
     cp_watts: Optional[float] = None,
     w_prime_joules: Optional[float] = None,
     smo2_manual_lt1: Optional[float] = None,
-    smo2_manual_lt2: Optional[float] = None
+    smo2_manual_lt2: Optional[float] = None,
+    rider_weight: Optional[float] = None,
+    max_hr: Optional[float] = None
 ) -> RampTestResult:
     """
     Run complete Ramp Test analysis pipeline.
@@ -694,7 +700,9 @@ def run_ramp_test_pipeline(
         cp_watts=cp_watts,
         w_prime_joules=w_prime_joules,
         smo2_manual_lt1=smo2_manual_lt1,
-        smo2_manual_lt2=smo2_manual_lt2
+        smo2_manual_lt2=smo2_manual_lt2,
+        rider_weight=rider_weight,
+        max_hr=max_hr
     )
     
     return result

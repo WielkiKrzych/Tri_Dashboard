@@ -62,34 +62,7 @@ def build_page_cover(
     elements.append(Paragraph(meta_text, styles["center"]))
     elements.append(Spacer(1, 8 * mm))
     
-    # === CONFIDENCE BADGE ===
-    score = confidence.get("overall_confidence", 0)
-    
-    if score >= 0.75:
-        badge_color = COLORS["success"]
-        label = "Wysoka pewność"
-    elif score >= 0.5:
-        badge_color = COLORS["warning"]
-        label = "Umiarkowana pewność"
-    else:
-        badge_color = COLORS["danger"]
-        label = "Niska pewność"
-    
-    from reportlab.platypus import TableStyle
-    badge_content = f"<b>Confidence Score:</b> {score:.0%} ({label})"
-    badge_table = Table(
-        [[Paragraph(badge_content, styles["body"])]],
-        colWidths=[100 * mm]
-    )
-    badge_table.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, -1), badge_color),
-        ("TEXTCOLOR", (0, 0), (-1, -1), COLORS["white"]),
-        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("PADDING", (0, 0), (-1, -1), 10),
-        ("BOX", (0, 0), (-1, -1), 1, badge_color),
-    ]))
-    elements.append(badge_table)
+    # === CONFIDENCE BADGE REMOVED per user request ===
     elements.append(Spacer(1, 6 * mm))
     
     # === CONDITIONAL WARNING ===
@@ -633,4 +606,188 @@ def _build_chart(chart_path: str, title: str, styles: Dict) -> List:
         logger.error(f"PDF Layout: Error embedding chart '{title}' from {chart_path}: {e}")
         elements.append(Paragraph(f"Wykres niedostępny (błąd: {e})", styles["small"]))
     
+    return elements
+
+
+# ============================================================================
+# PAGE 5: TEORIA FIZJOLOGICZNA (INSCYD/WKO5)
+# ============================================================================
+
+def build_page_theory(styles: Dict) -> List:
+    """Build Page 5: Advanced Physiological Theory."""
+    elements = []
+    
+    elements.append(Paragraph("Model Metaboliczny (INSCYD/WKO5)", styles["title"]))
+    elements.append(Spacer(1, 6 * mm))
+    
+    # Intro
+    elements.append(Paragraph(
+        "Twoja wydajność zależy od interakcji trzech systemów energetycznych. "
+        "Zrozumienie ich pozwala na precyzyjne dopasowanie treningu.",
+        styles["body"]
+    ))
+    elements.append(Spacer(1, 4 * mm))
+    
+    # VO2max
+    elements.append(Paragraph("1. VO₂max (System Tlenowy)", styles["heading"]))
+    elements.append(Paragraph(
+        "Maksymalna ilość tlenu, jaką Twój organizm może przyswoić. "
+        "Jest to Twój „silnik diesla” – odpowiada za moc na długim dystansie. "
+        "Wysokie VO₂max jest kluczowe dla każdego kolarza wytrzymałościowego.",
+        styles["body"]
+    ))
+    
+    # VLaMax
+    elements.append(Paragraph("2. VLaMax (System Glikolityczny)", styles["heading"]))
+    elements.append(Paragraph(
+        "Maksymalne tempo produkcji mleczanu. To Twój „dopalacz turbo”. "
+        "Wysokie VLaMax daje świetny sprint i ataki, ale powoduje szybkie zużycie węglowodanów (niskie FatMax) i obniża próg FTP. "
+        "Niskie VLaMax zwiększa próg FTP i oszczędza glikogen (dobre dla Ironman/GC), ale ogranicza dynamikę.",
+        styles["body"]
+    ))
+    
+    # Interaction
+    elements.append(Paragraph("Interakcja VO₂max ↔ VLaMax", styles["subheading"]))
+    elements.append(Paragraph(
+        "Twój próg FTP to wynik walki między tymi dwoma systemami. "
+        "Aby podnieść FTP, możesz albo zwiększyć VO₂max (powiększyć silnik), albo obniżyć VLaMax (zmniejszyć spalanie). "
+        "Wybór strategii zależy od Twojego typu zawodnika.",
+        styles["body"]
+    ))
+    elements.append(Spacer(1, 6 * mm))
+    
+    # FatMax explain
+    elements.append(Paragraph("FatMax (Metabolizm Tłuszczowy)", styles["heading"]))
+    elements.append(Paragraph(
+        "Moc, przy której spalasz najwięcej tłuszczu (zwykle strefa Z2). "
+        "Trening w tej strefie uczy organizm oszczędzania glikogenu. "
+        "Im wyższa moc na FatMax, tym szybciej możesz jechać bez „odcięcia” paliwa.",
+        styles["body"]
+    ))
+    
+    return elements
+
+
+# ============================================================================
+# PAGE 6: TERMOREGULACJA
+# ============================================================================
+
+def build_page_thermal(
+    figure_paths: Dict[str, str],
+    styles: Dict
+) -> List:
+    """Build Page 6: Thermal Analysis."""
+    elements = []
+    
+    elements.append(Paragraph("Analiza Termoregulacji", styles["title"]))
+    elements.append(Spacer(1, 6 * mm))
+    
+    elements.append(Paragraph(
+        "Ciepło jest „cichym zabójcą” wydajności. Wzrost temperatury głębokiej (Core Temp) "
+        "powoduje przekierowanie krwi do skóry (chłodzenie), co zabiera tlen pracującym mięśniom.",
+        styles["body"]
+    ))
+    elements.append(Spacer(1, 4 * mm))
+    
+    # Chart 1: Core Temp vs HSI
+    if figure_paths and "thermal_hsi" in figure_paths:
+        elements.extend(_build_chart(figure_paths["thermal_hsi"], "Temp. Głęboka vs Indeks Zmęczenia (HSI)", styles))
+        elements.append(Spacer(1, 4 * mm))
+        
+    elements.append(Paragraph(
+        "<b>Heat Strain Index (HSI):</b> Skumulowane obciążenie cieplne. "
+        "Powyżej 38.5°C organizm wchodzi w strefę krytyczną, gdzie wydajność drastycznie spada.",
+        styles["body"]
+    ))
+    elements.append(Spacer(1, 6 * mm))
+    
+    # Chart 2: Efficiency
+    if figure_paths and "thermal_efficiency" in figure_paths:
+        elements.extend(_build_chart(figure_paths["thermal_efficiency"], "Spadek Efektywności (Cardiac Drift)", styles))
+        elements.append(Spacer(1, 4 * mm))
+        
+    elements.append(Paragraph(
+        "<b>Efficiency Factor (W/bpm):</b> Wykres pokazuje, jak spada generowana moc na jedno uderzenie serca w miarę wzrostu temperatury. "
+        "Stromy spadek oznacza słabą termoregulację.",
+        styles["body"]
+    ))
+    
+    return elements
+
+
+# ============================================================================
+# PAGE 7: PROFIL METABOLICZNY (LIMITERY)
+# ============================================================================
+
+def build_page_limiters(
+    metadata: Dict[str, Any],
+    cp_model: Dict[str, Any],
+    figure_paths: Dict[str, str],
+    styles: Dict
+) -> List:
+    """Build Page 7: Metabolic Profile & Limiters."""
+    elements = []
+    
+    elements.append(Paragraph("Profil Metaboliczny i Limitery", styles["title"]))
+    elements.append(Spacer(1, 6 * mm))
+    
+    # Radar Chart
+    if figure_paths and "limiters_radar" in figure_paths:
+        elements.extend(_build_chart(figure_paths["limiters_radar"], "Radar Obciążenia (5 min Peak)", styles))
+        elements.append(Spacer(1, 4 * mm))
+        
+    elements.append(Paragraph(
+        "Analiza 5-minutowego odcinka maksymalnego (zbiżonego do VO₂max) pozwala zidentyfikować "
+        "najsłabsze ogniwo (system limitujący).",
+        styles["body"]
+    ))
+    elements.append(Spacer(1, 6 * mm))
+    
+    # Diagnostics Table
+    elements.append(Paragraph("Interpretacja Limiterów", styles["heading"]))
+    
+    data = [
+        ["System", "Objawy Limitera", "Rekomendacja"],
+        ["Serce (Centralny)", "HR blisko max przy niższej mocy", "Trening VO₂max, interwały 4x8min"],
+        ["Płuca (Oddechowy)", "Bardzo wysoka wentylacja (VE)", "Trening mięśni oddechowych"],
+        ["Mięśnie (Peryferyjny)", "Szybka desaturacja (SmO₂)", "Trening siłowy, Over-Gear"],
+        ["Metaboliczny (VLaMax)", "Szybki spadek mocy", "Trening Sweet Spot / Low Cadence"]
+    ]
+    
+    table = Table(data, colWidths=[40 * mm, 60 * mm, 60 * mm])
+    table.setStyle(get_table_style())
+    elements.append(table)
+    
+    return elements
+
+
+# ============================================================================
+# PAGE 8: DODATKOWE ANALIZY
+# ============================================================================
+
+def build_page_extra(
+    figure_paths: Dict[str, str],
+    styles: Dict
+) -> List:
+    """Build Page 8: Extra Analytics (Ventilation & Drift)."""
+    elements = []
+    
+    elements.append(Paragraph("Zaawansowana Analityka", styles["title"]))
+    elements.append(Spacer(1, 6 * mm))
+    
+    # Vent Full
+    if figure_paths and "vent_full" in figure_paths:
+        elements.extend(_build_chart(figure_paths["vent_full"], "Dynamika Wentylacji (VE) vs Moc", styles))
+        elements.append(Spacer(1, 6 * mm))
+        
+    # Drift Maps
+    elements.append(Paragraph("Mapy Dryfu i Decoupling", styles["heading"]))
+    
+    if figure_paths and "drift_hr" in figure_paths:
+        elements.extend(_build_chart(figure_paths["drift_hr"], "Moc vs Tętno", styles))
+        elements.append(Spacer(1, 4 * mm))
+        
+    if figure_paths and "drift_smo2" in figure_paths:
+        elements.extend(_build_chart(figure_paths["drift_smo2"], "Moc vs Saturacja Mięśniowa", styles))
+        
     return elements

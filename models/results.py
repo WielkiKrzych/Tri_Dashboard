@@ -445,6 +445,10 @@ class RampTestResult:
     # Power Duration Curve (MMP)
     mmp_curve: Optional[Dict[int, float]] = None
     
+    # User Parameters
+    rider_weight: Optional[float] = None
+    max_hr: Optional[float] = None
+    
     # Transient / Debug data (not for JSON)
     detailed_step_analysis: Optional[Dict] = field(default=None, repr=False)
     
@@ -511,7 +515,11 @@ class RampTestResult:
             },
             "metadata": {
                 "test_date": self.test_date,
-                "protocol": self.protocol
+                "protocol": self.protocol,
+                "processing_date": datetime.now().isoformat(),
+                "method_version": "2.0 (Deepmind)",
+                "rider_weight": self.rider_weight,
+                "max_hr": self.max_hr
             }
         }
 

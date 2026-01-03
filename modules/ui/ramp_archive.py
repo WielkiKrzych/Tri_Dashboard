@@ -89,27 +89,28 @@ def render_ramp_archive():
              st.write(f"**Notatka:** {meta.get('notes', '-')}")
 
         # 5. Download buttons
-        st.markdown("#### 📥 Pobierz raport")
-        
         btn_col1, btn_col2 = st.columns(2)
         
         # PDF Download (existing file only, no generation)
         with btn_col1:
             pdf_path = record.get('pdf_path', '')
             
-            if pdf_path and os.path.exists(pdf_path):
-                with open(pdf_path, 'rb') as f:
-                    pdf_data = f.read()
-                
-                st.download_button(
-                    label="📕 Pobierz PDF",
-                    data=pdf_data,
-                    file_name=f"raport_ramp_{record['test_date'].date()}.pdf",
-                    mime="application/pdf",
-                    type="primary"
-                )
+            if pdf_path and isinstance(pdf_path, str) and os.path.exists(pdf_path):
+                try:
+                    with open(pdf_path, 'rb') as f:
+                        pdf_data = f.read()
+                    
+                    st.download_button(
+                        label="📕 Pobierz raport PDF",
+                        data=pdf_data,
+                        file_name=f"raport_ramp_{record['test_date'].date()}.pdf",
+                        mime="application/pdf",
+                        type="primary"
+                    )
+                except Exception as e:
+                    st.error(f"Błąd odczytu pliku PDF: {e}")
             else:
-                st.info("PDF niedostępny. Wygeneruj najpierw raport.")
+                st.info("PDF niedostępny.")
         
         # HTML Generation on demand
         with btn_col2:

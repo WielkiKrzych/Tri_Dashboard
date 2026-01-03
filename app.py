@@ -210,13 +210,32 @@ if uploaded_file is not None:
     m2.metric("TSS", f"{tss_header:.0f}", help=f"IF: {if_header:.2f}")
     m3.metric("Praca [kJ]", f"{df_plot['watts'].sum()/1000:.0f}")
 
-    # Session Type Badge
+    # Session Type Badge with Confidence
     session_type = st.session_state.get('session_type')
+    ramp_classification = st.session_state.get('ramp_classification')
+    
     if session_type:
+        from modules.domain import SessionType, RAMP_CONFIDENCE_THRESHOLD
+        
+        # Build display message based on session type
+        if session_type == SessionType.RAMP_TEST and ramp_classification:
+            confidence = ramp_classification.confidence
+            bg_color = "rgba(46, 204, 113, 0.2)" if confidence >= RAMP_CONFIDENCE_THRESHOLD else "rgba(241, 196, 15, 0.2)"
+            msg = f"Rozpoznano: <b>Ramp Test</b> (confidence: {confidence:.2f})"
+        elif session_type == SessionType.TRAINING:
+            bg_color = "rgba(52, 152, 219, 0.2)"
+            if ramp_classification and not ramp_classification.is_ramp:
+                msg = f"Sesja treningowa – analiza badawcza pominięta"
+            else:
+                msg = f"Rozpoznano: <b>Sesja treningowa</b>"
+        else:
+            bg_color = "rgba(149, 165, 166, 0.2)"
+            msg = f"Typ sesji: <b>{session_type}</b>"
+        
         st.markdown(f"""
-        <div style="background: linear-gradient(90deg, rgba(100,100,255,0.2), transparent); 
-                    padding: 8px 15px; border-radius: 8px; margin-bottom: 10px; display: inline-block;">
-            <span style="font-size: 1.1em;">{session_type.emoji} <b>Typ sesji:</b> {session_type}</span>
+        <div style="background: linear-gradient(90deg, {bg_color}, transparent); 
+                    padding: 10px 15px; border-radius: 8px; margin-bottom: 10px; display: inline-block;">
+            <span style="font-size: 1.1em;">{session_type.emoji} {msg}</span>
         </div>
         """, unsafe_allow_html=True)
 

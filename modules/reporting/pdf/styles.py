@@ -9,6 +9,9 @@ from reportlab.lib.units import mm
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.colors import HexColor, black, white
 from reportlab.lib.enums import TA_LEFT, TA_CENTER, TA_RIGHT
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+import os
 from dataclasses import dataclass
 from typing import Dict
 
@@ -44,11 +47,29 @@ COLORS = {
 
 
 # ============================================================================
-# TYPOGRAPHY
+# TYPOGRAPHY (Polish Characters & UTF-8 Support)
 # ============================================================================
 
-FONT_FAMILY = "Helvetica"
-FONT_FAMILY_BOLD = "Helvetica-Bold"
+# NOTE: Standard PDF fonts like "Helvetica" do NOT support Polish characters 
+# in ReportLab. Using DejaVuSans TrueType font for full UTF-8 support.
+
+def register_fonts():
+    """Register TrueType fonts for PDF generation."""
+    try:
+        # Try to find DejaVuSans font from matplotlib (usually bundled)
+        import matplotlib
+        font_dir = os.path.join(matplotlib.get_data_path(), "fonts", "ttf")
+        
+        pdfmetrics.registerFont(TTFont("DejaVuSans", os.path.join(font_dir, "DejaVuSans.ttf")))
+        pdfmetrics.registerFont(TTFont("DejaVuSans-Bold", os.path.join(font_dir, "DejaVuSans-Bold.ttf")))
+        
+        return "DejaVuSans", "DejaVuSans-Bold"
+    except Exception:
+        # Fallback to standard fonts if registration fails
+        return "Helvetica", "Helvetica-Bold"
+
+FONT_FAMILY, FONT_FAMILY_BOLD = register_fonts()
+
 FONT_SIZE_BODY = 10
 FONT_SIZE_SMALL = 8
 FONT_SIZE_HEADING = 14

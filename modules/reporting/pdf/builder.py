@@ -22,7 +22,7 @@ from typing import Dict, Any, Optional
 from reportlab.platypus import SimpleDocTemplate, PageBreak, Spacer, Paragraph
 from reportlab.lib.units import mm
 
-from .styles import PDFConfig, create_styles, PAGE_SIZE, MARGIN, COLORS
+from .styles import PDFConfig, create_styles, PAGE_SIZE, MARGIN, COLORS, FONT_FAMILY
 from .layout import (
     build_page_cover,
     build_page_thresholds,
@@ -78,7 +78,7 @@ def build_ramp_pdf(
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
         footer_text = f"Strona {page_num} | ID: {session_id} | v{method_version} | {timestamp} | Tri_Dashboard"
         
-        canvas.setFont("Helvetica", 8)
+        canvas.setFont(FONT_FAMILY, 8)
         canvas.setFillColor(COLORS["text_light"])
         canvas.drawCentredString(PAGE_SIZE[0] / 2, 10 * mm, footer_text)
         

@@ -22,6 +22,9 @@ CANONICAL_SCHEMA = "ramp_test_result_v1.json"
 CANONICAL_VERSION = "1.0.0"
 METHOD_VERSION = RAMP_METHOD_VERSION  # Pipeline version
 
+# Index structure
+INDEX_COLUMNS = ["session_id", "test_date", "athlete_id", "method_version", "json_path", "pdf_path"]
+
 class NumpyEncoder(json.JSONEncoder):
     """Custom encoder for NumPy data types."""
     def default(self, obj):
@@ -230,8 +233,6 @@ def _update_index(base_dir: str, metadata: Dict, file_path: str, pdf_path: Optio
     index_path = Path(base_dir) / "index.csv"
     file_exists = index_path.exists()
     
-    fieldnames = ["session_id", "test_date", "athlete_id", "method_version", "json_path", "pdf_path"]
-    
     row = {
         "session_id": metadata.get("session_id", ""),
         "test_date": metadata.get("test_date", ""),
@@ -241,13 +242,25 @@ def _update_index(base_dir: str, metadata: Dict, file_path: str, pdf_path: Optio
         "pdf_path": pdf_path or ""
     }
     
-    with open(index_path, 'a', newline='', encoding='utf-8') as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames)
-        if not file_exists:
-            writer.writeheader()
-        writer.writerow(row)
-        
-    print(f"Ramp Test indexed: {row['session_id']}")
+    # Validation: Ensure all columns are present and no empty critical fields
+    if len(row) != len(INDEX_COLUMNS):
+        print(f"Error: Invalid record length for index. Expected {len(INDEX_COLUMNS)}, got {len(row)}.")
+        return
+
+    if not row["session_id"] or not row["json_path"]:
+        print(f"Error: Missing critical data for index (session_id or json_path). Record not saved.")
+        return
+
+    try:
+        with open(index_path, 'a', newline='', encoding='utf-8') as f:
+            # quote_all ensures paths (and other strings) are in quotes as requested
+            writer = csv.DictWriter(f, fieldnames=INDEX_COLUMNS, quoting=csv.QUOTE_ALL)
+            if not file_exists:
+                writer.writeheader()
+            writer.writerow(row)
+        print(f"Ramp Test indexed: {row['session_id']}")
+    except Exception as e:
+        print(f"Error: Failed to write to index at {index_path}: {e}")
 
 
 def update_index_pdf_path(base_dir: str, session_id: str, pdf_path: str):
@@ -272,28 +285,28 @@ def update_index_pdf_path(base_dir: str, session_id: str, pdf_path: str):
     
     # Read all rows
     rows = []
-    fieldnames = ["session_id", "test_date", "athlete_id", "method_version", "json_path", "pdf_path"]
     
     with open(index_path, 'r', newline='', encoding='utf-8') as f:
         reader = csv.DictReader(f)
-        existing_fieldnames = reader.fieldnames or fieldnames
-        
-        # Ensure pdf_path column exists
-        if "pdf_path" not in existing_fieldnames:
-            existing_fieldnames = list(existing_fieldnames) + ["pdf_path"]
-        
         for row in reader:
             if row.get("session_id") == session_id:
                 row["pdf_path"] = pdf_path
-            rows.append(row)
+            
+            # Basic validation for existing row
+            if all(k in row for k in INDEX_COLUMNS):
+                rows.append(row)
+            else:
+                print(f"Warning: Skipping malformed index row for session {row.get('session_id')}")
     
     # Write back with updated row
-    with open(index_path, 'w', newline='', encoding='utf-8') as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames)
-        writer.writeheader()
-        writer.writerows(rows)
-    
-    print(f"Updated PDF path for session {session_id}")
+    try:
+        with open(index_path, 'w', newline='', encoding='utf-8') as f:
+            writer = csv.DictWriter(f, fieldnames=INDEX_COLUMNS, quoting=csv.QUOTE_ALL)
+            writer.writeheader()
+            writer.writerows(rows)
+        print(f"Updated PDF path for session {session_id}")
+    except Exception as e:
+        print(f"Error: Failed to update index at {index_path}: {e}")
 
 
 def generate_and_save_pdf(

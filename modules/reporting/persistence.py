@@ -23,7 +23,42 @@ CANONICAL_VERSION = "1.0.0"
 METHOD_VERSION = RAMP_METHOD_VERSION  # Pipeline version
 
 # Index structure
-INDEX_COLUMNS = ["session_id", "test_date", "athlete_id", "method_version", "json_path", "pdf_path"]
+INDEX_COLUMNS = ["session_id", "test_date", "athlete_id", "method_version", "json_path", "pdf_path", "source_file"]
+
+
+def _check_source_file_exists(base_dir: str, source_file: str) -> bool:
+    """
+    Check if a source file has already been saved in the index.
+    
+    Used for deduplication - prevents saving multiple reports for the same CSV file.
+    
+    Args:
+        base_dir: Base directory containing index.csv
+        source_file: Filename to check (e.g., 'ramp_test_2026-01-03.csv')
+        
+    Returns:
+        True if source_file already exists in index, False otherwise
+    """
+    import csv
+    
+    index_path = Path(base_dir) / "index.csv"
+    
+    if not index_path.exists():
+        return False
+    
+    try:
+        with open(index_path, 'r', newline='', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                existing_source = row.get("source_file", "")
+                if existing_source and existing_source == source_file:
+                    return True
+    except Exception as e:
+        print(f"Warning: Failed to check deduplication: {e}")
+        return False
+    
+    return False
+
 
 class NumpyEncoder(json.JSONEncoder):
     """Custom encoder for NumPy data types."""
@@ -47,7 +82,8 @@ def save_ramp_test_report(
     notes: Optional[str] = None,
     dev_mode: bool = False,
     session_type = None,
-    ramp_confidence: float = 0.0
+    ramp_confidence: float = 0.0,
+    source_file: Optional[str] = None
 ) -> Dict:
     """
     Save Ramp Test result to JSON file.
@@ -70,6 +106,7 @@ def save_ramp_test_report(
         dev_mode: If True, allows overwriting existing files
         session_type: SessionType enum (must be RAMP_TEST to save)
         ramp_confidence: Classification confidence (must be >= threshold)
+        source_file: Original CSV filename for deduplication
         
     Returns:
         Dict with path, session_id, or None if gated
@@ -77,6 +114,11 @@ def save_ramp_test_report(
     Raises:
         ValueError: If called without RAMP_TEST session type
     """
+    # --- DEDUPLICATION: Check if source_file already exists in index ---
+    if source_file:
+        if _check_source_file_exists(output_base_dir, source_file):
+            print(f"[Dedup] Source file '{source_file}' already exists in index. Skipping save.")
+            return {"gated": True, "reason": f"Source file '{source_file}' already saved", "deduplicated": True}
     # --- GATING: Check SessionType and confidence ---
     from modules.domain import SessionType
     
@@ -178,7 +220,7 @@ def save_ramp_test_report(
     
     # 8. Update Index (CSV)
     try:
-        _update_index(output_base_dir, final_json["metadata"], str(file_path.absolute()), pdf_path)
+        _update_index(output_base_dir, final_json["metadata"], str(file_path.absolute()), pdf_path, source_file)
         print(f"Ramp Test indexed: {session_id}")
     except Exception as e:
         print(f"Warning: Failed to update report index: {e}")
@@ -231,11 +273,11 @@ def _auto_generate_pdf(json_path: str, report_data: Dict, is_conditional: bool =
 
 
 
-def _update_index(base_dir: str, metadata: Dict, file_path: str, pdf_path: Optional[str] = None):
+def _update_index(base_dir: str, metadata: Dict, file_path: str, pdf_path: Optional[str] = None, source_file: Optional[str] = None):
     """
     Update CSV index with new test record.
     
-    Columns: session_id, test_date, athlete_id, method_version, json_path, pdf_path
+    Columns: session_id, test_date, athlete_id, method_version, json_path, pdf_path, source_file
     """
     import csv
     
@@ -248,7 +290,8 @@ def _update_index(base_dir: str, metadata: Dict, file_path: str, pdf_path: Optio
         "athlete_id": metadata.get("athlete_id") or "anonymous",
         "method_version": metadata.get("method_version", ""),
         "json_path": file_path,
-        "pdf_path": pdf_path or ""
+        "pdf_path": pdf_path or "",
+        "source_file": source_file or ""
     }
     
     # Validation: Ensure all columns are present and no empty critical fields

@@ -96,12 +96,18 @@ def render_vent_thresholds_tab(target_df, training_notes, uploaded_file_name, cp
                     pipeline_result,
                     notes=f"Auto-save from UI. File: {uploaded_file_name}",
                     session_type=session_type,
-                    ramp_confidence=ramp_confidence
+                    ramp_confidence=ramp_confidence,
+                    source_file=uploaded_file_name
                 )
                 session_id = save_result.get('session_id', 'unknown')
                 saved_path = save_result.get('path', '')
-                st.toast(f"✅ Ramp Test report saved: {session_id[:8]}", icon="💾")
-                print(f"Ramp Test report saved: {session_id} -> {saved_path}")
+                
+                # Check if deduplicated
+                if save_result.get('deduplicated'):
+                    print(f"[Dedup] Report already exists for {uploaded_file_name}")
+                else:
+                    st.toast(f"✅ Ramp Test report saved: {session_id[:8]}", icon="💾")
+                    print(f"Ramp Test report saved: {session_id} -> {saved_path}")
             else:
                 st.toast("⚠️ Raport NIE zapisany (Test Invalid)", icon="⛔")
                 

@@ -111,15 +111,17 @@ def build_page_cover(
     # === KEY RESULTS TABLE ===
     elements.append(Paragraph("Kluczowe Wyniki", styles["heading"]))
     
-    vt1_watts = thresholds.get("vt1_watts", "-")
-    vt2_watts = thresholds.get("vt2_watts", "-")
-    cp_watts = cp_model.get("cp_watts", "-")
-    w_prime = cp_model.get("w_prime_joules", 0)
-    w_prime_kj = f"{w_prime/1000:.1f}" if w_prime else "-"
-    pmax = metadata.get("pmax_watts", "-")
+    vt1_watts = thresholds.get("vt1_watts", "brak danych")
+    vt2_watts = thresholds.get("vt2_watts", "brak danych")
+    cp_watts = cp_model.get("cp_watts", "brak danych")
+    w_prime_kj = cp_model.get("w_prime_kj", "brak danych")
+    pmax = metadata.get("pmax_watts", "brak danych")
     
     # Calculate VT1-VT2 range
-    vt_range = f"{vt1_watts}–{vt2_watts}" if vt1_watts != "-" and vt2_watts != "-" else "-"
+    if vt1_watts != "brak danych" and vt2_watts != "brak danych":
+        vt_range = f"{vt1_watts}–{vt2_watts}"
+    else:
+        vt_range = "brak danych"
     
     data = [
         ["Parametr", "Wartość", "Interpretacja"],
@@ -185,12 +187,12 @@ def build_page_thresholds(
     # === THRESHOLDS TABLE ===
     elements.append(Paragraph("Tabela Progów", styles["heading"]))
     
-    vt1_watts = thresholds.get("vt1_watts", "-")
-    vt1_hr = thresholds.get("vt1_hr", "-")
-    vt1_ve = thresholds.get("vt1_ve", "-")
-    vt2_watts = thresholds.get("vt2_watts", "-")
-    vt2_hr = thresholds.get("vt2_hr", "-")
-    vt2_ve = thresholds.get("vt2_ve", "-")
+    vt1_watts = thresholds.get("vt1_watts", "brak danych")
+    vt1_hr = thresholds.get("vt1_hr", "brak danych")
+    vt1_ve = thresholds.get("vt1_ve", "brak danych")
+    vt2_watts = thresholds.get("vt2_watts", "brak danych")
+    vt2_hr = thresholds.get("vt2_hr", "brak danych")
+    vt2_ve = thresholds.get("vt2_ve", "brak danych")
     
     data = [
         ["Próg", "Moc [W]", "HR [bpm]", "VE [L/min]"],
@@ -260,13 +262,18 @@ def build_page_pdc(
     # === CP/W' TABLE ===
     elements.append(Paragraph("Parametry CP", styles["heading"]))
     
-    cp_watts = cp_model.get("cp_watts", "-")
-    w_prime = cp_model.get("w_prime_joules", 0)
-    w_prime_kj = f"{w_prime/1000:.1f}" if w_prime else "-"
+    cp_watts = cp_model.get("cp_watts", "brak danych")
+    w_prime_kj = cp_model.get("w_prime_kj", "brak danych")
     
     # Calculate CP/kg if weight available
     athlete_weight = metadata.get("athlete_weight_kg", 0)
-    cp_per_kg = f"{cp_watts / athlete_weight:.2f}" if athlete_weight and cp_watts != "-" else "-"
+    if athlete_weight and cp_watts != "brak danych":
+        try:
+            cp_per_kg = f"{float(cp_watts) / athlete_weight:.2f}"
+        except (ValueError, TypeError):
+            cp_per_kg = "brak danych"
+    else:
+        cp_per_kg = "brak danych"
     
     data = [
         ["Parametr", "Wartość", "Znaczenie"],
@@ -309,9 +316,9 @@ def build_page_interpretation(
     elements.append(Paragraph("Co oznaczają te wyniki?", styles["title"]))
     elements.append(Spacer(1, 6 * mm))
     
-    vt1_watts = thresholds.get("vt1_watts", "---")
-    vt2_watts = thresholds.get("vt2_watts", "---")
-    cp_watts = cp_model.get("cp_watts", "---")
+    vt1_watts = thresholds.get("vt1_watts", "brak danych")
+    vt2_watts = thresholds.get("vt2_watts", "brak danych")
+    cp_watts = cp_model.get("cp_watts", "brak danych")
     
     # === VT1 ===
     elements.append(Paragraph("Próg tlenowy (VT1)", styles["heading"]))
@@ -376,8 +383,16 @@ def build_page_zones(
     elements.append(Paragraph("Rekomendowane Strefy Treningowe", styles["title"]))
     elements.append(Spacer(1, 6 * mm))
     
-    vt1 = thresholds.get("vt1_watts", 0)
-    vt2 = thresholds.get("vt2_watts", 0)
+    vt1_raw = thresholds.get("vt1_watts", "brak danych")
+    vt2_raw = thresholds.get("vt2_watts", "brak danych")
+    
+    # Parse numbers for zone calculation
+    try:
+        vt1 = float(vt1_raw) if vt1_raw != "brak danych" else 0
+        vt2 = float(vt2_raw) if vt2_raw != "brak danych" else 0
+    except (ValueError, TypeError):
+        vt1 = 0
+        vt2 = 0
     
     # Calculate zones
     if vt1 and vt2:
@@ -518,6 +533,10 @@ def _build_chart(chart_path: str, title: str, styles: Dict) -> List:
     
     try:
         available_width = PAGE_WIDTH - 2 * MARGIN
+        
+        if not chart_path or not os.path.exists(chart_path):
+            raise FileNotFoundError(f"Plik wykresu nie istnieje: {chart_path}")
+            
         img = Image(chart_path)
         
         # Scale to fit width

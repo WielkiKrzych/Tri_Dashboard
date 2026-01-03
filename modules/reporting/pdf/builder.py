@@ -33,6 +33,65 @@ from .layout import (
 )
 
 
+def map_ramp_json_to_pdf_fields(report_data: Dict[str, Any]) -> Dict[str, Any]:
+    """Map canonical JSON report keys to PDF layout fields with robust fallbacks.
+    
+    Ensures all numerical values have explicit 'brak danych' fallback if missing.
+    Logs missing critical fields to stdout.
+    """
+    def get_val(section: str, key: str, fallback: str = "brak danych"):
+        val = report_data.get(section, {}).get(key)
+        if val is None or val == "" or val == "-":
+            print(f"Warning: PDF mapping missing field: {section}.{key}")
+            return fallback
+        # Format numbers to reasonably clean strings
+        if isinstance(val, (int, float)):
+            if val == int(val):
+                return str(int(val))
+            return f"{val:.1f}"
+        return str(val)
+
+    metadata = report_data.get("metadata", {})
+    thresholds = report_data.get("thresholds", {})
+    cp_model = report_data.get("cp_model", {})
+    confidence = report_data.get("confidence", {})
+
+    # 1. Primary Mapping
+    mapped = {
+        "metadata": {
+            "test_date": metadata.get("test_date", "nieznana"),
+            "session_id": metadata.get("session_id", "nieznany"),
+            "method_version": metadata.get("method_version", "1.0.0"),
+            "pmax_watts": get_val("metadata", "pmax_watts"),
+            "athlete_weight_kg": metadata.get("athlete_weight_kg")
+        },
+        "thresholds": {
+            "vt1_watts": get_val("thresholds", "vt1_watts"),
+            "vt1_hr": get_val("thresholds", "vt1_hr"),
+            "vt1_ve": get_val("thresholds", "vt1_ve"),
+            "vt2_watts": get_val("thresholds", "vt2_watts"),
+            "vt2_hr": get_val("thresholds", "vt2_hr"),
+            "vt2_ve": get_val("thresholds", "vt2_ve"),
+        },
+        "cp_model": {
+            "cp_watts": get_val("cp_model", "cp_watts"),
+            "w_prime_joules": cp_model.get("w_prime_joules"),  # Kept as number for internal calcs
+            # Also provide pre-formatted kJ for layout
+            "w_prime_kj": "brak danych"
+        },
+        "confidence": {
+            "overall_confidence": report_data.get("confidence", {}).get("overall_confidence", 0.0)
+        }
+    }
+
+    # 2. Derived / Formatted Fields
+    w_prime = cp_model.get("w_prime_joules")
+    if w_prime is not None and isinstance(w_prime, (int, float)):
+        mapped["cp_model"]["w_prime_kj"] = f"{w_prime / 1000:.1f}"
+
+    return mapped
+
+
 def build_ramp_pdf(
     report_data: Dict[str, Any],
     figure_paths: Optional[Dict[str, str]] = None,
@@ -59,11 +118,13 @@ def build_ramp_pdf(
     # Setup document with custom page callback for footer
     buffer = BytesIO()
     
-    # Extract data sections
-    metadata = report_data.get("metadata", {})
-    thresholds = report_data.get("thresholds", {})
-    cp_model = report_data.get("cp_model", {})
-    confidence = report_data.get("confidence", {})
+    # Map data with robust fallbacks
+    pdf_data = map_ramp_json_to_pdf_fields(report_data)
+    
+    metadata = pdf_data["metadata"]
+    thresholds = pdf_data["thresholds"]
+    cp_model = pdf_data["cp_model"]
+    confidence = pdf_data["confidence"]
     
     # Store metadata for footer
     session_id = metadata.get("session_id", "")[:8]

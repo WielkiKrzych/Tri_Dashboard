@@ -13,6 +13,7 @@ from reportlab.platypus import (
 from reportlab.platypus.tableofcontents import TableOfContents
 from reportlab.lib.units import mm
 from reportlab.lib.enums import TA_CENTER
+import os
 from typing import Dict, Any, List, Optional
 
 from .styles import (
@@ -151,6 +152,7 @@ def build_page_cover(
 
 def build_page_thresholds(
     thresholds: Dict[str, Any],
+    smo2: Dict[str, Any],
     figure_paths: Dict[str, str],
     styles: Dict
 ) -> List:
@@ -188,16 +190,24 @@ def build_page_thresholds(
     elements.append(Paragraph("Tabela Progów", styles["heading"]))
     
     vt1_watts = thresholds.get("vt1_watts", "brak danych")
+    vt1_range = thresholds.get("vt1_range_watts", "brak danych")
     vt1_hr = thresholds.get("vt1_hr", "brak danych")
     vt1_ve = thresholds.get("vt1_ve", "brak danych")
+    
     vt2_watts = thresholds.get("vt2_watts", "brak danych")
+    vt2_range = thresholds.get("vt2_range_watts", "brak danych")
     vt2_hr = thresholds.get("vt2_hr", "brak danych")
     vt2_ve = thresholds.get("vt2_ve", "brak danych")
     
+    def format_thresh(mid, rng):
+        if mid == "brak danych": return mid
+        if rng == "brak danych": return f"~{mid}"
+        return f"{rng} (środek: {mid})"
+
     data = [
         ["Próg", "Moc [W]", "HR [bpm]", "VE [L/min]"],
-        ["VT1 (Próg tlenowy)", f"{vt1_watts}", f"{vt1_hr}", f"{vt1_ve}"],
-        ["VT2 (Próg beztlenowy)", f"{vt2_watts}", f"{vt2_hr}", f"{vt2_ve}"],
+        ["VT1 (Próg tlenowy)", format_thresh(vt1_watts, vt1_range), f"{vt1_hr}", f"{vt1_ve}"],
+        ["VT2 (Próg beztlenowy)", format_thresh(vt2_watts, vt2_range), f"{vt2_hr}", f"{vt2_ve}"],
     ]
     
     table = Table(data, colWidths=[50 * mm, 35 * mm, 35 * mm, 35 * mm])
@@ -209,13 +219,18 @@ def build_page_thresholds(
     if figure_paths and "smo2_power" in figure_paths:
         elements.extend(_build_chart(figure_paths["smo2_power"], "SmO₂ vs Moc", styles))
     
-    # === SMO2 NOTE ===
-    elements.append(Spacer(1, 4 * mm))
-    note_text = (
+    # === SMO2 ANALYSIS ===
+    elements.append(Paragraph("Analiza SmO₂ (Lokalna)", styles["subheading"]))
+    drop_point = smo2.get("drop_point_watts", "brak danych")
+    interpretation = smo2.get("interpretation", "nie przeanalizowano")
+    
+    smo2_text = (
+        f"<b>Punkt spadku SmO₂:</b> {drop_point} W<br/>"
+        f"<b>Interpretacja:</b> {interpretation}<br/><br/>"
         "<i>ℹ️ SmO₂ LT1/LT2 są sygnałem wspierającym. "
         "Nie zastępują progów wentylacyjnych, ale pomagają je potwierdzić.</i>"
     )
-    elements.append(Paragraph(note_text, styles["small"]))
+    elements.append(Paragraph(smo2_text, styles["body"]))
     
     return elements
 

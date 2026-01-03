@@ -65,7 +65,7 @@ def map_ramp_json_to_pdf_data(report_json: Dict[str, Any]) -> Dict[str, Any]:
         if isinstance(val, (int, float)):
             if val == int(val):
                 return str(int(val))
-            return f"{val:.1f}"
+            return f"{val:.0f}"
         
         # Handle lists (ranges)
         if isinstance(val, list) and len(val) == 2:
@@ -87,10 +87,11 @@ def map_ramp_json_to_pdf_data(report_json: Dict[str, Any]) -> Dict[str, Any]:
     if isinstance(pmax_list, list) and len(pmax_list) == 2:
         pmax_val = f"{pmax_list[1]:.0f}"
     elif "pmax_watts" in meta:
-        pmax_val = str(meta["pmax_watts"])
+        pmax_val = str(round(meta["pmax_watts"]))
     
     if pmax_val == "brak danych":
-         logger.warning("PDF Mapping: Pmax not found in metadata or test_validity")
+         # logger.warning("PDF Mapping: Pmax not found in metadata or test_validity")
+         pass
 
     mapped_meta = {
         "test_date": meta.get("test_date", "brak danych"),
@@ -104,6 +105,11 @@ def map_ramp_json_to_pdf_data(report_json: Dict[str, Any]) -> Dict[str, Any]:
 
     # 2. Thresholds (midpoints and ranges)
     thresholds = report_json.get("thresholds", {})
+    
+    # Debug helper for VE
+    vt1_data = thresholds.get("vt1", {})
+    vt2_data = thresholds.get("vt2", {})
+    
     mapped_thresholds = {
         "vt1_watts": get_num("thresholds", "vt1", ["vt1", "midpoint_watts"]),
         "vt1_hr": get_num("thresholds", "vt1", ["vt1", "midpoint_hr"]),
@@ -138,7 +144,7 @@ def map_ramp_json_to_pdf_data(report_json: Dict[str, Any]) -> Dict[str, Any]:
     }
     w_prime = cp.get("w_prime_joules")
     if w_prime is not None and isinstance(w_prime, (int, float)):
-        mapped_cp["w_prime_kj"] = f"{w_prime / 1000:.1f}"
+        mapped_cp["w_prime_kj"] = f"{w_prime / 1000:.0f}"
 
     # 5. Interpretation & Confidence
     interp = report_json.get("interpretation", {})

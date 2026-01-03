@@ -28,11 +28,11 @@ def generate_all_ramp_figures(
 ) -> Dict[str, str]:
     """Generate all ramp test figures and save to directory.
     
-    Orchestrates generation of all chart types:
+    Orchestrates generation of all four chart types:
     1. Ramp profile (power + HR over time)
     2. SmO₂ vs Power (with LT markers)
     3. Power-Duration Curve (with CP model)
-    4. VE profile (ventilation over time with VT markers)
+    4. VE Profile (Ventilation dynamics)
     
     Args:
         report_data: Canonical JSON report dictionary
@@ -72,6 +72,8 @@ def generate_all_ramp_figures(
     generate_ve_profile_chart(report_data, config, str(ve_path), source_df=source_df)
     paths["ve_profile"] = str(ve_path)
     
+
+    
     return paths
 
 
@@ -82,7 +84,6 @@ __all__ = [
     "generate_smo2_power_chart",
     "generate_pdc_chart",
     "generate_cp_curve_chart",
-    "generate_ve_profile_chart",
     # Configuration
     "FigureConfig",
     "DPI",

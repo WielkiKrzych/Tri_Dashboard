@@ -207,11 +207,18 @@ def build_page_thresholds(
         if mid == "brak danych": return mid
         if rng == "brak danych": return f"~{mid}"
         return f"{rng} (środek: {mid})"
+        
+    def fmt(val):
+        if val == "brak danych": return val
+        try:
+            return f"{float(val):.0f}"
+        except:
+            return str(val)
 
     data = [
         ["Próg", "Moc [W]", "HR [bpm]", "VE [L/min]"],
-        ["VT1 (Próg tlenowy)", format_thresh(vt1_watts, vt1_range), f"{vt1_hr}", f"{vt1_ve}"],
-        ["VT2 (Próg beztlenowy)", format_thresh(vt2_watts, vt2_range), f"{vt2_hr}", f"{vt2_ve}"],
+        ["VT1 (Próg tlenowy)", format_thresh(vt1_watts, vt1_range), fmt(vt1_hr), fmt(vt1_ve)],
+        ["VT2 (Próg beztlenowy)", format_thresh(vt2_watts, vt2_range), fmt(vt2_hr), fmt(vt2_ve)],
     ]
     
     table = Table(data, colWidths=[50 * mm, 35 * mm, 35 * mm, 35 * mm])
@@ -221,7 +228,8 @@ def build_page_thresholds(
     
     # === VE PROFILE CHART ===
     if figure_paths and "ve_profile" in figure_paths:
-        elements.extend(_build_chart(figure_paths["ve_profile"], "Profil Wentylacji", styles))
+        elements.extend(_build_chart(figure_paths["ve_profile"], "Wizualizacja Progów (Wentylacja)", styles))
+        elements.append(Spacer(1, 8 * mm))
     
     # === SMO2 CHART ===
     if figure_paths and "smo2_power" in figure_paths:

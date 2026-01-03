@@ -1,119 +1,156 @@
 """
-VE (Ventilation) Profile Chart.
+VE Profile Chart Generator.
 
-Generates a chart showing VE over time with VT1/VT2 markers.
+Generates ventilation (VE) profile over time with VT1/VT2 thresholds.
+Input: Canonical JSON report + Source DataFrame
+Output: PNG file
+
+Chart shows:
+- Ventilation (VE) on Left Y-Axis
+- Power (Watts) on Right Y-Axis (background)
+- VT1 and VT2 vertical lines
+- Footer with test_id and method version
 """
 import matplotlib.pyplot as plt
-import matplotlib.patches as mpatches
 from typing import Dict, Any, Optional
 import pandas as pd
 
-from .common import FigureConfig, save_figure, COLORS
-
+from .common import (
+    FigureConfig, 
+    apply_common_style, 
+    save_figure,
+    create_empty_figure,
+    COLORS,
+)
 
 def generate_ve_profile_chart(
     report_data: Dict[str, Any],
-    config: FigureConfig,
-    output_path: str,
+    config: Optional[FigureConfig] = None,
+    output_path: Optional[str] = None,
     source_df: Optional[pd.DataFrame] = None
-) -> str:
-    """Generate VE profile chart with VT1/VT2 markers.
+) -> bytes:
+    """Generate VE profile chart with Power overlay.
     
     Args:
-        report_data: Canonical JSON report
+        report_data: Canonical JSON report dictionary
         config: Figure configuration
-        output_path: Output file path
-        source_df: Optional DataFrame with raw VE data
+        output_path: Optional file path to save (None = return bytes)
+        source_df: Optional source DataFrame with raw time/ve/power/hr data
         
     Returns:
-        Path to saved figure
+        PNG bytes
     """
+    config = config or FigureConfig()
+    
+    # Needs source_df for VE data
+    if source_df is None or source_df.empty:
+        fig = create_empty_figure("Brak danych źródłowych (VE, Power)", "Dynamika Wentylacji", config)
+        return save_figure(fig, config, output_path)
+        
+    df = source_df.copy()
+    df.columns = df.columns.str.lower().str.strip()
+    
+    ve_col = next((c for c in ['tymeventilation', 've', 'ventilation'] if c in df.columns), None)
+    power_col = next((c for c in ['watts', 'power', 'watts_smooth_5s'] if c in df.columns), None)
+    hr_col = next((c for c in ['hr', 'heart_rate', 'bpm'] if c in df.columns), None) # Optional, strictly requested VE profile but Power helps context
+    time_col = next((c for c in ['time', 'seconds'] if c in df.columns), None)
+    
+    if not ve_col or not time_col:
+        fig = create_empty_figure("Brak kolumn VE lub czasu", "Dynamika Wentylacji", config)
+        return save_figure(fig, config, output_path)
+    
+    time_data = df[time_col].tolist()
+    ve_data = df[ve_col].fillna(0).tolist()
+    power_data = df[power_col].fillna(0).tolist() if power_col else []
+    
+    # Get threshold values
     thresholds = report_data.get("thresholds", {})
-    test_date = report_data.get("metadata", {}).get("test_date", "")[:10]
+    vt1_data = thresholds.get("vt1", {})
+    vt2_data = thresholds.get("vt2", {})
     
-    # Get VT thresholds
-    vt1 = thresholds.get("vt1", {})
-    vt2 = thresholds.get("vt2", {})
-    vt1_ve = vt1.get("midpoint_ve")
-    vt2_ve = vt2.get("midpoint_ve")
+    # Use step midpoints or timestamps if available? 
+    # Actually, vertical lines at specific WATTS/TIME are tricky if using watts as x-axis?
+    # No, request says "Dynamika Wentylacji" (Ventilation Dynamics) -> usually Time X-Axis.
+    # UI screenshot shows Time on X-Axis.
     
-    # Try to get data from source_df
-    time_data = []
-    ve_data = []
-    power_data = []
+    # Need to find TIME of VT1/VT2.
+    # Thresholds only store WATTS.
+    # We can approximate time by finding first time point where power >= vt_watts.
     
-    if source_df is not None and not source_df.empty:
-        source_df.columns = source_df.columns.str.lower().str.strip()
-        
-        if 'time' in source_df.columns:
-            time_data = source_df['time'].values / 60  # Convert to minutes
-        
-        if 'tymeventilation' in source_df.columns:
-            ve_data = source_df['tymeventilation'].values
-        
-        if 'watts' in source_df.columns:
-            power_data = source_df['watts'].rolling(5, center=True).mean().values
+    vt1_watts = vt1_data.get("midpoint_watts", 0)
+    vt2_watts = vt2_data.get("midpoint_watts", 0)
     
+    vt1_time = None
+    vt2_time = None
+    
+    if power_data and vt1_watts:
+        # Find time of VT1 (simple search)
+        for t, p in zip(time_data, power_data):
+            if p >= vt1_watts:
+                vt1_time = t
+                break
+                
+    if power_data and vt2_watts:
+        for t, p in zip(time_data, power_data):
+            if p >= vt2_watts:
+                vt2_time = t
+                break
+
     # Create figure
-    fig, ax = plt.subplots(figsize=config.figsize, dpi=config.dpi)
+    fig, ax1 = plt.subplots(figsize=config.figsize, dpi=config.dpi)
     
-    if len(time_data) > 0 and len(ve_data) > 0:
-        # Smooth VE data
-        ve_smooth = pd.Series(ve_data).rolling(10, center=True).mean()
-        
-        # Plot VE
-        ax.plot(time_data, ve_smooth, 
-                color=config.get_color("ve"), linewidth=2, 
-                label="VE (L/min)")
-        
-        # Add power as light secondary
-        if len(power_data) > 0:
-            ax2 = ax.twinx()
-            ax2.plot(time_data, power_data, 
-                    color=config.get_color("power"), linewidth=1, alpha=0.4,
-                    label="Moc (W)")
-            ax2.set_ylabel("Moc [W]", fontsize=config.font_size, alpha=0.6)
-            ax2.tick_params(axis='y', labelcolor=config.get_color("power"), alpha=0.6)
-        
-        # VT1 marker
-        if vt1_ve:
-            ax.axhline(y=vt1_ve, color=config.get_color("vt1"), 
-                      linestyle='--', linewidth=2, alpha=0.8)
-            ax.text(time_data[-1] * 0.02, vt1_ve + 2, 
-                   f"VT1: {vt1_ve:.0f} L/min", 
-                   color=config.get_color("vt1"), fontsize=9, fontweight='bold')
-        
-        # VT2 marker
-        if vt2_ve:
-            ax.axhline(y=vt2_ve, color=config.get_color("vt2"), 
-                      linestyle='--', linewidth=2, alpha=0.8)
-            ax.text(time_data[-1] * 0.02, vt2_ve + 2, 
-                   f"VT2: {vt2_ve:.0f} L/min", 
-                   color=config.get_color("vt2"), fontsize=9, fontweight='bold')
-    else:
-        ax.text(0.5, 0.5, "Brak danych VE", 
-               ha='center', va='center', fontsize=12, color='gray',
-               transform=ax.transAxes)
+    # Plot Power on Right Axis (Background)
+    ax2 = ax1.twinx()
+    if power_data:
+        ax2.plot(time_data, power_data, color=COLORS["power"], alpha=0.3, linewidth=1, label="Moc")
+        ax2.fill_between(time_data, power_data, color=COLORS["power"], alpha=0.05)
+        ax2.set_ylabel("Moc [W]", color=COLORS["power"], fontsize=config.font_size)
+        ax2.tick_params(axis='y', labelcolor=COLORS["power"])
     
-    # Axis labels
-    ax.set_xlabel("Czas [min]", fontsize=config.font_size, fontweight='medium')
-    ax.set_ylabel("VE [L/min]", fontsize=config.font_size, fontweight='medium')
+    # Plot VE on Left Axis (Foreground)
+    ax1.plot(time_data, ve_data, color=COLORS["ve"], linewidth=2, label="VE (Wentylacja)")
+    ax1.set_xlabel("Czas [s]", fontsize=config.font_size)
+    ax1.set_ylabel("VE [L/min]", color=COLORS["ve"], fontsize=config.font_size, fontweight='bold')
+    ax1.tick_params(axis='y', labelcolor=COLORS["ve"])
     
+    # Vertical Lines for VT1/VT2
+    if vt1_time:
+        ax1.axvline(x=vt1_time, color=COLORS["vt1"], linestyle='--', alpha=0.9, linewidth=1.5,
+                   label=f"VT1: {int(vt1_watts)} W")
+        # Add label at top
+        ax1.text(vt1_time, max(ve_data)*0.95, f"VT1\n{int(vt1_watts)} W", 
+                 color=COLORS["vt1"], ha='center', va='top', fontweight='bold', 
+                 bbox=dict(facecolor='white', alpha=0.7, edgecolor='none'))
+                 
+    if vt2_time:
+        ax1.axvline(x=vt2_time, color=COLORS["vt2"], linestyle='--', alpha=0.9, linewidth=1.5,
+                   label=f"VT2: {int(vt2_watts)} W")
+        ax1.text(vt2_time, max(ve_data)*0.95, f"VT2\n{int(vt2_watts)} W", 
+                 color=COLORS["vt2"], ha='center', va='top', fontweight='bold',
+                 bbox=dict(facecolor='white', alpha=0.7, edgecolor='none'))
+
     # Title
-    ax.set_title(f"Profil Wentylacji - {test_date}", 
-                fontsize=config.title_size, fontweight='bold', pad=15)
-    
-    # Grid
-    ax.grid(True, alpha=0.3, linestyle='-', linewidth=0.5)
-    
+    metadata = report_data.get("metadata", {})
+    test_date = metadata.get("test_date", "")
+    ax1.set_title(f"Dynamika Wentylacji (VE) – {test_date}", 
+                 fontsize=config.title_size, fontweight='bold', pad=15)
+                 
     # Legend
-    ax.legend(loc='upper left', fontsize=config.font_size - 2, framealpha=0.9)
+    lines1, labels1 = ax1.get_legend_handles_labels()
+    lines2, labels2 = ax2.get_legend_handles_labels()
+    ax1.legend(lines1 + lines2, labels1 + labels2, loc='upper left', fontsize=config.font_size - 1)
     
-    # Tight layout
+    # Common style bits (grid, spines)
+    ax1.grid(True, alpha=0.3, linestyle=':')
+    ax1.spines['top'].set_visible(False)
+    ax2.spines['top'].set_visible(False)
+    
+    # Footer
+    session_id = metadata.get("session_id", "unknown")[:8]
+    fig.text(0.01, 0.01, f"ID: {session_id}", 
+             ha='left', va='bottom', fontsize=8, 
+             color=COLORS["secondary"], style='italic')
+
     plt.tight_layout()
     
-    # Save
-    save_figure(fig, output_path, config)
-    plt.close(fig)
-    
-    return output_path
+    return save_figure(fig, config, output_path)

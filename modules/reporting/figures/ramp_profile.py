@@ -110,7 +110,7 @@ def generate_ramp_profile_chart(
     if vt1_range:
         ax.axhspan(vt1_range[0], vt1_range[1], 
                    alpha=0.25, color=config.get_color("vt1"), 
-                   zorder=1, label=f"VT1: {vt1_watts} W")
+                   zorder=1, label=f"VT1: {int(vt1_watts)} W")
         # Add center line for clarity
         ax.axhline(y=vt1_watts, color=config.get_color("vt1"), 
                    linewidth=1, linestyle=':', alpha=0.7, zorder=2)
@@ -119,7 +119,7 @@ def generate_ramp_profile_chart(
     if vt2_range:
         ax.axhspan(vt2_range[0], vt2_range[1], 
                    alpha=0.25, color=config.get_color("vt2"), 
-                   zorder=1, label=f"VT2: {vt2_watts} W")
+                   zorder=1, label=f"VT2: {int(vt2_watts)} W")
         # Add center line for clarity
         ax.axhline(y=vt2_watts, color=config.get_color("vt2"), 
                    linewidth=1, linestyle=':', alpha=0.7, zorder=2)

@@ -161,8 +161,8 @@ def generate_html_report(data: Dict[str, Any]) -> str:
         html += f"""
         <div class="card">
             <h3>Próg Aerobowy (VT1)</h3>
-            <div class="range-display">{int(range_w[0])} – {int(range_w[1])} W</div>
-            <div class="sub-text">Szacowany środek: ~{int(mid_w)} W</div>
+            <div class="range-display">{range_w[0]} – {range_w[1]} W</div>
+            <div class="sub-text">Szacowany środek: ~{mid_w} W</div>
             {_format_confidence(conf)}
             <p style="font-size: 0.9em; margin-top: 10px;">
                 Górna granica strefy spokojnej wytrzymałości (Z2). Rozmowa staje się trudniejsza, ale wciąż możliwa.
@@ -180,8 +180,8 @@ def generate_html_report(data: Dict[str, Any]) -> str:
         html += f"""
         <div class="card">
             <h3>Próg Beztlenowy (VT2)</h3>
-            <div class="range-display">{int(range_w[0])} – {int(range_w[1])} W</div>
-            <div class="sub-text">Szacowany środek: ~{int(mid_w)} W</div>
+            <div class="range-display">{range_w[0]} – {range_w[1]} W</div>
+            <div class="sub-text">Szacowany środek: ~{mid_w} W</div>
             {_format_confidence(conf)}
             <p style="font-size: 0.9em; margin-top: 10px;">
                 Granica równowagi mleczanowej (FTP/CP). Powyżej tej intensywności zmęczenie narasta gwałtownie.
@@ -237,10 +237,10 @@ def generate_html_report(data: Dict[str, Any]) -> str:
          html += f"""
          <table>
             <tr><th>Strefa</th><th>Zakres (W)</th><th>Cel</th></tr>
-            <tr><td>Z1/Z2 (Wytrzymałość)</td><td>do {int(vt1['range_watts'][0])}</td><td>Baza tlenowa, regeneracja</td></tr>
-            <tr><td>Z3 (Tempo)</td><td>{int(vt1['range_watts'][1])} – {int(vt2['range_watts'][0])}</td><td>Wytrzymałość siłowa, Sweet Spot</td></tr>
-            <tr><td>Z4 (Próg)</td><td>{int(vt2['range_watts'][0])} – {int(vt2['range_watts'][1])}</td><td>Praca nad FTP</td></tr>
-            <tr><td>Z5 (VO2max)</td><td>powyżej {int(vt2['range_watts'][1])}</td><td>Moc maksymalna tlenowa</td></tr>
+            <tr><td>Z1/Z2 (Wytrzymałość)</td><td>do {vt1['range_watts'][0]}</td><td>Baza tlenowa, regeneracja</td></tr>
+            <tr><td>Z3 (Tempo)</td><td>{vt1['range_watts'][1]} – {vt2['range_watts'][0]}</td><td>Wytrzymałość siłowa, Sweet Spot</td></tr>
+            <tr><td>Z4 (Próg)</td><td>{vt2['range_watts'][0]} – {vt2['range_watts'][1]}</td><td>Praca nad FTP</td></tr>
+            <tr><td>Z5 (VO2max)</td><td>powyżej {vt2['range_watts'][1]}</td><td>Moc maksymalna tlenowa</td></tr>
          </table>
          """
     

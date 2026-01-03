@@ -37,6 +37,7 @@ COLORS = {
     "secondary": "#7F8C8D",    # Gray - text, grids
     "power": "#1F77B4",        # Blue
     "hr": "#D62728",           # Red
+    "ve": "#FF7F0E",           # Orange (VE)
     "vt1": "#FFA15A",          # Orange
     "vt2": "#EF553B",          # Red-orange
     "smo2": "#2CA02C",         # Green

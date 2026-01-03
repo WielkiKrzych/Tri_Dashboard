@@ -162,10 +162,17 @@ def detect_vt_from_steps(
         upper_hr = v1_stage['avg_hr']
         central_hr = (lower_hr * 0.3 + upper_hr * 0.7) if lower_hr and upper_hr else upper_hr
         
+        # VE range calculation
+        lower_ve = stages[lower_step_idx]['avg_ve']
+        upper_ve = v1_stage['avg_ve']
+        central_ve = lower_ve * 0.3 + upper_ve * 0.7
+        
         # Create TransitionZone (PRIMARY OUTPUT)
         result.vt1_zone = TransitionZone(
             range_watts=(lower_power, upper_power),
             range_hr=(lower_hr, upper_hr) if lower_hr and upper_hr else None,
+            midpoint_ve=central_ve,
+            range_ve=[lower_ve, upper_ve],
             confidence=total_confidence,
             stability_score=stability_confidence / 0.4 if stability_confidence > 0 else 0.5,
             method="step_ve_slope_range",
@@ -210,10 +217,17 @@ def detect_vt_from_steps(
             upper_hr = v2_stage['avg_hr']
             central_hr = (lower_hr * 0.3 + upper_hr * 0.7) if lower_hr and upper_hr else upper_hr
             
+            # VE
+            lower_ve = stages[lower_step_idx]['avg_ve']
+            upper_ve = v2_stage['avg_ve']
+            central_ve = lower_ve * 0.3 + upper_ve * 0.7
+            
             # Create TransitionZone (PRIMARY OUTPUT)
             result.vt2_zone = TransitionZone(
                 range_watts=(lower_power, upper_power),
                 range_hr=(lower_hr, upper_hr) if lower_hr and upper_hr else None,
+                midpoint_ve=central_ve,
+                range_ve=[lower_ve, upper_ve],
                 confidence=total_confidence,
                 stability_score=stability_confidence / 0.4 if stability_confidence > 0 else 0.5,
                 method="step_ve_slope_range",

@@ -357,14 +357,13 @@ def integrate_signals(
     if vt_result and vt_result.vt1_zone:
         zone = vt_result.vt1_zone
         result.vt1 = ThresholdRange(
-            lower_watts=round(zone.range_watts[0]),
-            upper_watts=round(zone.range_watts[1]),
-            midpoint_watts=round(zone.midpoint_watts),
-            confidence=round(zone.confidence, 2),
-            lower_hr=round(zone.range_hr[0]) if zone.range_hr else None,
-            upper_hr=round(zone.range_hr[1]) if zone.range_hr else None,
-            midpoint_hr=round(zone.midpoint_hr) if zone.midpoint_hr else None,
-            midpoint_ve=round(vt_result.vt1_ve, 1) if vt_result.vt1_ve else None,
+            lower_watts=zone.range_watts[0],
+            upper_watts=zone.range_watts[1],
+            midpoint_watts=zone.midpoint_watts,
+            confidence=zone.confidence,
+            lower_hr=zone.range_hr[0] if zone.range_hr else None,
+            upper_hr=zone.range_hr[1] if zone.range_hr else None,
+            midpoint_hr=zone.midpoint_hr,
             sources=["VE"],
             method=zone.method
         )
@@ -374,14 +373,13 @@ def integrate_signals(
     if vt_result and vt_result.vt2_zone:
         zone = vt_result.vt2_zone
         result.vt2 = ThresholdRange(
-            lower_watts=round(zone.range_watts[0]),
-            upper_watts=round(zone.range_watts[1]),
-            midpoint_watts=round(zone.midpoint_watts),
-            confidence=round(zone.confidence, 2),
-            lower_hr=round(zone.range_hr[0]) if zone.range_hr else None,
-            upper_hr=round(zone.range_hr[1]) if zone.range_hr else None,
-            midpoint_hr=round(zone.midpoint_hr) if zone.midpoint_hr else None,
-            midpoint_ve=round(vt_result.vt2_ve, 1) if vt_result.vt2_ve else None,
+            lower_watts=zone.range_watts[0],
+            upper_watts=zone.range_watts[1],
+            midpoint_watts=zone.midpoint_watts,
+            confidence=zone.confidence,
+            lower_hr=zone.range_hr[0] if zone.range_hr else None,
+            upper_hr=zone.range_hr[1] if zone.range_hr else None,
+            midpoint_hr=zone.midpoint_hr,
             sources=["VE"],
             method=zone.method
         )
@@ -520,19 +518,19 @@ def build_result(
         # Store SmO₂ drop info for reference (NOT as independent threshold)
         if smo2.smo2_1_zone:
             result.smo2_lt1 = ThresholdRange(
-                lower_watts=round(smo2.smo2_1_zone.range_watts[0]),
-                upper_watts=round(smo2.smo2_1_zone.range_watts[1]),
-                midpoint_watts=round(smo2.smo2_1_zone.midpoint_watts),
-                confidence=round(smo2.smo2_1_zone.confidence, 2),
+                lower_watts=smo2.smo2_1_zone.range_watts[0],
+                upper_watts=smo2.smo2_1_zone.range_watts[1],
+                midpoint_watts=smo2.smo2_1_zone.midpoint_watts,
+                confidence=smo2.smo2_1_zone.confidence,
                 sources=["SmO2 (LOCAL)"],
                 method="local_signal_reference"  # NOT a threshold
             )
         if smo2.smo2_2_zone:
             result.smo2_lt2 = ThresholdRange(
-                lower_watts=round(smo2.smo2_2_zone.range_watts[0]),
-                upper_watts=round(smo2.smo2_2_zone.range_watts[1]),
-                midpoint_watts=round(smo2.smo2_2_zone.midpoint_watts),
-                confidence=round(smo2.smo2_2_zone.confidence, 2),
+                lower_watts=smo2.smo2_2_zone.range_watts[0],
+                upper_watts=smo2.smo2_2_zone.range_watts[1],
+                midpoint_watts=smo2.smo2_2_zone.midpoint_watts,
+                confidence=smo2.smo2_2_zone.confidence,
                 sources=["SmO2 (LOCAL)"],
                 method="local_signal_reference"
             )

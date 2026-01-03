@@ -157,11 +157,11 @@ def save_ramp_test_report(
             raise FileExistsError(f"Ramp Test Report already exists and immutable: {file_path}")
     
     # 6. Check validity for PDF generation
-    validity = final_json.get("validity", {})
-    test_validity = validity.get("overall", "unknown")
+    validity_section = final_json.get("test_validity", {})
+    test_validity_status = validity_section.get("status", "unknown")
     
-    # Block PDF ONLY if TestValidity == invalid
-    should_generate_pdf = test_validity != "invalid"
+    # Block PDF ONLY if test_validity_status == "invalid"
+    should_generate_pdf = test_validity_status != "invalid"
     
     # Determine if conditional (for PDF warning)
     is_conditional = session_type == SessionType.RAMP_TEST_CONDITIONAL
@@ -198,12 +198,6 @@ def _auto_generate_pdf(json_path: str, report_data: Dict, is_conditional: bool =
     Called automatically after save_ramp_test_report.
     PDF is saved next to JSON with same basename.
     
-    Works for:
-    - RAMP_TEST
-    - RAMP_TEST_CONDITIONAL
-    
-    Does NOT generate for TRAINING.
-    
     Args:
         json_path: Absolute path to saved JSON
         report_data: The report data dictionary
@@ -212,7 +206,7 @@ def _auto_generate_pdf(json_path: str, report_data: Dict, is_conditional: bool =
     Returns:
         PDF path if successful, None otherwise
     """
-    from .pdf import build_ramp_pdf, PDFConfig
+    from .pdf import generate_ramp_pdf, PDFConfig
     from .figures import generate_all_ramp_figures, FigureConfig
     import tempfile
     
@@ -223,21 +217,17 @@ def _auto_generate_pdf(json_path: str, report_data: Dict, is_conditional: bool =
     temp_dir = tempfile.mkdtemp()
     method_version = report_data.get("metadata", {}).get("method_version", "1.0.0")
     fig_config = FigureConfig(method_version=method_version)
-    
-    print(f"Generating figures for PDF...")
     figure_paths = generate_all_ramp_figures(report_data, temp_dir, fig_config)
     
     # Configure PDF with conditional flag
     pdf_config = PDFConfig(is_conditional=is_conditional)
     
-    # Generate PDF using the new builder
-    print(f"Building PDF report...")
-    build_ramp_pdf(report_data, figure_paths, str(pdf_path), pdf_config)
+    # Generate PDF
+    generate_ramp_pdf(report_data, figure_paths, str(pdf_path), pdf_config)
     
-    print(f"✅ Ramp Test PDF generated: {pdf_path}")
+    print(f"Ramp Test PDF generated: {pdf_path}")
     
     return str(pdf_path.absolute())
-
 
 
 
@@ -330,7 +320,8 @@ def update_index_pdf_path(base_dir: str, session_id: str, pdf_path: str):
 
 def generate_and_save_pdf(
     json_path: Union[str, Path],
-    output_base_dir: str = "reports/ramp_tests"
+    output_base_dir: str = "reports/ramp_tests",
+    is_conditional: bool = False
 ) -> Optional[str]:
     """
     Generate PDF from existing JSON report and save alongside it.
@@ -343,11 +334,12 @@ def generate_and_save_pdf(
     Args:
         json_path: Path to the canonical JSON report
         output_base_dir: Base directory for index update
+        is_conditional: Whether to include conditional warning
         
     Returns:
         Path to generated PDF or None on failure
     """
-    from .pdf_generator import generate_ramp_pdf
+    from .pdf import generate_ramp_pdf, PDFConfig
     from .figures import generate_all_ramp_figures, FigureConfig
     import tempfile
     
@@ -368,8 +360,11 @@ def generate_and_save_pdf(
     # Generate PDF path (same name as JSON but .pdf)
     pdf_path = json_path.with_suffix(".pdf")
     
+    # Configure PDF
+    pdf_config = PDFConfig(is_conditional=is_conditional)
+    
     # Generate PDF (can overwrite existing)
-    generate_ramp_pdf(report_data, figure_paths, str(pdf_path))
+    generate_ramp_pdf(report_data, figure_paths, str(pdf_path), pdf_config)
     
     # Update index with PDF path
     session_id = report_data.get("metadata", {}).get("session_id", "")

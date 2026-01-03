@@ -27,7 +27,8 @@ from .common import (
 def generate_ramp_profile_chart(
     report_data: Dict[str, Any],
     config: Optional[FigureConfig] = None,
-    output_path: Optional[str] = None
+    output_path: Optional[str] = None,
+    source_df: Optional["pd.DataFrame"] = None
 ) -> bytes:
     """Generate ramp profile chart with VT1/VT2 as horizontal range bands.
     
@@ -38,28 +39,56 @@ def generate_ramp_profile_chart(
         report_data: Canonical JSON report dictionary
         config: Figure configuration
         output_path: Optional file path to save (None = return bytes)
+        source_df: Optional source DataFrame with raw time/power/hr data
         
     Returns:
         PNG/SVG bytes
     """
     config = config or FigureConfig()
     
-    # Extract data from report
+    # Extract data from source_df if available, otherwise from report
     time_series = report_data.get("time_series", {})
     thresholds = report_data.get("thresholds", {})
     metadata = report_data.get("metadata", {})
     
-    time_data = time_series.get("time_sec", [])
-    power_data = time_series.get("power_watts", [])
+    # Try to get data from source_df first
+    if source_df is not None and len(source_df) > 0:
+        # Normalize column names
+        df = source_df.copy()
+        df.columns = df.columns.str.lower().str.strip()
+        
+        # Get time data
+        if 'time' in df.columns:
+            time_data = df['time'].tolist()
+        else:
+            time_data = list(range(len(df)))
+        
+        # Get power data
+        power_col = None
+        for col in ['watts', 'power', 'watts_smooth_5s']:
+            if col in df.columns:
+                power_col = col
+                break
+        
+        if power_col:
+            power_data = df[power_col].fillna(0).tolist()
+        else:
+            power_data = []
+    else:
+        # Fallback to time_series from JSON
+        time_data = time_series.get("time_sec", [])
+        power_data = time_series.get("power_watts", [])
     
     # Handle missing data
     if not power_data or not time_data:
         fig = create_empty_figure("Brak danych mocy", "Profil Ramp Test", config)
         return save_figure(fig, config, output_path)
     
-    # Get threshold values
-    vt1_watts = thresholds.get("vt1_watts", 0)
-    vt2_watts = thresholds.get("vt2_watts", 0)
+    # Get threshold values from thresholds dict (nested structure)
+    vt1_data = thresholds.get("vt1", {})
+    vt2_data = thresholds.get("vt2", {})
+    vt1_watts = vt1_data.get("midpoint_watts", 0) if isinstance(vt1_data, dict) else 0
+    vt2_watts = vt2_data.get("midpoint_watts", 0) if isinstance(vt2_data, dict) else 0
     
     # Define VT ranges (±5% for visual band width)
     vt1_range = (vt1_watts * 0.95, vt1_watts * 1.05) if vt1_watts else None

@@ -97,7 +97,8 @@ def render_vent_thresholds_tab(target_df, training_notes, uploaded_file_name, cp
                     notes=f"Auto-save from UI. File: {uploaded_file_name}",
                     session_type=session_type,
                     ramp_confidence=ramp_confidence,
-                    source_file=uploaded_file_name
+                    source_file=uploaded_file_name,
+                    source_df=target_df
                 )
                 session_id = save_result.get('session_id', 'unknown')
                 saved_path = save_result.get('path', '')

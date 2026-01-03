@@ -26,7 +26,8 @@ from .common import (
 def generate_smo2_power_chart(
     report_data: Dict[str, Any],
     config: Optional[FigureConfig] = None,
-    output_path: Optional[str] = None
+    output_path: Optional[str] = None,
+    source_df: Optional["pd.DataFrame"] = None
 ) -> bytes:
     """Generate SmO₂ vs Power chart with LT1/LT2 range bands.
     
@@ -37,6 +38,7 @@ def generate_smo2_power_chart(
         report_data: Canonical JSON report dictionary
         config: Figure configuration
         output_path: Optional file path to save
+        source_df: Optional source DataFrame with raw power/smo2 data
         
     Returns:
         PNG/SVG bytes
@@ -47,23 +49,51 @@ def generate_smo2_power_chart(
     time_series = report_data.get("time_series", {})
     thresholds = report_data.get("thresholds", {})
     metadata = report_data.get("metadata", {})
+    smo2_context = report_data.get("smo2_context", {})
     
-    power_data = time_series.get("power_watts", [])
-    smo2_data = time_series.get("smo2_pct", [])
+    # Try to get data from source_df first
+    if source_df is not None and len(source_df) > 0:
+        df = source_df.copy()
+        df.columns = df.columns.str.lower().str.strip()
+        
+        # Get power data
+        power_col = None
+        for col in ['watts', 'power', 'watts_smooth_5s']:
+            if col in df.columns:
+                power_col = col
+                break
+        
+        # Get smo2 data
+        smo2_col = None
+        for col in ['smo2', 'smo2_pct', 'muscle_oxygen']:
+            if col in df.columns:
+                smo2_col = col
+                break
+        
+        if power_col and smo2_col:
+            # Filter out NaN values
+            mask = ~(df[power_col].isna() | df[smo2_col].isna())
+            power_data = df.loc[mask, power_col].tolist()
+            smo2_data = df.loc[mask, smo2_col].tolist()
+        else:
+            power_data = []
+            smo2_data = []
+    else:
+        # Fallback to time_series from JSON
+        power_data = time_series.get("power_watts", [])
+        smo2_data = time_series.get("smo2_pct", [])
     
     # Handle missing data
     if not power_data or not smo2_data:
         fig = create_empty_figure("Brak danych SmO₂", "SmO₂ vs Moc", config)
         return save_figure(fig, config, output_path)
     
-    lt1_watts = thresholds.get("smo2_lt1_watts", 0)
-    lt2_watts = thresholds.get("smo2_lt2_watts", 0)
-    lt1_smo2 = thresholds.get("smo2_lt1_value", 0)
-    lt2_smo2 = thresholds.get("smo2_lt2_value", 0)
+    # Get SmO2 drop point from smo2_context
+    drop_point = smo2_context.get("drop_point", {})
+    lt1_watts = drop_point.get("midpoint_watts", 0) if drop_point else 0
     
     # Define LT ranges (±5% for visual band width)
     lt1_range = (lt1_watts * 0.95, lt1_watts * 1.05) if lt1_watts else None
-    lt2_range = (lt2_watts * 0.95, lt2_watts * 1.05) if lt2_watts else None
     
     # Create figure
     fig, ax = plt.subplots(figsize=config.figsize, dpi=config.dpi)
@@ -72,25 +102,11 @@ def generate_smo2_power_chart(
     ax.scatter(power_data, smo2_data, c=config.get_color("smo2"), 
                alpha=0.4, s=12, label="SmO₂", zorder=3, edgecolors='none')
     
-    # LT1 vertical range band (semi-transparent)
+    # LT1 vertical range band (semi-transparent) - SmO2 drop point
     if lt1_range:
         ax.axvspan(lt1_range[0], lt1_range[1], 
                    alpha=0.2, color=config.get_color("lt1"), 
-                   zorder=1, label=f"LT1: {lt1_watts} W")
-        # Marker point at LT1
-        if lt1_smo2 > 0:
-            ax.scatter([lt1_watts], [lt1_smo2], c=config.get_color("lt1"), 
-                       s=120, zorder=5, marker='o', edgecolors='white', linewidths=2)
-    
-    # LT2 vertical range band (semi-transparent)
-    if lt2_range:
-        ax.axvspan(lt2_range[0], lt2_range[1], 
-                   alpha=0.2, color=config.get_color("lt2"), 
-                   zorder=1, label=f"LT2: {lt2_watts} W")
-        # Marker point at LT2
-        if lt2_smo2 > 0:
-            ax.scatter([lt2_watts], [lt2_smo2], c=config.get_color("lt2"), 
-                       s=120, zorder=5, marker='o', edgecolors='white', linewidths=2)
+                   zorder=1, label=f"SmO₂ Drop: {int(lt1_watts)} W")
     
     # Axis labels
     ax.set_xlabel("Moc [W]", fontsize=config.font_size, fontweight='medium')

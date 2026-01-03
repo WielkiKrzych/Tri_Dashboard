@@ -22,7 +22,8 @@ from .cp_curve import generate_cp_curve_chart, generate_pdc_chart
 def generate_all_ramp_figures(
     report_data: Dict[str, Any],
     output_dir: str,
-    config: Optional[FigureConfig] = None
+    config: Optional[FigureConfig] = None,
+    source_df: Optional["pd.DataFrame"] = None
 ) -> Dict[str, str]:
     """Generate all ramp test figures and save to directory.
     
@@ -35,6 +36,7 @@ def generate_all_ramp_figures(
         report_data: Canonical JSON report dictionary
         output_dir: Directory to save figures
         config: Figure configuration
+        source_df: Optional source DataFrame with raw data (time, power, hr, smo2)
         
     Returns:
         Dict mapping figure name to file path
@@ -50,12 +52,12 @@ def generate_all_ramp_figures(
     
     # 1. Ramp profile
     ramp_path = output_path / f"ramp_profile_{session_id}.{ext}"
-    generate_ramp_profile_chart(report_data, config, str(ramp_path))
+    generate_ramp_profile_chart(report_data, config, str(ramp_path), source_df=source_df)
     paths["ramp_profile"] = str(ramp_path)
     
     # 2. SmO2 vs Power
     smo2_path = output_path / f"smo2_power_{session_id}.{ext}"
-    generate_smo2_power_chart(report_data, config, str(smo2_path))
+    generate_smo2_power_chart(report_data, config, str(smo2_path), source_df=source_df)
     paths["smo2_power"] = str(smo2_path)
     
     # 3. PDC / CP Curve

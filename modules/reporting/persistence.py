@@ -83,7 +83,8 @@ def save_ramp_test_report(
     dev_mode: bool = False,
     session_type = None,
     ramp_confidence: float = 0.0,
-    source_file: Optional[str] = None
+    source_file: Optional[str] = None,
+    source_df = None
 ) -> Dict:
     """
     Save Ramp Test result to JSON file.
@@ -107,6 +108,7 @@ def save_ramp_test_report(
         session_type: SessionType enum (must be RAMP_TEST to save)
         ramp_confidence: Classification confidence (must be >= threshold)
         source_file: Original CSV filename for deduplication
+        source_df: Optional source DataFrame for chart generation
         
     Returns:
         Dict with path, session_id, or None if gated
@@ -213,7 +215,7 @@ def save_ramp_test_report(
     # 7. Auto-generate PDF if valid
     if should_generate_pdf:
         try:
-            pdf_path = _auto_generate_pdf(str(file_path.absolute()), final_json, is_conditional)
+            pdf_path = _auto_generate_pdf(str(file_path.absolute()), final_json, is_conditional, source_df=source_df)
         except Exception as e:
             # PDF failure does NOT affect JSON or index
             print(f"Warning: PDF generation failed for {session_id}: {e}")
@@ -233,7 +235,7 @@ def save_ramp_test_report(
     }
 
 
-def _auto_generate_pdf(json_path: str, report_data: Dict, is_conditional: bool = False) -> Optional[str]:
+def _auto_generate_pdf(json_path: str, report_data: Dict, is_conditional: bool = False, source_df = None) -> Optional[str]:
     """
     Auto-generate PDF from JSON report.
     
@@ -244,6 +246,7 @@ def _auto_generate_pdf(json_path: str, report_data: Dict, is_conditional: bool =
         json_path: Absolute path to saved JSON
         report_data: The report data dictionary
         is_conditional: If True, PDF will include conditional warning
+        source_df: Optional DataFrame with raw data for chart generation
         
     Returns:
         PDF path if successful, None otherwise
@@ -259,7 +262,9 @@ def _auto_generate_pdf(json_path: str, report_data: Dict, is_conditional: bool =
     temp_dir = tempfile.mkdtemp()
     method_version = report_data.get("metadata", {}).get("method_version", "1.0.0")
     fig_config = FigureConfig(method_version=method_version)
-    figure_paths = generate_all_ramp_figures(report_data, temp_dir, fig_config)
+    
+    # Pass source_df for chart generation
+    figure_paths = generate_all_ramp_figures(report_data, temp_dir, fig_config, source_df=source_df)
     
     # Configure PDF with conditional flag
     pdf_config = PDFConfig(is_conditional=is_conditional)
@@ -396,9 +401,12 @@ def generate_and_save_pdf(
     report_data = load_ramp_test_report(json_path)
     
     # Generate figure paths
+    # NOTE: Charts will show "Brak danych" since source_df is not available
+    # during regeneration from JSON. Full charts are only generated during 
+    # initial save when DataFrame is available.
     temp_dir = tempfile.mkdtemp()
     fig_config = FigureConfig(method_version=report_data.get("metadata", {}).get("method_version", "1.0.0"))
-    figure_paths = generate_all_ramp_figures(report_data, temp_dir, fig_config)
+    figure_paths = generate_all_ramp_figures(report_data, temp_dir, fig_config, source_df=None)
     
     # Generate PDF path (same name as JSON but .pdf)
     pdf_path = json_path.with_suffix(".pdf")

@@ -220,8 +220,12 @@ if uploaded_file is not None:
         # Build display message based on session type
         if session_type == SessionType.RAMP_TEST and ramp_classification:
             confidence = ramp_classification.confidence
-            bg_color = "rgba(46, 204, 113, 0.2)" if confidence >= RAMP_CONFIDENCE_THRESHOLD else "rgba(241, 196, 15, 0.2)"
+            bg_color = "rgba(46, 204, 113, 0.2)"
             msg = f"Rozpoznano: <b>Ramp Test</b> (confidence: {confidence:.2f})"
+        elif session_type == SessionType.RAMP_TEST_CONDITIONAL and ramp_classification:
+            confidence = ramp_classification.confidence
+            bg_color = "rgba(241, 196, 15, 0.2)"
+            msg = f"Rozpoznano: <b>Ramp Test (warunkowo)</b> (confidence: {confidence:.2f})"
         elif session_type == SessionType.TRAINING:
             bg_color = "rgba(52, 152, 219, 0.2)"
             if ramp_classification and not ramp_classification.is_ramp:

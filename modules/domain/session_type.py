@@ -19,10 +19,13 @@ RAMP_CONFIDENCE_THRESHOLD = 0.75
 class SessionType(Enum):
     """Domain enum for classifying training session types."""
     RAMP_TEST = auto()
+    RAMP_TEST_CONDITIONAL = auto()
     TRAINING = auto()
     UNKNOWN = auto()
     
     def __str__(self) -> str:
+        if self == SessionType.RAMP_TEST_CONDITIONAL:
+            return "Ramp Test (warunkowo)"
         return self.name.replace("_", " ").title()
     
     @property
@@ -30,6 +33,7 @@ class SessionType(Enum):
         """Return an emoji representation of the session type."""
         return {
             SessionType.RAMP_TEST: "📈",
+            SessionType.RAMP_TEST_CONDITIONAL: "⚠️",
             SessionType.TRAINING: "🚴",
             SessionType.UNKNOWN: "❓",
         }.get(self, "❓")
@@ -51,6 +55,7 @@ class RampClassificationResult:
     reason: str
     criteria_met: List[str]
     criteria_failed: List[str]
+    suggested_type: Optional['SessionType'] = None
 
 
 def classify_ramp_test(power: pd.Series, step_duration_range: Tuple[int, int] = (30, 60)) -> RampClassificationResult:
@@ -159,12 +164,21 @@ def classify_ramp_test(power: pd.Series, step_duration_range: Tuple[int, int] = 
     met_count = len(criteria_met)
     confidence = met_count / total_criteria
     
-    # Must meet at least 3 out of 4 criteria
-    is_ramp = met_count >= 3
+    # Decisions:
+    # 3-4 criteria -> RAMP_TEST (Confidence >= 0.75)
+    # 2 criteria -> RAMP_TEST_CONDITIONAL (Confidence 0.50) if key criteria met
+    # < 2 criteria -> TRAINING
     
-    if is_ramp:
+    is_ramp = met_count >= 2
+    
+    if met_count >= 3:
+        status = SessionType.RAMP_TEST
         reason = f"Ramp Test wykryty ({met_count}/{total_criteria} kryteriów)"
+    elif met_count == 2:
+        status = SessionType.RAMP_TEST_CONDITIONAL
+        reason = f"Wykryto Ramp Test (warunkowo) - odchylenia w profilu ({met_count}/{total_criteria})"
     else:
+        status = SessionType.TRAINING
         failed_str = ", ".join(criteria_failed)
         reason = f"NIE jest Ramp Testem. Niespełnione: {failed_str}"
     
@@ -173,7 +187,8 @@ def classify_ramp_test(power: pd.Series, step_duration_range: Tuple[int, int] = 
         confidence=confidence,
         reason=reason,
         criteria_met=criteria_met,
-        criteria_failed=criteria_failed
+        criteria_failed=criteria_failed,
+        suggested_type=status
     )
 
 
@@ -330,8 +345,8 @@ def classify_session_type(
         
         if len(power) >= 300:  # At least 5 minutes
             ramp_result = classify_ramp_test(power)
-            if ramp_result.is_ramp and ramp_result.confidence >= 0.75:
-                return SessionType.RAMP_TEST
+            if ramp_result.is_ramp:
+                return ramp_result.suggested_type
     
     # Rule 3: Default to Training if valid power data exists
     if "watts" in df.columns or "power" in df.columns:

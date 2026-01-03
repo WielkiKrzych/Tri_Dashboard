@@ -75,15 +75,19 @@ def save_ramp_test_report(
         ValueError: If called without RAMP_TEST session type
     """
     # --- GATING: Check SessionType and confidence ---
-    from modules.domain import SessionType, RAMP_CONFIDENCE_THRESHOLD
+    from modules.domain import SessionType
     
-    if session_type is not None and session_type != SessionType.RAMP_TEST:
+    # Allowed types for saving
+    ALLOWED_TYPES = [SessionType.RAMP_TEST, SessionType.RAMP_TEST_CONDITIONAL]
+    
+    if session_type is not None and session_type not in ALLOWED_TYPES:
         # NOT a ramp test - do not save
-        return {"gated": True, "reason": f"SessionType is {session_type}, not RAMP_TEST"}
+        return {"gated": True, "reason": f"SessionType is {session_type}, not a Ramp Test"}
     
-    if ramp_confidence > 0 and ramp_confidence < RAMP_CONFIDENCE_THRESHOLD:
-        # Confidence too low
-        return {"gated": True, "reason": f"Confidence {ramp_confidence:.2f} < threshold {RAMP_CONFIDENCE_THRESHOLD}"}
+    # Minimum confidence for any ramp save is 0.5 (2/4 criteria)
+    if ramp_confidence > 0 and ramp_confidence < 0.5:
+        # Confidence too low even for conditional
+        return {"gated": True, "reason": f"Confidence {ramp_confidence:.2f} too low to save report"}
     # 1. Prepare data dictionary
     data = result.to_dict()
     

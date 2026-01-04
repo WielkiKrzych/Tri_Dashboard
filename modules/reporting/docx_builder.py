@@ -44,6 +44,107 @@ def build_ramp_docx(
         smo2_manual = data['smo2_manual']
         conf = data['confidence']
         kpi = data['kpi']
+        exec_summary = data.get('executive_summary', {})
+
+        # === PAGE 0: EXECUTIVE PHYSIO SUMMARY (PREMIUM) ===
+        doc.add_heading("EXECUTIVE PHYSIO SUMMARY", 0)
+        
+        limiter = exec_summary.get("limiter", {})
+        signal_matrix = exec_summary.get("signal_matrix", {})
+        confidence_panel = exec_summary.get("confidence_panel", {})
+        training_cards = exec_summary.get("training_cards", [])
+        
+        limiter_name = limiter.get("name", "NIEZNANY")
+        limiter_icon = limiter.get("icon", "⚖️")
+        limiter_subtitle = limiter.get("subtitle", "")
+        verdict = limiter.get("verdict", "")
+        interpretation = limiter.get("interpretation", [])
+        
+        # 1. STATUS + DATE
+        p_status = doc.add_paragraph()
+        run_status = p_status.add_run(f"{limiter_icon} {limiter_name}")
+        run_status.bold = True
+        run_status.font.size = Pt(14)
+        p_status.add_run(f"   |   Data: {meta['test_date']}")
+        
+        # 2. PHYSIOLOGICAL VERDICT
+        doc.add_heading("PRIMARY LIMITER", 2)
+        p_verdict = doc.add_paragraph()
+        p_verdict.add_run(verdict).bold = True
+        
+        for line in interpretation[:3]:
+            doc.add_paragraph(f"• {line}")
+        
+        # 3. SIGNAL AGREEMENT MATRIX
+        doc.add_heading("SIGNAL AGREEMENT MATRIX", 2)
+        
+        signals = signal_matrix.get("signals", [])
+        agreement_idx = signal_matrix.get("agreement_index", 1.0)
+        agreement_label = signal_matrix.get("agreement_label", "Wysoka")
+        
+        sig_table = doc.add_table(rows=1, cols=4)
+        sig_table.style = 'Table Grid'
+        sig_hdr = sig_table.rows[0].cells
+        sig_hdr[0].text = "Sygnał"
+        sig_hdr[1].text = "Status"
+        sig_hdr[2].text = "Uwagi"
+        sig_hdr[3].text = "Index"
+        
+        for i, sig in enumerate(signals):
+            row = sig_table.add_row().cells
+            row[0].text = f"{sig.get('icon', '')} {sig.get('name', '')}"
+            status = sig.get("status", "ok")
+            row[1].text = "✓ OK" if status == "ok" else ("⚠ WARN" if status == "warning" else "✗ CONFLICT")
+            row[2].text = sig.get("note", "")[:40]
+            if i == 0:
+                row[3].text = f"{agreement_idx:.2f} ({agreement_label})"
+            else:
+                row[3].text = ""
+        
+        # 4. TEST CONFIDENCE
+        doc.add_heading("TEST CONFIDENCE", 2)
+        
+        overall_score = confidence_panel.get("overall_score", 0)
+        breakdown = confidence_panel.get("breakdown", {})
+        limiting_factor = confidence_panel.get("limiting_factor", "---")
+        score_label = confidence_panel.get("label", "---")
+        
+        p_conf = doc.add_paragraph()
+        run_conf = p_conf.add_run(f"{overall_score}% ({score_label})")
+        run_conf.bold = True
+        run_conf.font.size = Pt(18)
+        
+        conf_table = doc.add_table(rows=4, cols=2)
+        conf_table.style = 'Table Grid'
+        for i, (key, label) in enumerate([("ve_stability", "VE Stability"), ("hr_lag", "HR Response"), ("smo2_noise", "SmO₂ Quality"), ("protocol_quality", "Protocol")]):
+            conf_table.rows[i].cells[0].text = label
+            conf_table.rows[i].cells[1].text = f"{breakdown.get(key, 50)}%"
+        
+        doc.add_paragraph(f"Ogranicza: {limiting_factor}")
+        
+        # 5. TRAINING DECISIONS
+        doc.add_heading("TRAINING DECISIONS", 2)
+        
+        for i, card in enumerate(training_cards[:3], 1):
+            strategy = card.get("strategy_name", "---")
+            power = card.get("power_range", "---")
+            volume = card.get("volume", "---")
+            goal = card.get("adaptation_goal", "---")
+            response = card.get("expected_response", "---")
+            risk = card.get("risk_level", "low")
+            risk_label = "NISKIE" if risk == "low" else ("ŚREDNIE" if risk == "medium" else "WYSOKIE")
+            
+            p_card = doc.add_paragraph()
+            run_title = p_card.add_run(f"{i}. {strategy}")
+            run_title.bold = True
+            run_title.font.size = Pt(11)
+            
+            doc.add_paragraph(f"Moc: {power}  |  Objętość: {volume}")
+            doc.add_paragraph(f"Cel: {goal}")
+            p_risk = doc.add_paragraph(f"Expected: {response}  |  Ryzyko: {risk_label}")
+            p_risk.runs[0].font.size = Pt(9)
+        
+        doc.add_page_break()
 
         # === PAGE 1: OKŁADKA / PODSUMOWANIE ===
         doc.add_heading("Raport z Testu Ramp", 0)

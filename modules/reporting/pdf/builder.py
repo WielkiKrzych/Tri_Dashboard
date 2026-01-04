@@ -36,7 +36,9 @@ from .layout import (
     build_page_thermal,
     build_page_limiters,
     build_page_extra,
+    build_page_executive_summary,
 )
+from ...calculations.executive_summary import generate_executive_summary
 
 
 # Setup logger
@@ -185,7 +187,14 @@ def map_ramp_json_to_pdf_data(report_json: Dict[str, Any]) -> Dict[str, Any]:
         "cp_model": mapped_cp,
         "smo2_manual": mapped_smo2_manual,
         "confidence": mapped_confidence,
-        "kpi": mapped_kpi
+        "kpi": mapped_kpi,
+        "executive_summary": generate_executive_summary(
+            thresholds=mapped_thresholds,
+            smo2_manual=mapped_smo2_manual,
+            cp_model=mapped_cp,
+            kpi=mapped_kpi,
+            confidence=mapped_confidence
+        )
     }
 
 
@@ -256,6 +265,14 @@ def build_ramp_pdf(
     
     # Build story (list of flowables)
     story = []
+    
+    # === PAGE 0: EXECUTIVE PHYSIO SUMMARY ===
+    story.extend(build_page_executive_summary(
+        executive_data=pdf_data.get("executive_summary", {}),
+        metadata=metadata,
+        styles=styles
+    ))
+    story.append(PageBreak())
     
     # === PAGE 1: Okładka / Podsumowanie ===
     story.extend(build_page_cover(

@@ -4,37 +4,48 @@
 ![Streamlit](https://img.shields.io/badge/Streamlit-1.30%2B-FF4B4B)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
-Tri_Dashboard is a specialized analytical platform designed for sports scientists, coaches, and advanced athletes. It provides **probabilistic physiological modeling** with a focus on raw data transparency, multi-sensor integration, and automated coaching insights.
+Tri_Dashboard is a specialized analytical platform designed for sports scientists, coaches, and advanced athletes. It provides **probabilistic physiological modeling** with a focus on raw data transparency, multi-sensor integration (SmO2, VO2 Master), and automated coaching insights.
 
 ## 🚀 Key Modules & Features
 
-### 📈 Overview & KPI
-- **KPI Dashboard**: Real-time tracking of VO2max (est), Training Load (TSS/IF), and metabolic efficiency.
-- **Detailed Reports**: Comprehensive session summaries with automated periodization insights.
-- **Summary Tab**: Aggregated view of power, heart rate, SmO2, and ventilation metrics in a single interactive dashboard.
+### 📄 Ramp Test Analytics & Reporting (New!)
+A fully automated pipeline for analyzing metabolic ramp tests.
+- **Automated Threshold Detection**: 
+    - **Ventilation (VT1/VT2)** using V-slope and Ventilatory Equivalents.
+    - **SmO2 (LT1/LT2)** kinetics using NIRS data (Moxy/TrainRed).
+- **Pro-Level Reporting**: Generates **PDF** and editable **DOCX** reports.
+    - **Educational Content**: "Why it matters" blocks explaining metrics to athletes.
+    - **Advanced Metrics**: Biomechanics (Torque vs Cadence), Metabolic Model (VO2max/VLaMax balance), Cardiac Drift Heatmaps, and Thermal Efficiency.
+- **Ramp Archive**: Store and compare historical test results.
 
 ### ⚡ Performance Analytics
-- **Power (Moc vs W')**: Real-time W' Balance tracking to identify anaerobic capacity depletion. Automated "Match Burns" detection (efforts below 30% W' Bal).
-- **Power Duration Curve (PDC)**: Log-log modeling of your power profile. Includes Critical Power (CP) fitting via `scipy.curve_fit`, PR tracking, and **Phenotype Classification** (e.g., Sprinter, TT Specialist, All-rounder).
-- **Intervals**: Specialized analysis of repeating efforts. Includes **Pulse Power** stats and **Gross Efficiency (GE)** modeling to evaluate metabolic cost vs. mechanical output.
-- **TTE (Time-to-Exhaustion)**: Advanced analysis of how long you can sustain specific FTP percentages (90-110%). Features a **persistent history** stored in SQLite to track endurance trends over 30/90 days.
-- **Biomechanics**: Landing dynamics and efficiency factors derived from wearable sensors, focusing on foot strike and energy return.
-- **Drift Maps**: Visualization of physiological decoupling (Efficiency Factor) over time to identify aerobic durability.
+- **Power Duration Curve (PDC)**: Log-log modeling of your power profile. Includes **Critical Power (CP)** fitting, W' (Anaerobic Work Capacity), and **Phenotype Classification** (e.g., Sprinter, TT Specialist).
+- **Advanced Metrics**:
+    - **Time-to-Exhaustion (TTE)**: Estimations for 90-110% FTP.
+    - **Durability Index**: How your power degrades over time.
+    - **Recovery Score**: W' reconstitution tracking.
+- **Intervals Generator**: Convert structured workout JSONs (ZwoFactory/Intervals.icu) into universally compatible CSVs for TrainingPeaks/Garmin.
 
-### 🫀 Physiology & Thresholds
-- **Ventilation (VT1/VT2)**: Automated detection of ventilatory thresholds using V-slope and Ventilatory Equivalent methods. Features **Hysteresis Analysis** for ramp-test reliability.
-- **SmO2 (NIRS)**: Support for Moxy and TrainRed. Automated detection of SmO2 LT1/LT2 thresholds based on muscle oxygenation kinetics. Includes **Re-saturation Analysis** to evaluate recovery speed.
-- **HRV (DFA a1)**: Estimation of the aerobic threshold (AerT) using heart rate variability dynamics.
-- **Thermal Analysis**: Real-time **Heat Strain Index (HSI)** calculation and **Cardiac Drift vs. Core Temperature** modeling to evaluate thermoregulatory cost.
+### 🫀 Physiology & Biometrics
+- **SmO2 (NIRS)**: Deep dive into muscle oxygenation. Includes **Re-saturation Analysis** and "Muscle Oxygen Kinetics" modeling.
+- **HRV (DFA a1)**: Estimation of aerobic threshold (AerT) using heart rate variability dynamics.
+- **Thermal Analysis**: 
+    - **Heat Strain Index (HSI)**: Cumulative heat load tracking.
+    - **Efficiency Drop**: Correlation between core temperature rise and efficiency loss (Cardiac Drift).
+- **Biomechanics**: Analysis of Cadence vs Torque relationships to identify mechanical limiters.
 
 ### 🧠 Intelligence & AI
-- **Nutrition**: Dynamic modeling of carbohydrate and fat utilization based on intensity and individual metabolic profile.
-- **Limiters**: Automated diagnosis of performance bottlenecks (e.g., O2 transport, Muscular utilization, or Anaerobic capacity).
-- **AI Coach**: GPT-integrated interpretation layer that provides actionable training advice based on multi-sensor data fusion.
+- **Limiters**: Automated diagnosis of performance bottlenecks (e.g., O2 transport vs. Utilization).
+- **AI Coach**: GPT-integrated interpretation layer providing actionable advice based on multi-sensor data fusion.
 
 ## 🛠 Technical Architecture
 
-The platform is built with a modular service-oriented architecture, ensuring high performance and maintainability.
+The platform uses a modular, service-oriented architecture:
+
+- **`modules/reporting`**: PDF/DOCX builders, figure generation, and layout logic.
+- **`modules/calculations`**: Core physics and physiology algorithms (power, metabolic, thermal).
+- **`modules/ui`**: Streamlit components for each analytic tab.
+- **`modules/data`**: NIRS/FIT file parsers and database interaction.
 
 ```mermaid
 graph TD
@@ -44,45 +55,39 @@ graph TD
     subgraph "Core Analytics"
         Quality --> VT["Ventilatory Logic"]
         Quality --> NIRS["SmO2 Kinematics"]
-        Quality --> HRV["Heart Rate Dynamics"]
-        Quality --> Metabolic["Metabolic Estimation"]
-        Quality --> PDC_TTE["Power Profile & TTE"]
+        Quality --> PDC["CP / Power Profile"]
+        Quality --> Thermal["Heat Strain Model"]
     end
     
-    VT & NIRS & HRV & Metabolic & PDC_TTE --> Intepretation["AI Interpretation Layer"]
-    Intepretation --> UI["Streamlit Dashboard"]
-    UI --> DB[("SQLite Database")]
+    VT & NIRS & PDC & Thermal --> Model["Physiological Model"]
+    Model --> Report["PDF/DOCX Generator"]
+    Model --> UI["Streamlit Dashboard"]
 ```
 
 ## 💻 Tech Stack
 
-- **Frontend**: [Streamlit](https://streamlit.io/) for interactive data visualization with dark-mode optimized glassmorphism.
+- **Frontend**: [Streamlit](https://streamlit.io/) for interactive data visualization.
 - **Data Processing**: [Polars](https://pola.rs/) & [Pandas](https://pandas.pydata.org/) for high-performance data manipulation.
-- **Scientific Computing**: [SciPy](https://scipy.org/), [NumPy](https://numpy.org/).
-- **Database**: [SQLite](https://sqlite.org/) for persistent session storage and trend tracking.
-- **Visualization**: [Plotly](https://plotly.com/) for interactive, publication-quality charts with unified hover modes.
+- **Analysis**: [SciPy](https://scipy.org/) (curve fitting), [NumPy](https://numpy.org/).
+- **Reporting**: [ReportLab](https://pypi.org/project/reportlab/) (PDF), [python-docx](https://python-docx.readthedocs.io/) (Word).
+- **Visualization**: [Matplotlib](https://matplotlib.org/) (static reports), [Plotly](https://plotly.com/) (interactive UI).
 
 ## ⚙️ Installation & Usage
 
-### Step-by-Step
-1. **Clone & Install**:
-   ```bash
-   git clone https://github.com/WielkiKrzych/Tri_Dashboard.git
-   cd Tri_Dashboard
-   pip install -e .
-   ```
+### 1. Clone & Install
+```bash
+git clone https://github.com/WielkiKrzych/Tri_Dashboard.git
+cd Tri_Dashboard
+pip install -r requirements.txt
+```
 
-2. **Run the Dashboard**:
-   ```bash
-   streamlit run app.py
-   ```
+### 2. Run the Dashboard
+```bash
+streamlit run app.py
+```
 
 ## 📄 License
 This project is licensed under the MIT License.
 
 > [!WARNING]
-> **Generated Ramp Test reports are intentionally excluded from version control.**
-> They contain analysis artifacts and must not be committed.
->
-> **Raw training CSV files are excluded from version control.**
-> They contain sensitive source data and must remain local.
+> **Medical Disclaimer**: This software is for educational and coaching purposes only. It is not a medical device and should not be used to diagnose or treat any health conditions.

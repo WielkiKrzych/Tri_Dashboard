@@ -1,8 +1,14 @@
 """
 Metabolic Engine & Training Strategy Module.
 
+# ============================================================================
+# CRITICAL: Metabolic Engine uses canonical physiology only.
+# VO2max is READ-ONLY and resolved upstream.
+# This module DOES NOT calculate VO2max - it receives it from canonical source.
+# ============================================================================
+
 Analyzes metabolic profile and generates periodized training blocks:
-- VO2max / VLaMax ratio analysis
+- VO2max / VLaMax ratio analysis (using CANONICAL VO2max)
 - Athlete phenotype classification
 - 6-8 week training block design
 - KPI monitoring recommendations
@@ -22,9 +28,12 @@ logger = logging.getLogger("Tri_Dashboard.MetabolicEngine")
 @dataclass
 class MetabolicProfile:
     """Container for metabolic profile data."""
-    # Core metrics
-    vo2max: float = 0.0                   # ml/kg/min
-    vlamax: float = 0.0                   # mmol/L/s (estimated)
+    # Core metrics - VO2max is READ-ONLY from canonical source
+    vo2max: float = 0.0                   # ml/kg/min - FROM CANONICAL ONLY
+    vo2max_source: str = "unknown"        # Source tracking
+    vo2max_confidence: float = 0.0        # Confidence from canonical
+    
+    vlamax: float = 0.0                   # mmol/L/s (estimated from power)
     cp_watts: float = 0.0                 # Critical Power
     ftp_watts: float = 0.0                # FTP (if different from CP)
     w_prime_kj: float = 0.0               # W' in kJ
@@ -76,7 +85,7 @@ class MetabolicStrategy:
 
 
 # =============================================================================
-# PROFILE ANALYSIS
+# VLaMax ESTIMATION (only metric calculated locally)
 # =============================================================================
 
 def estimate_vlamax(
@@ -87,6 +96,9 @@ def estimate_vlamax(
 ) -> float:
     """
     Estimate VLaMax from power profile.
+    
+    NOTE: VLaMax is the ONLY metric estimated locally.
+    VO2max comes from canonical source.
     
     Higher W' and anaerobic capacity = higher VLaMax.
     Simplified model based on INSCYD principles.
@@ -107,9 +119,15 @@ def estimate_vlamax(
     return max(0.2, min(1.0, vlamax))
 
 
+# =============================================================================
+# RATIO & CLASSIFICATION (uses canonical VO2max)
+# =============================================================================
+
 def calculate_vo2max_vlamax_ratio(vo2max: float, vlamax: float) -> float:
     """
     Calculate VO2max/VLaMax ratio.
+    
+    USES CANONICAL VO2max - does not calculate it.
     
     Higher ratio = more aerobic dominant.
     Reference: 
@@ -117,7 +135,7 @@ def calculate_vo2max_vlamax_ratio(vo2max: float, vlamax: float) -> float:
     - 100-150: Balanced
     - > 150: Aerobic dominant
     """
-    if vlamax <= 0:
+    if vlamax <= 0 or vo2max <= 0:
         return 0.0
     return vo2max / vlamax
 
@@ -129,7 +147,12 @@ def classify_phenotype(
 ) -> str:
     """
     Classify athlete phenotype.
+    
+    USES CANONICAL VO2max - does not calculate it.
     """
+    if vo2max <= 0:
+        return "unknown"
+    
     ratio = vo2max / vlamax if vlamax > 0 else 0
     
     if vo2max >= 65 and vlamax < 0.4:
@@ -153,9 +176,14 @@ def diagnose_limiter(
     """
     Diagnose primary metabolic limiter.
     
+    USES CANONICAL VO2max - does not calculate it.
+    
     Returns:
         (limiter, confidence, interpretation)
     """
+    if vo2max <= 0:
+        return "unknown", 0.0, "Brak danych VO₂max – nie można określić limitera."
+    
     ratio = vo2max / vlamax if vlamax > 0 else 0
     cp_per_kg = cp_watts / weight_kg if weight_kg > 0 else 0
     
@@ -420,11 +448,13 @@ def generate_training_block(
 
 
 # =============================================================================
-# MAIN ANALYSIS FUNCTION
+# MAIN ANALYSIS FUNCTION - USES CANONICAL VO2max ONLY
 # =============================================================================
 
 def analyze_metabolic_engine(
     vo2max: float = 0.0,
+    vo2max_source: str = "unknown",
+    vo2max_confidence: float = 0.0,
     cp_watts: float = 0.0,
     w_prime_kj: float = 15.0,
     pmax_watts: float = 0.0,
@@ -433,24 +463,43 @@ def analyze_metabolic_engine(
 ) -> MetabolicStrategy:
     """
     Perform complete metabolic engine analysis.
+    
+    CRITICAL: vo2max MUST come from canonical source.
+    This function does NOT calculate VO2max - it uses the value passed in.
+    
+    Args:
+        vo2max: CANONICAL VO2max value (from canonical_physio.py)
+        vo2max_source: Source of canonical VO2max
+        vo2max_confidence: Confidence of canonical VO2max
+        cp_watts: Critical Power
+        w_prime_kj: W' in kJ
+        pmax_watts: Peak power
+        weight_kg: Athlete weight
+        ftp_watts: FTP (if different from CP)
     """
     strategy = MetabolicStrategy()
     profile = strategy.profile
     
-    # Core metrics
+    # =========================================================================
+    # CRITICAL: Use CANONICAL VO2max - DO NOT CALCULATE LOCALLY
+    # =========================================================================
     profile.vo2max = vo2max
+    profile.vo2max_source = vo2max_source
+    profile.vo2max_confidence = vo2max_confidence
+    
+    # Power metrics
     profile.cp_watts = cp_watts
     profile.ftp_watts = ftp_watts or cp_watts
     profile.w_prime_kj = w_prime_kj
     
-    # Estimate VLaMax
+    # Estimate VLaMax (only locally estimated metric)
     profile.vlamax = estimate_vlamax(cp_watts, w_prime_kj, pmax_watts, weight_kg)
     
-    # Calculate ratios
+    # Calculate ratios (using canonical VO2max)
     profile.vo2max_vlamax_ratio = calculate_vo2max_vlamax_ratio(vo2max, profile.vlamax)
     profile.anaerobic_reserve_pct = (pmax_watts - cp_watts) / cp_watts if cp_watts > 0 else 0
     
-    # Classifications
+    # Classifications (using canonical VO2max)
     profile.phenotype = classify_phenotype(vo2max, profile.vlamax, profile.anaerobic_reserve_pct)
     
     limiter, confidence, interp = diagnose_limiter(vo2max, profile.vlamax, cp_watts, weight_kg)
@@ -468,19 +517,34 @@ def analyze_metabolic_engine(
 
 
 def format_metabolic_strategy_for_report(strategy: MetabolicStrategy) -> Dict[str, Any]:
-    """Format strategy for inclusion in JSON/PDF reports."""
+    """
+    Format strategy for inclusion in JSON/PDF reports.
+    
+    NOTE: VO2max source tracking is included for transparency.
+    """
     profile = strategy.profile
     block = strategy.training_block
     
     return {
         "profile": {
-            "vo2max": round(profile.vo2max, 1),
+            # CANONICAL VO2max (read-only, from upstream)
+            "vo2max": round(profile.vo2max, 1) if profile.vo2max > 0 else None,
+            "vo2max_source": profile.vo2max_source,
+            "vo2max_confidence": round(profile.vo2max_confidence, 2),
+            
+            # VLaMax (locally estimated)
             "vlamax": round(profile.vlamax, 3),
+            
+            # Power metrics
             "cp_watts": round(profile.cp_watts, 0),
             "ftp_watts": round(profile.ftp_watts, 0),
             "w_prime_kj": round(profile.w_prime_kj, 1),
-            "vo2max_vlamax_ratio": round(profile.vo2max_vlamax_ratio, 1),
+            
+            # Derived
+            "vo2max_vlamax_ratio": round(profile.vo2max_vlamax_ratio, 1) if profile.vo2max > 0 else None,
             "anaerobic_reserve_pct": round(profile.anaerobic_reserve_pct * 100, 1),
+            
+            # Classification
             "phenotype": profile.phenotype,
             "limiter": profile.limiter,
             "limiter_confidence": round(profile.limiter_confidence, 2),

@@ -225,28 +225,52 @@ def save_ramp_test_report(
             except Exception as e:
                 print(f"[Vent Advanced] Analysis failed: {e}")
     
-    # 1.5 Run metabolic engine analysis
+    # 1.5 Build CANONICAL PHYSIOLOGY (Single Source of Truth)
     try:
+        from modules.calculations.canonical_physio import build_canonical_physiology, format_canonical_for_report
+        
+        time_series = data.get('time_series', {})
+        canonical = build_canonical_physiology(data, time_series)
+        
+        # Store canonical physiology in data
+        data['canonical_physiology'] = format_canonical_for_report(canonical)
+        
+        # 1.6 Run metabolic engine with CANONICAL values
         from modules.calculations.metabolic_engine import analyze_metabolic_engine, format_metabolic_strategy_for_report
         
-        # Extract key metrics from result
-        vo2max = data.get("metrics", {}).get("vo2max", 0) or 0
-        cp_watts = data.get("cp_model", {}).get("cp_watts", 0) or 0
-        w_prime = data.get("cp_model", {}).get("w_prime_joules", 15000) or 15000
-        pmax = data.get("metadata", {}).get("pmax_watts", 0) or 0
-        weight = data.get("metadata", {}).get("athlete_weight_kg", 75) or 75
+        cp_watts = canonical.cp_watts.value
+        vo2max = canonical.vo2max.value
+        weight_kg = canonical.weight_kg.value
+        w_prime_kj = canonical.w_prime_kj.value or 15
+        pmax = canonical.pmax_watts.value
         
         if cp_watts > 0:
             metabolic_strategy = analyze_metabolic_engine(
                 vo2max=vo2max,
+                vo2max_source=canonical.vo2max.source,
+                vo2max_confidence=canonical.vo2max.confidence,
                 cp_watts=cp_watts,
-                w_prime_kj=w_prime / 1000,
+                w_prime_kj=w_prime_kj,
                 pmax_watts=pmax,
-                weight_kg=weight
+                weight_kg=weight_kg,
+                ftp_watts=canonical.ftp_watts.value
             )
-            data['metabolic_strategy'] = format_metabolic_strategy_for_report(metabolic_strategy)
+            
+            formatted = format_metabolic_strategy_for_report(metabolic_strategy)
+            
+            # Add alternatives from canonical
+            formatted["profile"]["vo2max_alternatives"] = canonical.vo2max.alternatives
+            formatted["profile"]["data_quality"] = (
+                "good" if canonical.vo2max.confidence >= 0.7 
+                else ("moderate" if canonical.vo2max.confidence >= 0.5 else "low")
+            )
+            
+            data['metabolic_strategy'] = formatted
+            
     except Exception as e:
-        print(f"[Metabolic Engine] Analysis failed: {e}")
+        print(f"[Canonical Physio / Metabolic Engine] Analysis failed: {e}")
+        import traceback
+        traceback.print_exc()
     
     # 2. Enrich metadata
     now = datetime.now()

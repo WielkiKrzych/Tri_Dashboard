@@ -175,14 +175,45 @@ def map_ramp_json_to_pdf_data(report_json: Dict[str, Any]) -> Dict[str, Any]:
         "lt2_hr": get_num("smo2_manual", "lt2_hr", ["lt2_hr"])
     }
 
-    # 7. KPI mapping
+    # 7. KPI mapping - use CANONICAL VO2max for consistency
     m_data = report_json.get("metrics", {})
+    
+    # Get canonical VO2max (Single Source of Truth)
+    canonical = report_json.get("canonical_physiology", {}).get("summary", {})
+    vo2max_canonical = canonical.get("vo2max")
+    vo2max_source = canonical.get("vo2max_source", "unknown")
+    
+    # Fallback to metrics if canonical not available
+    if not vo2max_canonical:
+        vo2max_canonical = m_data.get("vo2max", m_data.get("estimated_vo2max"))
+        vo2max_source = "metrics_fallback"
+    
     mapped_kpi = {
         "ef": m_data.get("ef", m_data.get("efficiency_factor", "brak danych")),
         "pa_hr": m_data.get("pa_hr", m_data.get("decoupling_pct", "brak danych")),
         "smo2_drift": m_data.get("smo2_drift", "brak danych"),
-        "vo2max_est": m_data.get("vo2max", m_data.get("estimated_vo2max", "brak danych"))
+        "vo2max_est": vo2max_canonical if vo2max_canonical else "brak danych",
+        "vo2max_source": vo2max_source
     }
+
+    # =========================================================================
+    # CRITICAL: Enforce CANONICAL VO2max in metabolic_strategy
+    # metabolic_strategy MUST NOT override canonical VO2max
+    # =========================================================================
+    metabolic_strategy = report_json.get("metabolic_strategy", {})
+    
+    if metabolic_strategy and vo2max_canonical:
+        # Force canonical VO2max into metabolic profile
+        if "profile" in metabolic_strategy:
+            metabolic_strategy["profile"]["vo2max"] = vo2max_canonical
+            metabolic_strategy["profile"]["vo2max_source"] = vo2max_source
+            
+            # Recalculate ratio with canonical VO2max
+            vlamax = metabolic_strategy["profile"].get("vlamax", 0)
+            if vlamax and vlamax > 0:
+                metabolic_strategy["profile"]["vo2max_vlamax_ratio"] = round(vo2max_canonical / vlamax, 1)
+            else:
+                metabolic_strategy["profile"]["vo2max_vlamax_ratio"] = None
 
     return {
         "metadata": mapped_meta,
@@ -194,7 +225,8 @@ def map_ramp_json_to_pdf_data(report_json: Dict[str, Any]) -> Dict[str, Any]:
         "kpi": mapped_kpi,
         "cardio_advanced": report_json.get("cardio_advanced", {}),
         "vent_advanced": report_json.get("vent_advanced", {}),
-        "metabolic_strategy": report_json.get("metabolic_strategy", {}),
+        "metabolic_strategy": metabolic_strategy,
+        "canonical_physiology": report_json.get("canonical_physiology", {}),
         "executive_summary": generate_executive_summary(
             thresholds=mapped_thresholds,
             smo2_manual=mapped_smo2_manual,

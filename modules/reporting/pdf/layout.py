@@ -1193,16 +1193,20 @@ def build_page_metabolic_engine(metabolic_data: Dict[str, Any], styles: Dict) ->
     cp = profile.get("cp_watts", 0)
     ratio = profile.get("vo2max_vlamax_ratio", 0)
     phenotype = profile.get("phenotype", "unknown")
+    vo2max_source = profile.get("vo2max_source", "unknown")
+    data_quality = profile.get("data_quality", "unknown")
     
     elements.append(Paragraph("<b>METABOLIC PROFILE</b>", styles["subheading"]))
     elements.append(Spacer(1, 2 * mm))
     
-    def build_metric_card(title, value, unit, color):
+    def build_metric_card(title, value, unit, color, subtitle=""):
         card_content = [
             Paragraph(f"<font size='8' color='#7F8C8D'>{title}</font>", styles["center"]),
             Paragraph(f"<font size='14' color='{color}'><b>{value}</b></font>", styles["center"]),
             Paragraph(f"<font size='9'>{unit}</font>", styles["center"]),
         ]
+        if subtitle:
+            card_content.append(Paragraph(f"<font size='7' color='#95A5A6'>{subtitle}</font>", styles["center"]))
         card_table = Table([[card_content]], colWidths=[42 * mm])
         card_table.setStyle(TableStyle([
             ('BACKGROUND', (0, 0), (-1, -1), HexColor("#F8F9FA")),
@@ -1213,14 +1217,30 @@ def build_page_metabolic_engine(metabolic_data: Dict[str, Any], styles: Dict) ->
         ]))
         return card_table
     
-    vo2_color = "#2ECC71" if vo2max >= 60 else ("#F39C12" if vo2max >= 50 else "#E74C3C")
-    vla_color = "#2ECC71" if vlamax < 0.4 else ("#F39C12" if vlamax < 0.6 else "#E74C3C")
-    ratio_color = "#2ECC71" if ratio > 130 else ("#F39C12" if ratio > 90 else "#E74C3C")
+    # VO2max card - handle n/a and show source
+    if vo2max and vo2max > 0:
+        vo2_color = "#2ECC71" if vo2max >= 60 else ("#F39C12" if vo2max >= 50 else "#E74C3C")
+        vo2_val = f"{vo2max:.0f}"
+        vo2_source_label = {"acsm_5min": "ACSM", "acsm_cp": "~CP", "metrics_direct": "test", "ramp_test_peak": "test", "intervals_api": "API"}.get(vo2max_source, "")
+    else:
+        vo2_color = "#7F8C8D"
+        vo2_val = "n/a"
+        vo2_source_label = "brak danych"
     
-    card1 = build_metric_card("VO₂max", f"{vo2max:.0f}", "ml/kg/min", vo2_color)
-    card2 = build_metric_card("VLaMax", f"{vlamax:.2f}", "mmol/L/s", vla_color)
+    card1 = build_metric_card("VO₂max", vo2_val, "ml/kg/min", vo2_color, vo2_source_label)
+    
+    vla_color = "#2ECC71" if vlamax < 0.4 else ("#F39C12" if vlamax < 0.6 else "#E74C3C")
+    card2 = build_metric_card("VLaMax", f"{vlamax:.2f}", "mmol/L/s", vla_color, "estymowany")
     card3 = build_metric_card("CP / FTP", f"{cp:.0f}", "W", "#3498DB")
-    card4 = build_metric_card("VO₂/VLa RATIO", f"{ratio:.0f}", "", ratio_color)
+    
+    # Ratio card - show n/a if insufficient data
+    if ratio and ratio > 0 and vo2max > 0:
+        ratio_color = "#2ECC71" if ratio > 130 else ("#F39C12" if ratio > 90 else "#E74C3C")
+        ratio_val = f"{ratio:.0f}"
+    else:
+        ratio_color = "#7F8C8D"
+        ratio_val = "n/a"
+    card4 = build_metric_card("VO₂/VLa RATIO", ratio_val, "", ratio_color)
     
     cards_row = Table([[card1, card2, card3, card4]], colWidths=[44 * mm] * 4)
     cards_row.setStyle(TableStyle([('ALIGN', (0, 0), (-1, -1), 'CENTER')]))
@@ -1810,12 +1830,30 @@ def build_page_drift_kpi(
         except:
             return f"{val}{unit}"
 
+    # =========================================================================
+    # CRITICAL: VO2max MUST come from canonical source via kpi["vo2max_est"]
+    # DO NOT calculate VO2max here - it is READ-ONLY display
+    # =========================================================================
+    vo2max_val = kpi.get("vo2max_est")
+    vo2max_source = kpi.get("vo2max_source", "")
+    
+    # Format VO2max label - NO "Estimate" in name
+    if vo2max_val and vo2max_val != "brak danych":
+        vo2max_display = fmt(vo2max_val, " ml/kg")
+        vo2max_label = "VO₂max"
+        if vo2max_source:
+            source_short = {"acsm_5min": "(ACSM)", "acsm_cp": "(~CP)", "metrics_fallback": ""}.get(vo2max_source, "")
+            vo2max_label = f"VO₂max {source_short}".strip()
+    else:
+        vo2max_display = "n/a"
+        vo2max_label = "VO₂max"
+
     data = [
         ["Metryka", "Wartość", "Interpretacja"],
         ["Efficiency Factor (EF)", fmt(kpi.get("ef")), "Moc na uderzenie serca (im wyżej, tym lepiej)"],
         ["Pa:Hr (Decoupling)", fmt(kpi.get("pa_hr"), "%"), "Stabilność układu krążenia"],
         ["% SmO2 Drift", fmt(kpi.get("smo2_drift"), "%"), "Zmęczenie lokalne mięśni"],
-        ["VO2max Estimate", fmt(kpi.get("vo2max_est"), " ml/kg"), "Szacowany pułap tlenowy"]
+        [vo2max_label, vo2max_display, "Pułap tlenowy (canonical)"]
     ]
     
     table = Table(data, colWidths=[50 * mm, 30 * mm, 85 * mm])

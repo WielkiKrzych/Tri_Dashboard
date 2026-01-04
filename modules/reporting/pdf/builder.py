@@ -37,6 +37,9 @@ from .layout import (
     build_page_limiters,
     build_page_extra,
     build_page_executive_summary,
+    build_page_cardiovascular,
+    build_page_ventilation,
+    build_page_metabolic_engine,
 )
 from ...calculations.executive_summary import generate_executive_summary
 
@@ -138,7 +141,8 @@ def map_ramp_json_to_pdf_data(report_json: Dict[str, Any]) -> Dict[str, Any]:
     smo2 = report_json.get("smo2_context", {})
     mapped_smo2 = {
         "drop_point_watts": "brak danych",
-        "interpretation": smo2.get("interpretation", "nie przeanalizowano")
+        "interpretation": smo2.get("interpretation", "nie przeanalizowano"),
+        "advanced_metrics": report_json.get("smo2_advanced", {})  # Advanced SmO2 metrics
     }
     if smo2 and "drop_point" in smo2 and smo2["drop_point"]:
         mapped_smo2["drop_point_watts"] = get_num("smo2_context", "drop_point", ["drop_point", "midpoint_watts"])
@@ -188,6 +192,9 @@ def map_ramp_json_to_pdf_data(report_json: Dict[str, Any]) -> Dict[str, Any]:
         "smo2_manual": mapped_smo2_manual,
         "confidence": mapped_confidence,
         "kpi": mapped_kpi,
+        "cardio_advanced": report_json.get("cardio_advanced", {}),
+        "vent_advanced": report_json.get("vent_advanced", {}),
+        "metabolic_strategy": report_json.get("metabolic_strategy", {}),
         "executive_summary": generate_executive_summary(
             thresholds=mapped_thresholds,
             smo2_manual=mapped_smo2_manual,
@@ -303,6 +310,33 @@ def build_ramp_pdf(
         styles=styles
     ))
     story.append(PageBreak())
+    
+    # === PAGE: CARDIOVASCULAR COST DIAGNOSTIC ===
+    cardio_data = pdf_data.get("cardio_advanced", {})
+    if cardio_data:
+        story.extend(build_page_cardiovascular(
+            cardio_data=cardio_data,
+            styles=styles
+        ))
+        story.append(PageBreak())
+    
+    # === PAGE: BREATHING & METABOLIC CONTROL ===
+    vent_data = pdf_data.get("vent_advanced", {})
+    if vent_data:
+        story.extend(build_page_ventilation(
+            vent_data=vent_data,
+            styles=styles
+        ))
+        story.append(PageBreak())
+    
+    # === PAGE: METABOLIC ENGINE & TRAINING STRATEGY ===
+    metabolic_data = pdf_data.get("metabolic_strategy", {})
+    if metabolic_data:
+        story.extend(build_page_metabolic_engine(
+            metabolic_data=metabolic_data,
+            styles=styles
+        ))
+        story.append(PageBreak())
     
     # === PAGE: Power-Duration Curve / CP ===
     story.extend(build_page_pdc(

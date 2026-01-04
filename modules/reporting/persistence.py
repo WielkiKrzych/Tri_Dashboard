@@ -175,6 +175,78 @@ def save_ramp_test_report(
                 ts_data[json_key] = df_ts[df_col].fillna(0).tolist()
         
         data['time_series'] = ts_data
+        
+        # 1.2 Run advanced SmO2 analysis if SmO2 data available
+        if 'smo2_pct' in ts_data or 'smo2' in df_ts.columns:
+            try:
+                from modules.calculations.smo2_advanced import analyze_smo2_advanced, format_smo2_metrics_for_report
+                
+                # Prepare DataFrame for analysis
+                analysis_df = df_ts.copy()
+                # Normalize column names
+                if 'smo2' in analysis_df.columns:
+                    analysis_df['SmO2'] = analysis_df['smo2']
+                elif 'smo2_pct' in analysis_df.columns:
+                    analysis_df['SmO2'] = analysis_df['smo2_pct']
+                
+                if 'seconds' not in analysis_df.columns and 'time' in analysis_df.columns:
+                    analysis_df['seconds'] = range(len(analysis_df))
+                
+                smo2_metrics = analyze_smo2_advanced(analysis_df)
+                data['smo2_advanced'] = format_smo2_metrics_for_report(smo2_metrics)
+                
+            except Exception as e:
+                print(f"[SmO2 Advanced] Analysis failed: {e}")
+        
+        # 1.3 Run cardiovascular analysis if HR data available
+        if 'hr_bpm' in ts_data or 'hr' in df_ts.columns:
+            try:
+                from modules.calculations.cardio_advanced import analyze_cardiovascular, format_cardio_metrics_for_report
+                
+                analysis_df = df_ts.copy()
+                if 'hr' not in analysis_df.columns and 'heartrate' in analysis_df.columns:
+                    analysis_df['hr'] = analysis_df['heartrate']
+                
+                cardio_metrics = analyze_cardiovascular(analysis_df)
+                data['cardio_advanced'] = format_cardio_metrics_for_report(cardio_metrics)
+                
+            except Exception as e:
+                print(f"[Cardio Advanced] Analysis failed: {e}")
+        
+        # 1.4 Run ventilation analysis if VE data available
+        if 've_lmin' in ts_data or any(col in df_ts.columns for col in ['ve', 'tymeventilation']):
+            try:
+                from modules.calculations.vent_advanced import analyze_ventilation, format_vent_metrics_for_report
+                
+                analysis_df = df_ts.copy()
+                vent_metrics = analyze_ventilation(analysis_df)
+                data['vent_advanced'] = format_vent_metrics_for_report(vent_metrics)
+                
+            except Exception as e:
+                print(f"[Vent Advanced] Analysis failed: {e}")
+    
+    # 1.5 Run metabolic engine analysis
+    try:
+        from modules.calculations.metabolic_engine import analyze_metabolic_engine, format_metabolic_strategy_for_report
+        
+        # Extract key metrics from result
+        vo2max = data.get("metrics", {}).get("vo2max", 0) or 0
+        cp_watts = data.get("cp_model", {}).get("cp_watts", 0) or 0
+        w_prime = data.get("cp_model", {}).get("w_prime_joules", 15000) or 15000
+        pmax = data.get("metadata", {}).get("pmax_watts", 0) or 0
+        weight = data.get("metadata", {}).get("athlete_weight_kg", 75) or 75
+        
+        if cp_watts > 0:
+            metabolic_strategy = analyze_metabolic_engine(
+                vo2max=vo2max,
+                cp_watts=cp_watts,
+                w_prime_kj=w_prime / 1000,
+                pmax_watts=pmax,
+                weight_kg=weight
+            )
+            data['metabolic_strategy'] = format_metabolic_strategy_for_report(metabolic_strategy)
+    except Exception as e:
+        print(f"[Metabolic Engine] Analysis failed: {e}")
     
     # 2. Enrich metadata
     now = datetime.now()

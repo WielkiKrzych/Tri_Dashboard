@@ -50,24 +50,19 @@ def generate_smo2_power_chart(
     metadata = report_data.get("metadata", {})
     smo2_context = report_data.get("smo2_context", {})
     
+    # Extract data from source_df or fallback
+    time_series = report_data.get("time_series", {})
+    
     # Try to get data from source_df first
     if source_df is not None and len(source_df) > 0:
         df = source_df.copy()
         df.columns = df.columns.str.lower().str.strip()
         
         # Get power data
-        power_col = None
-        for col in ['watts', 'power', 'watts_smooth_5s']:
-            if col in df.columns:
-                power_col = col
-                break
+        power_col = next((c for c in ['watts', 'power', 'watts_smooth', 'watts_smooth_5s'] if c in df.columns), None)
         
         # Get smo2 data
-        smo2_col = None
-        for col in ['smo2', 'smo2_pct', 'muscle_oxygen']:
-            if col in df.columns:
-                smo2_col = col
-                break
+        smo2_col = next((c for c in ['smo2', 'smo2_pct', 'muscle_oxygen', 'smo2_smooth'] if c in df.columns), None)
         
         if power_col and smo2_col:
             # Filter out NaN values
@@ -75,8 +70,7 @@ def generate_smo2_power_chart(
             power_data = df.loc[mask, power_col].tolist()
             smo2_data = df.loc[mask, smo2_col].tolist()
         else:
-            power_data = []
-            smo2_data = []
+            power_data, smo2_data = [], []
     else:
         # Fallback to time_series from JSON
         power_data = time_series.get("power_watts", [])

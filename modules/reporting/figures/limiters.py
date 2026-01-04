@@ -137,8 +137,91 @@ def generate_radar_chart(
     plt.yticks([20, 40, 60, 80, 100], color="grey", size=8)
     
     # Title
-    ax.set_title(f"Profil Obciążenia (5 min @ {peak_w_avg:.0f} W)", 
-                 fontsize=title_size, fontweight='bold', pad=20)
-    
     plt.tight_layout()
+    return save_figure(fig, output_path, **cfg)
+
+
+def generate_vlamax_balance_chart(
+    report_data: Dict[str, Any],
+    config: Optional[Any] = None,
+    output_path: Optional[str] = None,
+    source_df: Optional[pd.DataFrame] = None
+) -> bytes:
+    """Generate VO2max vs VLaMax Balance Schema (Metabolic Profiling)."""
+    if hasattr(config, '__dict__'):
+        cfg = config.__dict__
+    elif isinstance(config, dict):
+        cfg = config
+    else:
+        cfg = {}
+
+    figsize = cfg.get('figsize', (10, 4))
+    
+    # 1. Extraction of Ratios (following UI logic)
+    # We need 1min, 5min, 20min power or proxy from report_data
+    mmp_5min = report_data.get("metrics", {}).get("mmp_5min", 0)
+    mmp_20min = report_data.get("metrics", {}).get("mmp_20min", 0)
+    
+    # Fallback: if not in metrics, try to calculate from source_df
+    if (not mmp_5min or not mmp_20min) and source_df is not None and not source_df.empty:
+        df = source_df.copy()
+        pwr_col = _find_column(df, ['watts', 'power'])
+        if pwr_col:
+            mmp_5min = df[pwr_col].rolling(300).mean().max()
+            mmp_20min = df[pwr_col].rolling(1200).mean().max()
+            
+    if not mmp_20min or mmp_20min == 0:
+        return create_empty_figure("Brak danych (wymagane min. 20 min mmp)", output_path)
+
+    ratio = mmp_5min / mmp_20min
+    
+    # Classification logic
+    if ratio > 1.08:
+        profile = "Sprinter / Puncheur"
+        desc = "Wysoki VLaMax (>0.5 mmol/L/s)"
+        color = "#ff6b6b"
+        marker_pos = 0.8 # Right side
+    elif ratio < 0.95:
+        profile = "Climber / TT Specialist"
+        desc = "Niski VLaMax (<0.4 mmol/L/s)"
+        color = "#4ecdc4"
+        marker_pos = 0.2 # Left side
+    else:
+        profile = "All-Rounder"
+        marker_pos = 0.5 # Middle
+        desc = "Zbalansowany VLaMax (0.4-0.5 mmol/L/s)"
+        color = "#ffd93d"
+
+    # Plotting Schema
+    fig, ax = plt.subplots(figsize=figsize)
+    
+    # Draw a scale line
+    ax.axhline(0, color='grey', linewidth=2, zorder=1)
+    
+    # Base segments
+    ax.plot([0, 0.35], [0, 0], color="#4ecdc4", linewidth=8, alpha=0.3, label="Time Trial / Diesel")
+    ax.plot([0.35, 0.65], [0, 0], color="#ffd93d", linewidth=8, alpha=0.3, label="All-Rounder")
+    ax.plot([0.65, 1.0], [0, 0], color="#ff6b6b", linewidth=8, alpha=0.3, label="Sprinter / Puncheur")
+    
+    # Add Marker
+    ax.scatter([marker_pos], [0], color=color, s=200, edgecolor='white', zorder=5, label=f"Twój Profil: {profile}")
+    
+    # Labels
+    ax.set_xlim(-0.1, 1.1)
+    ax.set_ylim(-1, 1)
+    ax.axis('off')
+    
+    ax.text(marker_pos, 0.15, f"{profile}", ha='center', va='bottom', fontweight='bold', fontsize=12, color=color)
+    ax.text(marker_pos, -0.4, desc, ha='center', va='top', fontsize=10, style='italic')
+    
+    ax.text(0, -0.15, "DOMINACJA TLENOWA\n(Niski VLaMax)", ha='center', va='top', fontsize=8, color="#4ecdc4")
+    ax.text(1.0, -0.15, "DOMINACJA BEZTLENOWA\n(Wysoki VLaMax)", ha='center', va='top', fontsize=8, color="#ff6b6b")
+
+    # Title
+    ax.set_title(f"Balans Metaboliczny: VO2max vs VLaMax (Ratio: {ratio:.2f})", 
+                 pad=10, fontweight='bold')
+    
+    # Legend
+    # ax.legend(loc='lower center', bbox_to_anchor=(0.5, -0.2), ncol=3, fontsize=8)
+
     return save_figure(fig, output_path, **cfg)

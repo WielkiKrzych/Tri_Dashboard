@@ -11,9 +11,10 @@ from .smo2_vs_power import generate_smo2_power_chart
 from .cp_curve import generate_cp_curve_chart, generate_pdc_chart
 from .ve_profile import generate_ve_profile_chart
 from .thermal import generate_thermal_chart, generate_efficiency_chart
-from .limiters import generate_radar_chart
+from .limiters import generate_radar_chart, generate_vlamax_balance_chart
 from .vent_full import generate_full_vent_chart
-from .drift import generate_power_hr_scatter, generate_power_smo2_scatter
+from .drift import generate_power_hr_scatter, generate_power_smo2_scatter, generate_drift_heatmap
+from .biomech import generate_biomech_chart, generate_torque_smo2_chart
 
 
 def generate_all_ramp_figures(
@@ -47,53 +48,47 @@ def generate_all_ramp_figures(
     
     paths = {}
     
-    # 1. Ramp profile
-    ramp_path = output_path / f"ramp_profile_{session_id}.{ext}"
-    generate_ramp_profile_chart(report_data, config, str(ramp_path), source_df=source_df)
-    paths["ramp_profile"] = str(ramp_path)
+    # helper to generate path and run function
+    def add_fig(name, fn, args=None, needs_df=True):
+        fpath = output_path / f"{name}_{session_id}.{ext}"
+        try:
+            if needs_df:
+                fn(report_data, config, str(fpath), source_df=source_df)
+            else:
+                fn(report_data, config, str(fpath))
+            paths[name] = str(fpath)
+        except Exception as e:
+            import logging
+            logging.getLogger("figures").error(f"Failed to generate {name}: {e}")
+
+    # 1. Core
+    add_fig("ramp_profile", generate_ramp_profile_chart)
+    add_fig("smo2_power", generate_smo2_power_chart)
+    add_fig("pdc_curve", generate_pdc_chart, needs_df=False)
+    add_fig("ve_profile", generate_ve_profile_chart)
     
-    # 2. SmO2 vs Power
-    smo2_path = output_path / f"smo2_power_{session_id}.{ext}"
-    generate_smo2_power_chart(report_data, config, str(smo2_path), source_df=source_df)
-    paths["smo2_power"] = str(smo2_path)
+    # 2. Thermal
+    add_fig("thermal_hsi", generate_thermal_chart)
+    add_fig("thermal_efficiency", generate_efficiency_chart)
     
-    # 3. PDC / CP Curve
-    pdc_path = output_path / f"pdc_{session_id}.{ext}"
-    generate_pdc_chart(report_data, config, str(pdc_path))
-    paths["pdc_curve"] = str(pdc_path)
+    # 3. Model & Limiters
+    add_fig("limiters_radar", generate_radar_chart)
+    add_fig("vlamax_balance", generate_vlamax_balance_chart)
     
-    # 4. VE Profile
-    ve_path = output_path / f"ve_profile_{session_id}.{ext}"
-    generate_ve_profile_chart(report_data, config, str(ve_path), source_df=source_df)
-    paths["ve_profile"] = str(ve_path)
+    # 4. Drift & Decoupling
+    add_fig("drift_hr", generate_power_hr_scatter)
+    add_fig("drift_smo2", generate_power_smo2_scatter)
     
-    # 5. Thermal
-    thermal_hsi_path = output_path / f"thermal_hsi_{session_id}.{ext}"
-    generate_thermal_chart(report_data, config, str(thermal_hsi_path), source_df=source_df)
-    paths["thermal_hsi"] = str(thermal_hsi_path)
+    # NEW: Heatmaps
+    add_fig("drift_heatmap_hr", lambda *a, **k: generate_drift_heatmap(*a, mode="hr", **k))
+    add_fig("drift_heatmap_smo2", lambda *a, **k: generate_drift_heatmap(*a, mode="smo2", **k))
     
-    thermal_eff_path = output_path / f"thermal_eff_{session_id}.{ext}"
-    generate_efficiency_chart(report_data, config, str(thermal_eff_path), source_df=source_df)
-    paths["thermal_efficiency"] = str(thermal_eff_path)
+    # 5. Biomech
+    add_fig("biomech_summary", generate_biomech_chart)
+    add_fig("biomech_torque_smo2", generate_torque_smo2_chart)
     
-    # 6. Limiters (Radar)
-    radar_path = output_path / f"limiters_radar_{session_id}.{ext}"
-    generate_radar_chart(report_data, config, str(radar_path), source_df=source_df)
-    paths["limiters_radar"] = str(radar_path)
-    
-    # 7. Vent Full
-    vent_full_path = output_path / f"vent_full_{session_id}.{ext}"
-    generate_full_vent_chart(report_data, config, str(vent_full_path), source_df=source_df)
-    paths["vent_full"] = str(vent_full_path)
-    
-    # 8. Drift Scatters
-    drift_hr_path = output_path / f"drift_hr_{session_id}.{ext}"
-    generate_power_hr_scatter(report_data, config, str(drift_hr_path), source_df=source_df)
-    paths["drift_hr"] = str(drift_hr_path)
-    
-    drift_smo2_path = output_path / f"drift_smo2_{session_id}.{ext}"
-    generate_power_smo2_scatter(report_data, config, str(drift_smo2_path), source_df=source_df)
-    paths["drift_smo2"] = str(drift_smo2_path)
+    # 6. Optional: Vent Full
+    add_fig("vent_full", generate_full_vent_chart)
     
     return paths
 
@@ -104,5 +99,8 @@ __all__ = [
     "generate_smo2_power_chart",
     "generate_pdc_chart",
     "generate_cp_curve_chart",
+    "generate_vlamax_balance_chart",
+    "generate_biomech_chart",
+    "generate_drift_heatmap",
     "DPI",
 ]

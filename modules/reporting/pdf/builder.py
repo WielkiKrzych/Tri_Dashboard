@@ -169,13 +169,23 @@ def map_ramp_json_to_pdf_data(report_json: Dict[str, Any]) -> Dict[str, Any]:
         "lt2_hr": get_num("smo2_manual", "lt2_hr", ["lt2_hr"])
     }
 
+    # 7. KPI mapping
+    m_data = report_json.get("metrics", {})
+    mapped_kpi = {
+        "ef": m_data.get("ef", m_data.get("efficiency_factor", "brak danych")),
+        "pa_hr": m_data.get("pa_hr", m_data.get("decoupling_pct", "brak danych")),
+        "smo2_drift": m_data.get("smo2_drift", "brak danych"),
+        "vo2max_est": m_data.get("vo2max", m_data.get("estimated_vo2max", "brak danych"))
+    }
+
     return {
         "metadata": mapped_meta,
         "thresholds": mapped_thresholds,
         "smo2": mapped_smo2,
         "cp_model": mapped_cp,
         "smo2_manual": mapped_smo2_manual,
-        "confidence": mapped_confidence
+        "confidence": mapped_confidence,
+        "kpi": mapped_kpi
     }
 
 
@@ -277,7 +287,7 @@ def build_ramp_pdf(
     ))
     story.append(PageBreak())
     
-    # === PAGE 3: Power-Duration Curve / CP ===
+    # === PAGE: Power-Duration Curve / CP ===
     story.extend(build_page_pdc(
         cp_model=cp_model,
         metadata=metadata,
@@ -285,6 +295,35 @@ def build_ramp_pdf(
         styles=styles
     ))
     story.append(PageBreak())
+
+    # === NEW PAGE: Biomechanika ===
+    from .layout import build_page_biomech, build_page_drift_kpi
+    if any(k in figure_paths for k in ["biomech_summary", "biomech_torque_smo2"]):
+        story.extend(build_page_biomech(
+            figure_paths=figure_paths,
+            styles=styles
+        ))
+        story.append(PageBreak())
+
+    # === NEW PAGE: Model Metaboliczny ===
+    if any(k in figure_paths for k in ["vlamax_balance", "limiters_radar"]):
+        from .layout import build_page_limiters
+        story.extend(build_page_limiters(
+            metadata=metadata,
+            cp_model=cp_model,
+            figure_paths=figure_paths,
+            styles=styles
+        ))
+        story.append(PageBreak())
+
+    # === NEW PAGE: Dryf i KPI ===
+    if any(k in figure_paths for k in ["drift_heatmap_hr", "drift_heatmap_smo2"]) or pdf_data["kpi"].get("ef") != "brak danych":
+        story.extend(build_page_drift_kpi(
+            kpi=pdf_data["kpi"],
+            figure_paths=figure_paths,
+            styles=styles
+        ))
+        story.append(PageBreak())
     
     # === PAGE 4: Interpretacja Wyników ===
     story.extend(build_page_interpretation(
@@ -292,8 +331,6 @@ def build_ramp_pdf(
         cp_model=cp_model,
         styles=styles
     ))
-    story.append(PageBreak())
-    
     story.append(PageBreak())
     
     # === PAGE 5: Teoria Fizjologiczna ===
@@ -307,30 +344,14 @@ def build_ramp_pdf(
     ))
     story.append(PageBreak())
     
-    # === PAGE 7: Profil Metaboliczny (Limitery) ===
-    story.extend(build_page_limiters(
-        metadata=metadata,
-        cp_model=cp_model,
-        figure_paths=figure_paths,
-        styles=styles
-    ))
-    story.append(PageBreak())
-    
-    # === PAGE 8: Dodatkowe Analizy (Vent/Drift) ===
-    story.extend(build_page_extra(
-        figure_paths=figure_paths,
-        styles=styles
-    ))
-    story.append(PageBreak())
-    
-    # === PAGE 9: Strefy Treningowe ===
+    # === PAGE 7: Strefy Treningowe ===
     story.extend(build_page_zones(
         thresholds=thresholds,
         styles=styles
     ))
     story.append(PageBreak())
     
-    # === PAGE 10: Ograniczenia Interpretacji ===
+    # === PAGE 8: Ograniczenia Interpretacji ===
     story.extend(build_page_limitations(
         styles=styles,
         is_conditional=config.is_conditional

@@ -43,25 +43,32 @@ def generate_ve_profile_chart(
     font_size = cfg.get('font_size', 10)
     title_size = cfg.get('title_size', 14)
     
-    # Needs source_df for VE data
-    if source_df is None or source_df.empty:
-        fig = create_empty_figure("Brak danych źródłowych (VE, Power)", "Dynamika Wentylacji", **cfg)
-        return save_figure(fig, output_path, **cfg)
+    # Extract data from source_df or time_series fallback
+    time_series = report_data.get("time_series", {})
+    
+    if source_df is not None and not source_df.empty:
+        df = source_df.copy()
+        df.columns = df.columns.str.lower().str.strip()
         
-    df = source_df.copy()
-    df.columns = df.columns.str.lower().str.strip()
-    
-    ve_col = next((c for c in ['tymeventilation', 've', 'ventilation'] if c in df.columns), None)
-    power_col = next((c for c in ['watts', 'power', 'watts_smooth_5s'] if c in df.columns), None)
-    time_col = next((c for c in ['time', 'seconds'] if c in df.columns), None)
-    
-    if not ve_col or not time_col:
-        fig = create_empty_figure("Brak kolumn VE lub czasu", "Dynamika Wentylacji", **cfg)
+        ve_col = next((c for c in ['tymeventilation', 've', 'ventilation', 've_smooth'] if c in df.columns), None)
+        power_col = next((c for c in ['watts', 'power', 'watts_smooth', 'watts_smooth_5s'] if c in df.columns), None)
+        time_col = next((c for c in ['time', 'seconds'] if c in df.columns), None)
+        
+        if ve_col and time_col:
+            time_data = df[time_col].tolist()
+            ve_data = df[ve_col].fillna(0).tolist()
+            power_data = df[power_col].fillna(0).tolist() if power_col else []
+        else:
+            time_data, ve_data, power_data = [], [], []
+    else:
+        # Fallback to JSON time_series
+        time_data = time_series.get("time_sec", [])
+        ve_data = time_series.get("ve_lmin", [])
+        power_data = time_series.get("power_watts", [])
+        
+    if not time_data or not ve_data:
+        fig = create_empty_figure("Brak danych wentylacji", "Dynamika Wentylacji", **cfg)
         return save_figure(fig, output_path, **cfg)
-    
-    time_data = df[time_col].tolist()
-    ve_data = df[ve_col].fillna(0).tolist()
-    power_data = df[power_col].fillna(0).tolist() if power_col else []
     
     # Get threshold values
     thresholds = report_data.get("thresholds", {})

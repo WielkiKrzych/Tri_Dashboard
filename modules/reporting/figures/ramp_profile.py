@@ -66,7 +66,7 @@ def generate_ramp_profile_chart(
         
         # Get power data
         power_col = None
-        for col in ['watts', 'power', 'watts_smooth_5s']:
+        for col in ['watts', 'power', 'watts_smooth', 'watts_smooth_5s']:
             if col in df.columns:
                 power_col = col
                 break
@@ -78,7 +78,7 @@ def generate_ramp_profile_chart(
             
         # Get HR data
         hr_col = None
-        for col in ['hr', 'heart_rate', 'bpm', 'heartrate']:
+        for col in ['hr', 'heart_rate', 'heartrate', 'bpm', 'heart_rate_bpm']:
             if col in df.columns:
                 hr_col = col
                 break
@@ -95,7 +95,7 @@ def generate_ramp_profile_chart(
         hr_data = time_series.get("hr_bpm", [])
     
     # Handle missing data
-    if not power_data or not time_data:
+    if not time_data or not power_data:
         fig = create_empty_figure("Brak danych mocy", "Profil Ramp Test", **cfg)
         return save_figure(fig, output_path, **cfg)
     

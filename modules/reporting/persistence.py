@@ -138,6 +138,44 @@ def save_ramp_test_report(
     # 1. Prepare data dictionary
     data = result.to_dict()
     
+    # 1.1 Add time series if source_df is available (for regeneration support)
+    if source_df is not None and len(source_df) > 0:
+        df_ts = source_df.copy()
+        df_ts.columns = df_ts.columns.str.lower().str.strip()
+        
+        # Mapping: df_column -> json_key
+        # We save raw values to keep the JSON canonical, 
+        # but limited to key metrics to keep it reasonably sized.
+        ts_map = {
+            'watts': 'power_watts',
+            'power': 'power_watts',
+            'hr': 'hr_bpm',
+            'heartrate': 'hr_bpm',
+            'heart_rate': 'hr_bpm',
+            'smo2': 'smo2_pct',
+            'smo2_pct': 'smo2_pct',
+            'tymeventilation': 've_lmin',
+            've': 've_lmin',
+            'torque': 'torque_nm',
+            'cadence': 'cadence_rpm',
+            'cad': 'cadence_rpm'
+        }
+        
+        ts_data = {}
+        # Always try to get time
+        if 'time' in df_ts.columns:
+            ts_data['time_sec'] = df_ts['time'].tolist()
+        elif 'seconds' in df_ts.columns:
+            ts_data['time_sec'] = df_ts['seconds'].tolist()
+        else:
+            ts_data['time_sec'] = list(range(len(df_ts)))
+            
+        for df_col, json_key in ts_map.items():
+            if df_col in df_ts.columns and json_key not in ts_data:
+                ts_data[json_key] = df_ts[df_col].fillna(0).tolist()
+        
+        data['time_series'] = ts_data
+    
     # 2. Enrich metadata
     now = datetime.now()
     analysis_timestamp = now.isoformat()
@@ -264,6 +302,7 @@ def _auto_generate_pdf(json_path: str, report_data: Dict, is_conditional: bool =
     fig_config = {"method_version": method_version}
     
     # Pass source_df for chart generation
+    # If source_df is missing (regeneration from index), charts will try to use report_data['time_series']
     figure_paths = generate_all_ramp_figures(report_data, temp_dir, fig_config, source_df=source_df)
     
     # Configure PDF with conditional flag
@@ -397,7 +436,7 @@ def generate_and_save_pdf(
         Path to generated PDF or None on failure
     """
     from .pdf import generate_ramp_pdf, PDFConfig
-    from .figures import generate_all_ramp_figures, FigureConfig
+    from .figures import generate_all_ramp_figures
     import tempfile
     
     json_path = Path(json_path)

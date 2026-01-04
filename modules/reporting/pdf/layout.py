@@ -749,44 +749,134 @@ def build_page_thermal(
 # PAGE 7: PROFIL METABOLICZNY (LIMITERY)
 # ============================================================================
 
+# ============================================================================
+# NEW PAGE: BIOMECHANIKA
+# ============================================================================
+
+def build_page_biomech(
+    figure_paths: Dict[str, str],
+    styles: Dict
+) -> List:
+    """Build Biomechanics page."""
+    elements = []
+    
+    elements.append(Paragraph("Analiza Biomechaniczna (Transfer Mocy)", styles["title"]))
+    elements.append(Spacer(1, 6 * mm))
+    
+    elements.append(Paragraph(
+        "Biomechanika kolarstwa analizuje sposób, w jaki generujesz moc. "
+        "Kluczowym elementem jest balans między kadencją (szybkością) a momentem obrotowym (siłą).",
+        styles["body"]
+    ))
+    
+    # Chart 1: Torque vs Cadence
+    if figure_paths and "biomech_summary" in figure_paths:
+        elements.extend(_build_chart(figure_paths["biomech_summary"], "Moment Obrotowy vs Kadencja", styles))
+        elements.append(Spacer(1, 4 * mm))
+        
+    # Chart 2: Torque vs SmO2
+    if figure_paths and "biomech_torque_smo2" in figure_paths:
+        elements.extend(_build_chart(figure_paths["biomech_torque_smo2"], "Fizjologia Okluzji (Siła vs Tlen)", styles))
+        elements.append(Spacer(1, 4 * mm))
+        
+    elements.append(Paragraph(
+        "<b>Interpretacja:</b> Spadek saturacji (SmO₂) przy wysokich momentach obrotowych może świadczyć o okluzji mechanicznej "
+        "lub niskiej efektywności układu krążenia w warunkach wysokiego napięcia mięśniowego.",
+        styles["body"]
+    ))
+    
+    return elements
+
+
+# ============================================================================
+# NEW PAGE: DRYF FIZJOLOGICZNY I KPI
+# ============================================================================
+
+def build_page_drift_kpi(
+    kpi: Dict[str, Any],
+    figure_paths: Dict[str, str],
+    styles: Dict
+) -> List:
+    """Build Physiological Drift and KPI page."""
+    elements = []
+    
+    elements.append(Paragraph("Dryf Fizjologiczny i Wskaźniki KPI", styles["title"]))
+    elements.append(Spacer(1, 6 * mm))
+    
+    # 1. Heatmaps (Side by side or sequential)
+    if figure_paths and "drift_heatmap_hr" in figure_paths:
+        elements.extend(_build_chart(figure_paths["drift_heatmap_hr"], "Mapa Dryfu (HR vs Power)", styles))
+        elements.append(Spacer(1, 4 * mm))
+        
+    if figure_paths and "drift_heatmap_smo2" in figure_paths:
+        elements.extend(_build_chart(figure_paths["drift_heatmap_smo2"], "Mapa Oksydacji (SmO2 vs Power)", styles))
+        elements.append(Spacer(1, 4 * mm))
+
+    # 2. KPI Table
+    elements.append(Paragraph("Kluczowe Wskaźniki Wydajności (KPI)", styles["heading"]))
+    
+    def fmt(val, unit=""):
+        if val is None or val == "brak danych": return "---"
+        try:
+            return f"{float(val):.2f}{unit}"
+        except:
+            return f"{val}{unit}"
+
+    data = [
+        ["Metryka", "Wartość", "Interpretacja"],
+        ["Efficiency Factor (EF)", fmt(kpi.get("ef")), "Moc na uderzenie serca (im wyżej, tym lepiej)"],
+        ["Pa:Hr (Decoupling)", fmt(kpi.get("pa_hr"), "%"), "Stabilność układu krążenia"],
+        ["% SmO2 Drift", fmt(kpi.get("smo2_drift"), "%"), "Zmęczenie lokalne mięśni"],
+        ["VO2max Estimate", fmt(kpi.get("vo2max_est"), " ml/kg"), "Szacowany pułap tlenowy"]
+    ]
+    
+    table = Table(data, colWidths=[50 * mm, 30 * mm, 85 * mm])
+    table.setStyle(get_table_style())
+    elements.append(table)
+    
+    elements.append(Spacer(1, 6 * mm))
+    elements.append(Paragraph(
+        "<b>Dryf (Pa:Hr):</b> Wartość powyżej 5% sugeruje niepełną adaptację do danego obciążenia "
+        "lub wpływ czynników zewnętrznych (upał, odwodnienie, chroniczne zmęczenie).",
+        styles["body"]
+    ))
+    
+    return elements
+
+
+# ============================================================================
+# UPDATED PAGE 7: METABOLIC MODEL
+# ============================================================================
+
 def build_page_limiters(
     metadata: Dict[str, Any],
     cp_model: Dict[str, Any],
     figure_paths: Dict[str, str],
     styles: Dict
 ) -> List:
-    """Build Page 7: Metabolic Profile & Limiters."""
+    """Build Metabolic Profile page (Radar + VLaMax Balance)."""
     elements = []
     
-    elements.append(Paragraph("Profil Metaboliczny i Limitery", styles["title"]))
+    elements.append(Paragraph("Model Metaboliczny (INSCYD-style)", styles["title"]))
     elements.append(Spacer(1, 6 * mm))
     
-    # Radar Chart
+    # 1. VLaMax Balance Schema
+    if figure_paths and "vlamax_balance" in figure_paths:
+        elements.extend(_build_chart(figure_paths["vlamax_balance"], "Balans VO2max vs VLaMax", styles))
+        elements.append(Spacer(1, 4 * mm))
+    else:
+        elements.append(Paragraph("Brak danych do analizy VLaMax (wymagane min. 20 min MMP)", styles["small"]))
+
+    # 2. Radar Chart
     if figure_paths and "limiters_radar" in figure_paths:
         elements.extend(_build_chart(figure_paths["limiters_radar"], "Radar Obciążenia (5 min Peak)", styles))
         elements.append(Spacer(1, 4 * mm))
         
     elements.append(Paragraph(
-        "Analiza 5-minutowego odcinka maksymalnego (zbiżonego do VO₂max) pozwala zidentyfikować "
-        "najsłabsze ogniwo (system limitujący).",
+        "<b>Profil Zawodnika:</b> Twój profil wynika ze stosunku między zdolnością tlenową (VO₂max) "
+        "a beztlenową (VLaMax). Wykryty limiter wskazuje, nad czym pracować w następnym bloku treningowym.",
         styles["body"]
     ))
-    elements.append(Spacer(1, 6 * mm))
-    
-    # Diagnostics Table
-    elements.append(Paragraph("Interpretacja Limiterów", styles["heading"]))
-    
-    data = [
-        ["System", "Objawy Limitera", "Rekomendacja"],
-        ["Serce (Centralny)", "HR blisko max przy niższej mocy", "Trening VO₂max, interwały 4x8min"],
-        ["Płuca (Oddechowy)", "Bardzo wysoka wentylacja (VE)", "Trening mięśni oddechowych"],
-        ["Mięśnie (Peryferyjny)", "Szybka desaturacja (SmO₂)", "Trening siłowy, Over-Gear"],
-        ["Metaboliczny (VLaMax)", "Szybki spadek mocy", "Trening Sweet Spot / Low Cadence"]
-    ]
-    
-    table = Table(data, colWidths=[35 * mm, 65 * mm, 65 * mm])
-    table.setStyle(get_table_style())
-    elements.append(table)
     
     return elements
 

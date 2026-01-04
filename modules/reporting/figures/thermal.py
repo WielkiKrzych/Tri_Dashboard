@@ -11,11 +11,11 @@ import numpy as np
 from typing import Dict, Any, Optional
 
 from .common import (
-    FigureConfig, 
     apply_common_style, 
     save_figure,
     create_empty_figure,
     COLORS,
+    get_color
 )
 
 def _find_column(df: pd.DataFrame, aliases: list) -> Optional[str]:
@@ -27,16 +27,27 @@ def _find_column(df: pd.DataFrame, aliases: list) -> Optional[str]:
 
 def generate_thermal_chart(
     report_data: Dict[str, Any],
-    config: Optional[FigureConfig] = None,
+    config: Optional[Any] = None,
     output_path: Optional[str] = None,
     source_df: Optional[pd.DataFrame] = None
 ) -> bytes:
     """Generate Core Temperature vs HSI chart (Time Series)."""
-    config = config or FigureConfig()
+    # Handle config as dict if passed, or use defaults
+    if hasattr(config, '__dict__'):
+        cfg = config.__dict__
+    elif isinstance(config, dict):
+        cfg = config
+    else:
+        cfg = {}
+
+    figsize = cfg.get('figsize', (10, 6))
+    dpi = cfg.get('dpi', 150)
+    font_size = cfg.get('font_size', 10)
+    title_size = cfg.get('title_size', 14)
     
     if source_df is None or source_df.empty:
-        fig = create_empty_figure("Brak danych źródłowych", "Termoregulacja", config)
-        return save_figure(fig, config, output_path)
+        fig = create_empty_figure("Brak danych źródłowych", "Termoregulacja", **cfg)
+        return save_figure(fig, output_path, **cfg)
 
     # Resolve columns
     df = source_df.copy()
@@ -45,8 +56,8 @@ def generate_thermal_chart(
     time_col = _find_column(df, ['time_min', 'time'])
     
     if not temp_col or not hsi_col:
-        fig = create_empty_figure("Brak danych Temp/HSI", "Termoregulacja", config)
-        return save_figure(fig, config, output_path)
+        fig = create_empty_figure("Brak danych Temp/HSI", "Termoregulacja", **cfg)
+        return save_figure(fig, output_path, **cfg)
 
     # Normalize time to minutes if needed
     if time_col == 'time':
@@ -55,12 +66,12 @@ def generate_thermal_chart(
     else:
         time_vals = df[time_col]
 
-    fig, ax1 = plt.subplots(figsize=config.figsize, dpi=config.dpi)
+    fig, ax1 = plt.subplots(figsize=figsize, dpi=dpi)
     
     # Core Temp (Left Axis)
     l1, = ax1.plot(time_vals, df[temp_col], color='#ff7f0e', label="Core Temp", linewidth=2)
-    ax1.set_xlabel("Czas [min]", fontsize=config.font_size)
-    ax1.set_ylabel("Temperatura [°C]", fontsize=config.font_size, color='#ff7f0e')
+    ax1.set_xlabel("Czas [min]", fontsize=font_size)
+    ax1.set_ylabel("Temperatura [°C]", fontsize=font_size, color='#ff7f0e')
     ax1.tick_params(axis='y', labelcolor='#ff7f0e')
     
     # Threshold lines for Temp
@@ -70,35 +81,46 @@ def generate_thermal_chart(
     # HSI (Right Axis)
     ax2 = ax1.twinx()
     l2, = ax2.plot(time_vals, df[hsi_col], color='#d62728', linestyle=':', label="HSI", linewidth=2)
-    ax2.set_ylabel("Heat Strain Index (HSI)", fontsize=config.font_size, color='#d62728')
+    ax2.set_ylabel("Heat Strain Index (HSI)", fontsize=font_size, color='#d62728')
     ax2.tick_params(axis='y', labelcolor='#d62728')
     ax2.set_ylim(0, 12)  # HSI scale usually 0-10+
 
     # Title & Legend
-    ax1.set_title("Termoregulacja: Core Temp vs HSI", fontsize=config.title_size, fontweight='bold')
+    ax1.set_title("Termoregulacja: Core Temp vs HSI", fontsize=title_size, fontweight='bold')
     
     lines = [l1, l2]
     labels = [l.get_label() for l in lines]
     ax1.legend(lines, labels, loc='upper left', framealpha=0.9)
     
-    apply_common_style(fig, ax1, config)
+    apply_common_style(fig, ax1, **cfg)
     plt.tight_layout()
     
-    return save_figure(fig, config, output_path)
+    return save_figure(fig, output_path, **cfg)
 
 
 def generate_efficiency_chart(
     report_data: Dict[str, Any],
-    config: Optional[FigureConfig] = None,
+    config: Optional[Any] = None,
     output_path: Optional[str] = None,
     source_df: Optional[pd.DataFrame] = None
 ) -> bytes:
     """Generate Efficiency Factor vs Temperature scatter plot."""
-    config = config or FigureConfig()
+    # Handle config as dict if passed, or use defaults
+    if hasattr(config, '__dict__'):
+        cfg = config.__dict__
+    elif isinstance(config, dict):
+        cfg = config
+    else:
+        cfg = {}
+
+    figsize = cfg.get('figsize', (10, 6))
+    dpi = cfg.get('dpi', 150)
+    font_size = cfg.get('font_size', 10)
+    title_size = cfg.get('title_size', 14)
     
     if source_df is None or source_df.empty:
-        fig = create_empty_figure("Brak danych źródłowych", "Spadek Efektywności", config)
-        return save_figure(fig, config, output_path)
+        fig = create_empty_figure("Brak danych źródłowych", "Spadek Efektywności", **cfg)
+        return save_figure(fig, output_path, **cfg)
         
     df = source_df.copy()
     temp_col = _find_column(df, ['core_temperature_smooth', 'core_temperature', 'core_temp'])
@@ -106,43 +128,43 @@ def generate_efficiency_chart(
     pwr_col = _find_column(df, ['watts', 'watts_smooth', 'power'])
     
     if not (temp_col and hr_col and pwr_col):
-        fig = create_empty_figure("Brak danych Power/HR/Temp", "Spadek Efektywności", config)
-        return save_figure(fig, config, output_path)
+        fig = create_empty_figure("Brak danych Power/HR/Temp", "Spadek Efektywności", **cfg)
+        return save_figure(fig, output_path, **cfg)
         
     # Filter valid data
     mask = (df[pwr_col] > 10) & (df[hr_col] > 60)
     df_clean = df[mask].copy()
     
     if df_clean.empty:
-        fig = create_empty_figure("Zbyt mało danych", "Spadek Efektywności", config)
-        return save_figure(fig, config, output_path)
+        fig = create_empty_figure("Zbyt mało danych", "Spadek Efektywności", **cfg)
+        return save_figure(fig, output_path, **cfg)
 
     # Calculate Efficiency (W/HR)
     df_clean['eff_raw'] = df_clean[pwr_col] / df_clean[hr_col]
     # Filter outliers
     df_clean = df_clean[df_clean['eff_raw'] < 6.0]
     
-    fig, ax = plt.subplots(figsize=config.figsize, dpi=config.dpi)
+    fig, ax = plt.subplots(figsize=figsize, dpi=dpi)
     
     # Scatter points
-    sc = ax.scatter(df_clean[temp_col], df_clean['eff_raw'], 
+    ax.scatter(df_clean[temp_col], df_clean['eff_raw'], 
                     c='#1f77b4', alpha=0.3, s=20, label="Punkty pomiarowe")
                     
-    # Trend line (Linear fit for simplicity in PDF, instead of LOWESS which needs statsmodels)
+    # Trend line
     try:
         z = np.polyfit(df_clean[temp_col], df_clean['eff_raw'], 1)
         p = np.poly1d(z)
         x_trend = np.linspace(df_clean[temp_col].min(), df_clean[temp_col].max(), 100)
         ax.plot(x_trend, p(x_trend), "r--", linewidth=2, label=f"Trend (Slope: {z[0]:.3f})")
     except:
-        pass # Ignore trend error if singular matrix
+        pass 
 
-    ax.set_xlabel("Core Temperature [°C]", fontsize=config.font_size)
-    ax.set_ylabel("Efficiency Factor [W/bpm]", fontsize=config.font_size)
-    ax.set_title("Spadek Efektywności (Cardiac Drift) vs Temperatura", fontsize=config.title_size, fontweight='bold')
+    ax.set_xlabel("Core Temperature [°C]", fontsize=font_size)
+    ax.set_ylabel("Efficiency Factor [W/bpm]", fontsize=font_size)
+    ax.set_title("Spadek Efektywności (Cardiac Drift) vs Temperatura", fontsize=title_size, fontweight='bold')
     ax.legend(loc='upper right')
     
-    apply_common_style(fig, ax, config)
+    apply_common_style(fig, ax, **cfg)
     plt.tight_layout()
     
-    return save_figure(fig, config, output_path)
+    return save_figure(fig, output_path, **cfg)

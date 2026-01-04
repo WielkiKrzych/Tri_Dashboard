@@ -252,7 +252,7 @@ def _auto_generate_pdf(json_path: str, report_data: Dict, is_conditional: bool =
         PDF path if successful, None otherwise
     """
     from .pdf import generate_ramp_pdf, PDFConfig
-    from .figures import generate_all_ramp_figures, FigureConfig
+    from .figures import generate_all_ramp_figures
     import tempfile
     
     json_path = Path(json_path)
@@ -261,7 +261,7 @@ def _auto_generate_pdf(json_path: str, report_data: Dict, is_conditional: bool =
     # Generate figures in temp directory
     temp_dir = tempfile.mkdtemp()
     method_version = report_data.get("metadata", {}).get("method_version", "1.0.0")
-    fig_config = FigureConfig(method_version=method_version)
+    fig_config = {"method_version": method_version}
     
     # Pass source_df for chart generation
     figure_paths = generate_all_ramp_figures(report_data, temp_dir, fig_config, source_df=source_df)
@@ -414,7 +414,7 @@ def generate_and_save_pdf(
     # during regeneration from JSON. Full charts are only generated during 
     # initial save when DataFrame is available.
     temp_dir = tempfile.mkdtemp()
-    fig_config = FigureConfig(method_version=report_data.get("metadata", {}).get("method_version", "1.0.0"))
+    fig_config = {"method_version": report_data.get("metadata", {}).get("method_version", "1.0.0")}
     figure_paths = generate_all_ramp_figures(report_data, temp_dir, fig_config, source_df=None)
     
     # Generate PDF path (same name as JSON but .pdf)
@@ -443,6 +443,45 @@ def generate_and_save_pdf(
     print(f"PDF generated: {pdf_path}")
     
     return str(pdf_path.absolute())
+
+
+def generate_ramp_test_pdf(session_id: str, output_base_dir: str = "reports/ramp_tests") -> Optional[str]:
+    """
+    Ręczne generowanie raportu PDF na podstawie session_id.
+    
+    1. Znajduje json_path w index.csv
+    2. Wczytuje JSON
+    3. Generuje PDF i aktualizuje index
+    """
+    import csv
+    print(f"Generating PDF for session_id: {session_id}")
+    
+    index_path = Path(output_base_dir) / "index.csv"
+    if not index_path.exists():
+        print(f"Error: Index not found at {index_path}")
+        return None
+        
+    json_path = None
+    with open(index_path, 'r', newline='', encoding='utf-8') as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            if row.get("session_id") == session_id:
+                json_path = row.get("json_path")
+                break
+                
+    if not json_path:
+        print(f"Error: JSON path not found in index for session {session_id}")
+        return None
+        
+    # Re-use existing logic for generation
+    pdf_path_str = generate_and_save_pdf(json_path, output_base_dir)
+    
+    if pdf_path_str:
+        print(f"PDF saved to: {pdf_path_str}")
+        print(f"index.csv updated for session_id: {session_id}")
+        return pdf_path_str
+        
+    return None
 
 
 

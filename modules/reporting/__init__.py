@@ -17,7 +17,6 @@ from .figures import (
     generate_smo2_power_chart,
     generate_pdc_chart,
     generate_all_ramp_figures,
-    FigureConfig,
 )
 
 __all__ = [
@@ -37,5 +36,4 @@ __all__ = [
     "generate_smo2_power_chart",
     "generate_pdc_chart",
     "generate_all_ramp_figures",
-    "FigureConfig",
 ]

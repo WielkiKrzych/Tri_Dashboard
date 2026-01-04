@@ -137,9 +137,64 @@ def build_ramp_docx(
         doc.add_page_break()
 
         # === PAGE 5: TEORIA ===
-        doc.add_heading("Teoria Fizjologiczna (INSCYD/WKO5)", 1)
-        doc.add_paragraph("VO2max vs VLaMax...")
-        # (Short version for DOCX, user can edit)
+        doc.add_heading("Model Metaboliczny (INSCYD/WKO5)", 1)
+        
+        doc.add_paragraph(
+            "Twoja wydajność zależy od interakcji trzech systemów energetycznych. "
+            "Zrozumienie ich pozwala na precyzyjne dopasowanie treningu."
+        )
+
+        doc.add_heading("1. VO₂max (System Tlenowy)", 2)
+        doc.add_paragraph(
+            "Maksymalna ilość tlenu, jaką Twój organizm może przyswoić. "
+            "Jest to Twój „silnik diesla” – odpowiada za moc na długim dystansie. "
+            "Wysokie VO₂max jest kluczowe dla każdego kolarza wytrzymałościowego."
+        )
+
+        doc.add_heading("2. VLaMax (System Glikolityczny)", 2)
+        doc.add_paragraph(
+            "Maksymalne tempo produkcji mleczanu. To Twój „dopalacz turbo”. "
+            "Wysokie VLaMax daje świetny sprint i ataki, ale powoduje szybkie zużycie węglowodanów (niskie FatMax) i obniża próg FTP. "
+            "Niskie VLaMax zwiększa próg FTP i oszczędza glikogen (dobre dla Ironman/GC), ale ogranicza dynamikę."
+        )
+
+        doc.add_heading("Interakcja VO₂max ↔ VLaMax", 2)
+        doc.add_paragraph(
+            "Twój próg FTP to wynik walki między tymi dwoma systemami. "
+            "Aby podnieść FTP, możesz albo zwiększyć VO₂max (powiększyć silnik), albo obniżyć VLaMax (zmniejszyć spalanie). "
+            "Wybór strategii zależy od Twojego typu zawodnika."
+        )
+
+        doc.add_heading("FatMax (Metabolizm Tłuszczowy)", 2)
+        doc.add_paragraph(
+            "Moc, przy której spalasz najwięcej tłuszczu (zwykle strefa Z2). "
+            "Trening w tej strefie uczy organizm oszczędzania glikogenu."
+        )
+
+        doc.add_heading("Typy Zawodników i Strategie", 2)
+        table_theory = doc.add_table(rows=1, cols=4)
+        table_theory.style = 'Table Grid'
+        hdr = table_theory.rows[0].cells
+        hdr[0].text = "Typ"
+        hdr[1].text = "VO2max"
+        hdr[2].text = "VLaMax"
+        hdr[3].text = "Charakterystyka"
+        
+        theory_data = [
+            ["Sprinter", "Średni", "Wysoki", "Dynamika, punch, sprinty"],
+            ["Climber", "Wysoki", "Niski", "Długie wspinaczki, tempo"],
+            ["Time Trialist", "Wysoki", "Niski", "Równe tempo, aerodynamika"],
+            ["Puncheur", "Wysoki", "Średni", "Ataki, krótkie górki"]
+        ]
+        
+        for t_row in theory_data:
+            cells = table_theory.add_row().cells
+            for i, val in enumerate(t_row):
+                cells[i].text = val
+
+        doc.add_heading("Jak Zmienić Swój Profil?", 2)
+        doc.add_paragraph("⬇️ Obniżyć VLaMax: Długie jazdy Z2, trening na czczo.")
+        doc.add_paragraph("⬆️ Podnieść FTP: Sweet Spot (88-94%), Threshold (95-105%).")
 
         doc.add_page_break()
 

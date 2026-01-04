@@ -11,11 +11,11 @@ import pandas as pd
 from typing import Dict, Any, Optional
 
 from .common import (
-    FigureConfig, 
     apply_common_style, 
     save_figure,
     create_empty_figure,
     COLORS,
+    get_color
 )
 
 def _find_column(df: pd.DataFrame, aliases: list) -> Optional[str]:
@@ -27,16 +27,27 @@ def _find_column(df: pd.DataFrame, aliases: list) -> Optional[str]:
 
 def generate_full_vent_chart(
     report_data: Dict[str, Any],
-    config: Optional[FigureConfig] = None,
+    config: Optional[Any] = None,
     output_path: Optional[str] = None,
     source_df: Optional[pd.DataFrame] = None
 ) -> bytes:
     """Generate Ventilation Dynamics Chart (Time Series)."""
-    config = config or FigureConfig()
+    # Handle config as dict if passed, or use defaults
+    if hasattr(config, '__dict__'):
+        cfg = config.__dict__
+    elif isinstance(config, dict):
+        cfg = config
+    else:
+        cfg = {}
+
+    figsize = cfg.get('figsize', (10, 6))
+    dpi = cfg.get('dpi', 150)
+    font_size = cfg.get('font_size', 10)
+    title_size = cfg.get('title_size', 14)
     
     if source_df is None or source_df.empty:
-        fig = create_empty_figure("Brak danych źródłowych", "Dynamika Wentylacji", config)
-        return save_figure(fig, config, output_path)
+        fig = create_empty_figure("Brak danych źródłowych", "Dynamika Wentylacji", **cfg)
+        return save_figure(fig, output_path, **cfg)
 
     # Resolve columns
     df = source_df.copy()
@@ -45,8 +56,8 @@ def generate_full_vent_chart(
     time_col = _find_column(df, ['time_min', 'time'])
     
     if not ve_col:
-        fig = create_empty_figure("Brak danych Wentylacji", "Dynamika Wentylacji", config)
-        return save_figure(fig, config, output_path)
+        fig = create_empty_figure("Brak danych Wentylacji", "Dynamika Wentylacji", **cfg)
+        return save_figure(fig, output_path, **cfg)
 
     # Normalize time
     if time_col == 'time':
@@ -55,33 +66,33 @@ def generate_full_vent_chart(
     else:
         time_vals = df[time_col]
         
-    fig, ax1 = plt.subplots(figsize=config.figsize, dpi=config.dpi)
+    fig, ax1 = plt.subplots(figsize=figsize, dpi=dpi)
     
     # VE (Left Axis - Primary)
-    l1, = ax1.plot(time_vals, df[ve_col], color='#ffa15a', label="VE (L/min)", linewidth=2)
-    ax1.set_xlabel("Czas [min]", fontsize=config.font_size)
-    ax1.set_ylabel("Wentylacja [L/min]", fontsize=config.font_size, color='#ffa15a')
-    ax1.tick_params(axis='y', labelcolor='#ffa15a')
+    l1, = ax1.plot(time_vals, df[ve_col], color=get_color("vt1"), label="VE (L/min)", linewidth=2)
+    ax1.set_xlabel("Czas [min]", fontsize=font_size)
+    ax1.set_ylabel("Wentylacja [L/min]", fontsize=font_size, color=get_color("vt1"))
+    ax1.tick_params(axis='y', labelcolor=get_color("vt1"))
     
     # Power (Right Axis - Secondary)
     if pwr_col:
         ax2 = ax1.twinx()
-        l2, = ax2.plot(time_vals, df[pwr_col], color='#1f77b4', linestyle='-', alpha=0.3, label="Moc (W)", linewidth=1)
-        ax2.set_ylabel("Moc [W]", fontsize=config.font_size, color='#1f77b4')
-        ax2.tick_params(axis='y', labelcolor='#1f77b4')
-        ax2.grid(False) # Turn off grid for secondary axis to avoid clutter
+        l2, = ax2.plot(time_vals, df[pwr_col], color=get_color("power"), linestyle='-', alpha=0.3, label="Moc (W)", linewidth=1)
+        ax2.set_ylabel("Moc [W]", fontsize=font_size, color=get_color("power"))
+        ax2.tick_params(axis='y', labelcolor=get_color("power"))
+        ax2.grid(False) 
         
         lines = [l1, l2]
     else:
         lines = [l1]
         
     # Title & Legend
-    ax1.set_title("Dynamika Wentylacji vs Moc", fontsize=config.title_size, fontweight='bold')
+    ax1.set_title("Dynamika Wentylacji vs Moc", fontsize=title_size, fontweight='bold')
     
     labels = [l.get_label() for l in lines]
     ax1.legend(lines, labels, loc='upper left', framealpha=0.9)
     
-    apply_common_style(fig, ax1, config)
+    apply_common_style(fig, ax1, **cfg)
     plt.tight_layout()
     
-    return save_figure(fig, config, output_path)
+    return save_figure(fig, output_path, **cfg)

@@ -1,19 +1,11 @@
 """
 Static Figure Generator for Ramp Test PDF Reports.
-
-Generates PNG/SVG charts based on JSON report data.
-No Streamlit dependency - pure matplotlib.
-
-Module Structure:
-- common.py: Shared configuration and utilities
-- ramp_profile.py: Ramp test power profile chart
-- smo2_vs_power.py: SmO₂ vs power scatter chart
-- cp_curve.py: Power-duration curve chart
+Orchestrates figure generation for various chart types.
 """
 from pathlib import Path
 from typing import Dict, Any, Optional
 
-from .common import FigureConfig, DPI, COLORS, save_figure
+from .common import DPI, get_color, save_figure
 from .ramp_profile import generate_ramp_profile_chart
 from .smo2_vs_power import generate_smo2_power_chart
 from .cp_curve import generate_cp_curve_chart, generate_pdc_chart
@@ -27,32 +19,31 @@ from .drift import generate_power_hr_scatter, generate_power_smo2_scatter
 def generate_all_ramp_figures(
     report_data: Dict[str, Any],
     output_dir: str,
-    config: Optional[FigureConfig] = None,
+    config: Optional[Any] = None,
     source_df: Optional["pd.DataFrame"] = None
 ) -> Dict[str, str]:
     """Generate all ramp test figures and save to directory.
     
-    Orchestrates generation of all four chart types:
-    1. Ramp profile (power + HR over time)
-    2. SmO₂ vs Power (with LT markers)
-    3. Power-Duration Curve (with CP model)
-    4. VE Profile (Ventilation dynamics)
-    
     Args:
         report_data: Canonical JSON report dictionary
         output_dir: Directory to save figures
-        config: Figure configuration
-        source_df: Optional source DataFrame with raw data (time, power, hr, smo2)
+        config: Optional configuration dictionary or object
+        source_df: Optional source DataFrame with raw data
         
     Returns:
         Dict mapping figure name to file path
     """
-    config = config or FigureConfig()
+    config = config or {}
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
     
     session_id = report_data.get("metadata", {}).get("session_id", "unknown")[:8]
-    ext = config.format
+    
+    # Handle config as dict if passed, or use attributes
+    if isinstance(config, dict):
+        ext = config.get('format', 'png')
+    else:
+        ext = getattr(config, 'format', 'png')
     
     paths = {}
     
@@ -104,20 +95,14 @@ def generate_all_ramp_figures(
     generate_power_smo2_scatter(report_data, config, str(drift_smo2_path), source_df=source_df)
     paths["drift_smo2"] = str(drift_smo2_path)
     
-
-    
     return paths
 
 
 __all__ = [
-    # Main API
     "generate_all_ramp_figures",
     "generate_ramp_profile_chart",
     "generate_smo2_power_chart",
     "generate_pdc_chart",
     "generate_cp_curve_chart",
-    # Configuration
-    "FigureConfig",
     "DPI",
-    "COLORS",
 ]

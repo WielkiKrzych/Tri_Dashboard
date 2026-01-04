@@ -11,11 +11,11 @@ import numpy as np
 from typing import Dict, Any, Optional
 
 from .common import (
-    FigureConfig, 
     apply_common_style, 
     save_figure,
     create_empty_figure,
     COLORS,
+    get_color
 )
 
 def _find_column(df: pd.DataFrame, aliases: list) -> Optional[str]:
@@ -27,16 +27,27 @@ def _find_column(df: pd.DataFrame, aliases: list) -> Optional[str]:
 
 def generate_power_hr_scatter(
     report_data: Dict[str, Any],
-    config: Optional[FigureConfig] = None,
+    config: Optional[Any] = None,
     output_path: Optional[str] = None,
     source_df: Optional[pd.DataFrame] = None
 ) -> bytes:
     """Generate Power vs Heart Rate scatter plot with time coloring."""
-    config = config or FigureConfig()
+    # Handle config as dict if passed, or use defaults
+    if hasattr(config, '__dict__'):
+        cfg = config.__dict__
+    elif isinstance(config, dict):
+        cfg = config
+    else:
+        cfg = {}
+
+    figsize = cfg.get('figsize', (10, 6))
+    dpi = cfg.get('dpi', 150)
+    font_size = cfg.get('font_size', 10)
+    title_size = cfg.get('title_size', 14)
     
     if source_df is None or source_df.empty:
-        fig = create_empty_figure("Brak danych źródłowych", "Power vs HR", config)
-        return save_figure(fig, config, output_path)
+        fig = create_empty_figure("Brak danych źródłowych", "Power vs HR", **cfg)
+        return save_figure(fig, output_path, **cfg)
 
     df = source_df.copy()
     hr_col = _find_column(df, ['heartrate', 'heartrate_smooth', 'hr'])
@@ -44,14 +55,14 @@ def generate_power_hr_scatter(
     time_col = _find_column(df, ['time_min', 'time'])
     
     if not hr_col or not pwr_col:
-        fig = create_empty_figure("Brak danych Power/HR", "Power vs HR", config)
-        return save_figure(fig, config, output_path)
+        fig = create_empty_figure("Brak danych Power/HR", "Power vs HR", **cfg)
+        return save_figure(fig, output_path, **cfg)
 
     # Filter invalid
     mask = (df[pwr_col] > 10) & (df[hr_col] > 30)
     df_clean = df[mask].copy()
 
-    fig, ax = plt.subplots(figsize=config.figsize, dpi=config.dpi)
+    fig, ax = plt.subplots(figsize=figsize, dpi=dpi)
     
     # Scatter with time coloring
     if time_col:
@@ -62,30 +73,41 @@ def generate_power_hr_scatter(
         cbar.set_label('Czas' + (' [min]' if time_col == 'time_min' else ' [s]'))
     else:
         ax.scatter(df_clean[pwr_col], df_clean[hr_col], 
-                   c='#1f77b4', alpha=0.5, s=20)
+                   c=get_color("primary"), alpha=0.5, s=20)
         
-    ax.set_xlabel("Moc [W]", fontsize=config.font_size)
-    ax.set_ylabel("HR [bpm]", fontsize=config.font_size)
-    ax.set_title("Relacja: Moc vs Tętno (Decoupling)", fontsize=config.title_size, fontweight='bold')
+    ax.set_xlabel("Moc [W]", fontsize=font_size)
+    ax.set_ylabel("HR [bpm]", fontsize=font_size)
+    ax.set_title("Relacja: Moc vs Tętno (Decoupling)", fontsize=title_size, fontweight='bold')
     
-    apply_common_style(fig, ax, config)
+    apply_common_style(fig, ax, **cfg)
     plt.tight_layout()
     
-    return save_figure(fig, config, output_path)
+    return save_figure(fig, output_path, **cfg)
 
 
 def generate_power_smo2_scatter(
     report_data: Dict[str, Any],
-    config: Optional[FigureConfig] = None,
+    config: Optional[Any] = None,
     output_path: Optional[str] = None,
     source_df: Optional[pd.DataFrame] = None
 ) -> bytes:
     """Generate Power vs SmO2 scatter plot with time coloring."""
-    config = config or FigureConfig()
+    # Handle config as dict if passed, or use defaults
+    if hasattr(config, '__dict__'):
+        cfg = config.__dict__
+    elif isinstance(config, dict):
+        cfg = config
+    else:
+        cfg = {}
+
+    figsize = cfg.get('figsize', (10, 6))
+    dpi = cfg.get('dpi', 150)
+    font_size = cfg.get('font_size', 10)
+    title_size = cfg.get('title_size', 14)
     
     if source_df is None or source_df.empty:
-        fig = create_empty_figure("Brak danych źródłowych", "Power vs SmO2", config)
-        return save_figure(fig, config, output_path)
+        fig = create_empty_figure("Brak danych źródłowych", "Power vs SmO2", **cfg)
+        return save_figure(fig, output_path, **cfg)
 
     df = source_df.copy()
     smo2_col = _find_column(df, ['smo2', 'SmO2', 'muscle_oxygen'])
@@ -93,31 +115,31 @@ def generate_power_smo2_scatter(
     time_col = _find_column(df, ['time_min', 'time'])
     
     if not smo2_col or not pwr_col:
-        fig = create_empty_figure("Brak danych Power/SmO2", "Power vs SmO2", config)
-        return save_figure(fig, config, output_path)
+        fig = create_empty_figure("Brak danych Power/SmO2", "Power vs SmO2", **cfg)
+        return save_figure(fig, output_path, **cfg)
 
     # Filter invalid
     mask = (df[pwr_col] > 10) & (df[smo2_col] > 0)
     df_clean = df[mask].copy()
 
-    fig, ax = plt.subplots(figsize=config.figsize, dpi=config.dpi)
+    fig, ax = plt.subplots(figsize=figsize, dpi=dpi)
     
     # Scatter with time coloring
     if time_col:
         c_vals = df_clean[time_col]
         sc = ax.scatter(df_clean[pwr_col], df_clean[smo2_col], 
-                       c=c_vals, cmap='inferno', alpha=0.5, s=20) # inferno looks good for muscles/heat
+                       c=c_vals, cmap='inferno', alpha=0.5, s=20) 
         cbar = plt.colorbar(sc, ax=ax)
         cbar.set_label('Czas' + (' [min]' if time_col == 'time_min' else ' [s]'))
     else:
-        ax.scatter(df_clean[pwr_col], df_clean[smo2_col], 
-                   c='#d62728', alpha=0.5, s=20)
+        ax.scatter(df_clean[pwr_col], df_clean[hr_col], 
+                   c=get_color("smo2"), alpha=0.5, s=20)
         
-    ax.set_xlabel("Moc [W]", fontsize=config.font_size)
-    ax.set_ylabel("SmO₂ [%]", fontsize=config.font_size)
-    ax.set_title("Relacja: Moc vs Saturacja Mięśniowa", fontsize=config.title_size, fontweight='bold')
+    ax.set_xlabel("Moc [W]", fontsize=font_size)
+    ax.set_ylabel("SmO₂ [%]", fontsize=font_size)
+    ax.set_title("Relacja: Moc vs Saturacja Mięśniowa", fontsize=title_size, fontweight='bold')
     
-    apply_common_style(fig, ax, config)
+    apply_common_style(fig, ax, **cfg)
     plt.tight_layout()
     
-    return save_figure(fig, config, output_path)
+    return save_figure(fig, output_path, **cfg)

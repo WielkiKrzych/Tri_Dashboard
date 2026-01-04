@@ -114,24 +114,15 @@ def render_ramp_archive():
              st.write(f"**Notatka:** {meta.get('notes', '-')}")
 
         # 5. Download buttons
-        btn_col1, btn_col2 = st.columns(2)
+        btn_col1, btn_col2, btn_col3 = st.columns(3)
         
-        # PDF Download (existing file only, no generation)
-        # Single source of truth: pdf_path column + os.path.exists()
+        # PDF Generation & Download
         with btn_col1:
-            # 1. Get pdf_path from record (single source of truth)
             raw_path = record.get('pdf_path', '')
             pdf_path = str(raw_path).strip() if raw_path and str(raw_path).lower() != 'nan' else ""
             session_id = record.get('session_id', 'unknown')
-            
-            # 2. Check file existence
             pdf_exists = os.path.exists(pdf_path) if pdf_path else False
             
-            # 3. Developer logs (pdf_path + exists status)
-            print(f"[RampArchive] pdf_path: {pdf_path!r}")
-            print(f"[RampArchive] exists: {pdf_exists}")
-            
-            # 4. Visibility logic (based solely on pdf_path existence)
             if pdf_path and pdf_exists:
                 try:
                     with open(pdf_path, 'rb') as f:
@@ -143,29 +134,52 @@ def render_ramp_archive():
                         file_name=f"raport_ramp_{record['test_date'].date()}.pdf",
                         mime="application/pdf",
                         type="primary",
-                        key=f"pdf_btn_{session_id}"
+                        key=f"pdf_dl_{session_id}"
+                    )
+                    
+                    # Also offer regeneration
+                    if st.button("🔄 Wygeneruj PDF ponownie", key=f"regen_pdf_{session_id}"):
+                        from modules.reporting.persistence import generate_ramp_test_pdf
+                        with st.spinner("Generowanie..."):
+                            generate_ramp_test_pdf(session_id)
+                            st.rerun()
+                except Exception as e:
+                    st.error(f"Błąd PDF: {e}")
+            else:
+                if st.button("📕 Wygeneruj PDF", key=f"gen_pdf_{session_id}", type="primary"):
+                    from modules.reporting.persistence import generate_ramp_test_pdf
+                    with st.spinner("Generowanie..."):
+                        generate_ramp_test_pdf(session_id)
+                        st.rerun()
+
+        # DOCX Download
+        with btn_col2:
+            docx_path = ""
+            if pdf_path:
+                docx_path = str(Path(pdf_path).with_suffix(".docx"))
+            
+            docx_exists = os.path.exists(docx_path) if docx_path else False
+            
+            if docx_path and docx_exists:
+                try:
+                    with open(docx_path, 'rb') as f:
+                        docx_data = f.read()
+                        
+                    st.download_button(
+                        label="📝 Pobierz DOCX",
+                        data=docx_data,
+                        file_name=f"raport_ramp_{record['test_date'].date()}.docx",
+                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                        key=f"docx_btn_{session_id}"
                     )
                 except Exception as e:
-                    st.error(f"Błąd odczytu pliku PDF: {e}")
+                    st.error(f"Błąd DOCX: {e}")
             else:
-                st.warning("Brak PDF")
-                # Offer regeneration from JSON
-                if st.button("🔄 Wygeneruj PDF", key=f"regen_pdf_{session_id}"):
-                    from modules.reporting.persistence import generate_and_save_pdf
-                    with st.spinner("Generowanie PDF..."):
-                        try:
-                            new_pdf_path = generate_and_save_pdf(json_path)
-                            if new_pdf_path and os.path.exists(new_pdf_path):
-                                st.success(f"PDF wygenerowany: {new_pdf_path}")
-                                st.rerun()
-                            else:
-                                st.error("Generowanie PDF nie powiodło się.")
-                        except Exception as e:
-                            st.error(f"Błąd generowania PDF: {e}")
-        
-        # HTML Generation on demand
-        with btn_col2:
-            if st.button("📄 Wygeneruj HTML"):
+                st.info("DOCX niedostępny (wygeneruj PDF ponownie).")
+
+        # HTML Generation
+        with btn_col3:
+            if st.button("📄 Wygeneruj HTML", key=f"html_btn_{session_id}"):
                 with st.spinner("Generowanie..."):
                     html_content = generate_html_report(report_data)
                     
@@ -173,7 +187,8 @@ def render_ramp_archive():
                         label="⬇️ Pobierz HTML",
                         data=html_content,
                         file_name=f"raport_ramp_{record['test_date'].date()}.html",
-                        mime="text/html"
+                        mime="text/html",
+                        key=f"html_dl_{session_id}"
                     )
         
         # Preview (in expander)

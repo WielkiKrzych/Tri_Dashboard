@@ -16,36 +16,35 @@ import matplotlib.patches as mpatches
 from typing import Dict, Any, Optional
 
 from .common import (
-    FigureConfig, 
     apply_common_style, 
     save_figure,
     create_empty_figure,
     COLORS,
+    get_color
 )
 
 
 def generate_ramp_profile_chart(
     report_data: Dict[str, Any],
-    config: Optional[FigureConfig] = None,
+    config: Optional[Any] = None,
     output_path: Optional[str] = None,
     source_df: Optional["pd.DataFrame"] = None
 ) -> bytes:
-    """Generate ramp profile chart with VT1/VT2 as horizontal range bands.
-    
-    Shows power trace over time with semi-transparent horizontal bands
-    indicating VT1 and VT2 power zones.
-    
-    Args:
-        report_data: Canonical JSON report dictionary
-        config: Figure configuration
-        output_path: Optional file path to save (None = return bytes)
-        source_df: Optional source DataFrame with raw time/power/hr data
-        
-    Returns:
-        PNG/SVG bytes
-    """
-    config = config or FigureConfig()
-    
+    """Generate ramp profile chart with VT1/VT2 as horizontal range bands."""
+    # Handle config as dict if passed, or use defaults
+    if hasattr(config, '__dict__'):
+        cfg = config.__dict__
+    elif isinstance(config, dict):
+        cfg = config
+    else:
+        cfg = {}
+
+    figsize = cfg.get('figsize', (10, 6))
+    dpi = cfg.get('dpi', 150)
+    font_size = cfg.get('font_size', 10)
+    title_size = cfg.get('title_size', 14)
+    method_version = cfg.get('method_version', '1.0.0')
+
     # Extract data from source_df if available, otherwise from report
     time_series = report_data.get("time_series", {})
     thresholds = report_data.get("thresholds", {})
@@ -60,6 +59,8 @@ def generate_ramp_profile_chart(
         # Get time data
         if 'time' in df.columns:
             time_data = df['time'].tolist()
+        elif 'seconds' in df.columns:
+            time_data = df['seconds'].tolist()
         else:
             time_data = list(range(len(df)))
         
@@ -95,8 +96,8 @@ def generate_ramp_profile_chart(
     
     # Handle missing data
     if not power_data or not time_data:
-        fig = create_empty_figure("Brak danych mocy", "Profil Ramp Test", config)
-        return save_figure(fig, config, output_path)
+        fig = create_empty_figure("Brak danych mocy", "Profil Ramp Test", **cfg)
+        return save_figure(fig, output_path, **cfg)
     
     # Get threshold values from thresholds dict (nested structure)
     vt1_data = thresholds.get("vt1", {})
@@ -112,76 +113,65 @@ def generate_ramp_profile_chart(
     time_min = [t / 60 for t in time_data]
     
     # Create figure
-    fig, ax = plt.subplots(figsize=config.figsize, dpi=config.dpi)
+    fig, ax = plt.subplots(figsize=figsize, dpi=dpi)
     
     # Power trace (Axis 1)
-    l1, = ax.plot(time_min, power_data, color=config.get_color("power"), 
+    l1, = ax.plot(time_min, power_data, color=get_color("power"), 
             linewidth=1.5, label="Moc", zorder=3)
     ax.fill_between(time_min, power_data, alpha=0.15, 
-                    color=config.get_color("power"), zorder=2)
+                    color=get_color("power"), zorder=2)
     
     # HR trace (Axis 2)
-    lines = [l1]
     if hr_data:
         ax2 = ax.twinx()
-        l2, = ax2.plot(time_min, hr_data, color="red", linestyle=":", label="HR", alpha=0.6, linewidth=1)
-        ax2.set_ylabel("HR [bpm]", color="red", fontsize=config.font_size)
-        ax2.tick_params(axis='y', labelcolor="red")
-        ax2.spines['right'].set_color('red')
-        lines.append(l2)
+        l2, = ax2.plot(time_min, hr_data, color=get_color("hr"), linestyle=":", label="HR", alpha=0.6, linewidth=1)
+        ax2.set_ylabel("HR [bpm]", color=get_color("hr"), fontsize=font_size)
+        ax2.tick_params(axis='y', labelcolor=get_color("hr"))
+        ax2.spines['right'].set_color(get_color("hr"))
     
     # VT1 horizontal band (semi-transparent)
     if vt1_range:
         ax.axhspan(vt1_range[0], vt1_range[1], 
-                   alpha=0.25, color=config.get_color("vt1"), 
+                   alpha=0.25, color=get_color("vt1"), 
                    zorder=1, label=f"VT1: {int(vt1_watts)} W")
         # Add center line for clarity
-        ax.axhline(y=vt1_watts, color=config.get_color("vt1"), 
+        ax.axhline(y=vt1_watts, color=get_color("vt1"), 
                    linewidth=1, linestyle=':', alpha=0.7, zorder=2)
     
     # VT2 horizontal band (semi-transparent)
     if vt2_range:
         ax.axhspan(vt2_range[0], vt2_range[1], 
-                   alpha=0.25, color=config.get_color("vt2"), 
+                   alpha=0.25, color=get_color("vt2"), 
                    zorder=1, label=f"VT2: {int(vt2_watts)} W")
         # Add center line for clarity
-        ax.axhline(y=vt2_watts, color=config.get_color("vt2"), 
+        ax.axhline(y=vt2_watts, color=get_color("vt2"), 
                    linewidth=1, linestyle=':', alpha=0.7, zorder=2)
     
     # Axis labels
-    ax.set_xlabel("Czas [min]", fontsize=config.font_size, fontweight='medium')
-    ax.set_ylabel("Moc [W]", fontsize=config.font_size, fontweight='medium')
+    ax.set_xlabel("Czas [min]", fontsize=font_size, fontweight='medium')
+    ax.set_ylabel("Moc [W]", fontsize=font_size, fontweight='medium')
     
     # Title
     test_date = metadata.get("test_date", "")
     ax.set_title(f"Profil Ramp Test – {test_date}", 
-                 fontsize=config.title_size, fontweight='bold', pad=15)
-    
-    # Legend (Combined)
-    # Create proxy artists for the bands (already handled by label in axhspan?) 
-    # Actually axhspan adds patch to legend automatically if label provided.
-    # But for lines[0] and lines[1] we might want to manually create legend handles.
+                 fontsize=title_size, fontweight='bold', pad=15)
     
     handles, labels = ax.get_legend_handles_labels()
-    if hr_data and 'l2' in locals():
-        handles.append(l2)
-        labels.append("HR")
-
-    ax.legend(handles, labels, loc='upper left', fontsize=config.font_size - 1, 
+    ax.legend(handles, labels, loc='upper left', fontsize=font_size - 1, 
               framealpha=0.9, edgecolor='none')
     
     # Apply common styling
-    apply_common_style(fig, ax, config)
+    apply_common_style(fig, ax, **cfg)
     
     # Footer with test_id and method version
     session_id = metadata.get("session_id", "unknown")[:8]
     fig.text(0.01, 0.01, f"ID: {session_id}", 
              ha='left', va='bottom', fontsize=8, 
-             color=COLORS["secondary"], style='italic')
-    fig.text(0.99, 0.01, f"v{config.method_version}", 
+             color=get_color("secondary"), style='italic')
+    fig.text(0.99, 0.01, f"v{method_version}", 
              ha='right', va='bottom', fontsize=8, 
-             color=COLORS["secondary"], style='italic')
+             color=get_color("secondary"), style='italic')
     
     plt.tight_layout()
     
-    return save_figure(fig, config, output_path)
+    return save_figure(fig, output_path, **cfg)

@@ -219,10 +219,11 @@ def build_canonical_physiology(
     # === VO2max (CANONICAL SELECTION) ===
     vo2max_candidates = {}
     
-    # Source 1: Direct measurement in metrics
+    # Source 1: Direct VO2max from metrics (calculated with pandas rolling - SAME AS UI)
+    # This is the CANONICAL source that matches UI KPI display
     direct_vo2 = data.get("metrics", {}).get("vo2max", 0)
     if direct_vo2 and direct_vo2 > 0:
-        vo2max_candidates["ramp_test_peak"] = direct_vo2
+        vo2max_candidates["acsm_5min"] = direct_vo2  # Use acsm_5min key for proper priority
     
     # Source 2: From external API (Intervals.icu etc.)
     api_vo2 = data.get("athlete", {}).get("vo2max", 0)
@@ -234,8 +235,9 @@ def build_canonical_physiology(
     if user_vo2 and user_vo2 > 0:
         vo2max_candidates["user_input"] = user_vo2
     
-    # Source 4: Calculate from 5-min MMP (if time series available)
-    if time_series and weight_kg > 0:
+    # Source 4: Calculate from 5-min MMP (ONLY if metrics.vo2max is not available)
+    # Note: metrics.vo2max is calculated using pandas rolling (same as UI) so it's preferred
+    if "acsm_5min" not in vo2max_candidates and time_series and weight_kg > 0:
         power_data = time_series.get("power_watts", [])
         if len(power_data) >= 300:
             # Find 5-min MMP using rolling window
@@ -254,6 +256,33 @@ def build_canonical_physiology(
     
     # Select canonical VO2max
     physio.vo2max = select_canonical_vo2max(vo2max_candidates, weight_kg)
+    
+    # =========================================================================
+    # CONSISTENCY ASSERTION (light - logs divergence, doesn't block)
+    # =========================================================================
+    if physio.vo2max.is_valid() and time_series and weight_kg > 0:
+        # Calculate time_series estimate for comparison
+        power_data = time_series.get("power_watts", [])
+        if len(power_data) >= 300:
+            window = 300
+            ts_mmp5 = 0
+            for i in range(len(power_data) - window + 1):
+                avg = sum(power_data[i:i+window]) / window
+                if avg > ts_mmp5:
+                    ts_mmp5 = avg
+            if ts_mmp5 > 0:
+                ts_vo2max = calculate_vo2max_acsm(ts_mmp5, weight_kg)
+                divergence = abs(physio.vo2max.value - ts_vo2max)
+                
+                # Log if divergence > 5 ml/kg/min (significant)
+                if divergence > 5:
+                    logger.warning(
+                        f"VO2max divergence detected: metrics={physio.vo2max.value:.1f} vs "
+                        f"time_series={ts_vo2max:.1f} (Δ={divergence:.1f} ml/kg/min). "
+                        f"Using metrics (pandas rolling) as canonical."
+                    )
+                    # Store divergence for debugging
+                    physio.vo2max.alternatives["time_series_estimate"] = round(ts_vo2max, 2)
     
     # === VLaMax (always estimated) ===
     if cp > 0 and pmax > 0:

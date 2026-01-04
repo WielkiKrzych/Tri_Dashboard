@@ -92,8 +92,11 @@ def calculate_ve_metrics(
     ve_max = float(filtered_ve.max())
     
     # VE slope
-    slope, _, r, _, _ = stats.linregress(filtered_power, filtered_ve)
-    ve_slope = slope * 100  # per 100W
+    if filtered_power.nunique() > 1:
+        slope, _, r, _, _ = stats.linregress(filtered_power, filtered_ve)
+        ve_slope = slope * 100  # per 100W
+    else:
+        ve_slope = 0.0
     
     return ve_avg, ve_max, ve_slope
 
@@ -109,12 +112,19 @@ def calculate_rr_metrics(
     Returns:
         (rr_avg, rr_max)
     """
-    # Try multiple column names
-    rr_cols = ["rr", "resprate", "respiratory_rate", "breaths"]
+    # Try multiple column names - including Tyme/Garmin variations
+    rr_cols = [
+        "rr", "resprate", "respiratory_rate", "breaths", 
+        "respiration_rate", "breathing_rate", "bf",  # Common aliases
+        "tymerespirationrate", "respirationrate",  # Tyme wear
+        "tymebreathrate", "breathrate",  # Tyme breath rate (CONFIRMED)
+        "enhancedresprate", "enhanced_resp_rate",  # Garmin
+    ]
     rr_data = None
     for col in rr_cols:
-        if col in df.columns:
-            rr_data = df[col]
+        matching = [c for c in df.columns if c.lower().replace('_', '') == col.replace('_', '')]
+        if matching:
+            rr_data = df[matching[0]]
             break
     
     if rr_data is None:
@@ -179,9 +189,13 @@ def find_ve_breakpoint(
     for i in range(0, n - 20, 10):
         segment_power = power[i:i+20]
         segment_ve = ve_smooth[i:i+20]
-        if len(segment_power) > 5:
-            s, _, _, _, _ = stats.linregress(segment_power, segment_ve)
-            slopes.append((power[i+10], s))
+        if len(segment_power) > 5 and np.unique(segment_power).size > 1:
+            try:
+                s, _, _, _, _ = stats.linregress(segment_power, segment_ve)
+                slopes.append((power[i+10], s))
+            except Exception as e:
+                logger.debug(f"Linregress failed in segment: {e}")
+                pass
     
     if len(slopes) < 3:
         return None

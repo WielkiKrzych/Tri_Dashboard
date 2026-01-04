@@ -224,8 +224,159 @@ def save_ramp_test_report(
                 
             except Exception as e:
                 print(f"[Vent Advanced] Analysis failed: {e}")
+        
+        # 1.5 Run biomechanical occlusion analysis if torque and SmO2 available
+        has_torque = 'torque_nm' in ts_data or 'torque' in df_ts.columns
+        has_smo2 = 'smo2_pct' in ts_data or 'smo2' in df_ts.columns
+        has_power = 'power_watts' in ts_data or 'watts' in df_ts.columns
+        has_cadence = 'cadence_rpm' in ts_data or 'cadence' in df_ts.columns or 'cad' in df_ts.columns
+        
+        if (has_torque or (has_power and has_cadence)) and has_smo2:
+            try:
+                import numpy as np
+                from modules.calculations.biomech_occlusion import analyze_biomech_occlusion, format_occlusion_for_report
+                from modules.calculations.thermoregulation import analyze_thermoregulation, format_thermo_for_report
+                analysis_df = df_ts.copy()
+                
+                # Get torque (calculate from power/cadence if needed)
+                if 'torque' in analysis_df.columns:
+                    torque = analysis_df['torque'].values
+                elif 'watts' in analysis_df.columns and ('cadence' in analysis_df.columns or 'cad' in analysis_df.columns):
+                    power = analysis_df['watts'].values
+                    cad_col = 'cadence' if 'cadence' in analysis_df.columns else 'cad'
+                    cadence = analysis_df[cad_col].values
+                    # Torque = Power / Angular Velocity, where ω = 2π * rpm / 60
+                    angular_vel = 2 * np.pi * cadence / 60
+                    angular_vel[angular_vel < 0.1] = 0.1  # Avoid div by zero
+                    torque = power / angular_vel
+                else:
+                    torque = np.array([])
+                
+                # Get SmO2
+                smo2_col = 'smo2' if 'smo2' in analysis_df.columns else 'smo2_pct'
+                smo2 = analysis_df[smo2_col].values if smo2_col in analysis_df.columns else np.array([])
+                
+                # Get cadence if available
+                cadence = None
+                if 'cadence' in analysis_df.columns:
+                    cadence = analysis_df['cadence'].values
+                elif 'cad' in analysis_df.columns:
+                    cadence = analysis_df['cad'].values
+                
+                if len(torque) > 0 and len(smo2) > 0:
+                    occlusion = analyze_biomech_occlusion(torque, smo2, cadence)
+                    data['biomech_occlusion'] = format_occlusion_for_report(occlusion)
+                    print(f"[Biomech] Occlusion Index: {occlusion.occlusion_index:.3f} ({occlusion.classification})")
+                    
+            except Exception as e:
+                print(f"[Biomech Occlusion] Analysis failed: {e}")
+                
+            # 1.4.2 Thermoregulation Analysis
+            try:
+                # Get Core Temp and HSI - use same aliases as thermal.py
+                core_col = None
+                for c in ['core_temperature_smooth', 'core_temperature', 'core_temp', 'core', 'temperature', 'temp']:
+                    if c in analysis_df.columns:
+                        core_col = c
+                        break
+                
+                hsi_col = None
+                for c in ['hsi', 'heat_strain_index']:
+                    if c in analysis_df.columns:
+                        hsi_col = c
+                        break
+                
+                if core_col:
+                    core_temp = analysis_df[core_col].values
+                    time_seconds = analysis_df['timestamp'].values if 'timestamp' in analysis_df.columns else np.arange(len(core_temp))
+                    hr = analysis_df['hr'].values if 'hr' in analysis_df.columns else None
+                    power = analysis_df['power'].values if 'power' in analysis_df.columns else None
+                    hsi = analysis_df[hsi_col].values if hsi_col else None
+                    
+                    thermo = analyze_thermoregulation(core_temp, time_seconds, hr, power, hsi)
+                    data['thermo_analysis'] = format_thermo_for_report(thermo)
+                    print(f"[Thermal] Max Core: {thermo.max_core_temp:.1f}C, Delta/10min: {thermo.delta_per_10min:.2f}C")
+            except Exception as e:
+                print(f"[Thermoregulation] Analysis failed: {e}")
+        
+        # === CARDIAC DRIFT ANALYSIS ===
+        try:
+            from modules.calculations.cardiac_drift import analyze_cardiac_drift, format_drift_for_report
+            
+            # Get power and HR columns
+            power_col = next((c for c in ['watts', 'power'] if c in analysis_df.columns), None)
+            hr_col = next((c for c in ['hr', 'heartrate', 'heart_rate'] if c in analysis_df.columns), None)
+            time_col = 'timestamp' if 'timestamp' in analysis_df.columns else None
+            
+            if power_col and hr_col:
+                power_arr = analysis_df[power_col].values
+                hr_arr = analysis_df[hr_col].values
+                time_arr = analysis_df[time_col].values if time_col else np.arange(len(power_arr))
+                
+                # Get optional signals
+                core_arr = analysis_df[core_col].values if core_col else None
+                smo2_arr = analysis_df[smo2_col].values if smo2_col in analysis_df.columns else None
+                hsi_arr = analysis_df[hsi_col].values if hsi_col else None
+                
+                drift_profile = analyze_cardiac_drift(power_arr, hr_arr, time_arr, core_arr, smo2_arr, hsi_arr)
+                
+                # Store under thermo_analysis for PDF layout access
+                if 'thermo_analysis' not in data:
+                    data['thermo_analysis'] = {}
+                data['thermo_analysis']['cardiac_drift'] = format_drift_for_report(drift_profile)
+                print(f"[Cardiac Drift] EF: {drift_profile.ef_start:.2f} → {drift_profile.ef_end:.2f} ({drift_profile.delta_ef_pct:+.1f}%), Type: {drift_profile.drift_type}")
+        except Exception as e:
+            print(f"[Cardiac Drift] Analysis failed: {e}")
     
-    # 1.5 Build CANONICAL PHYSIOLOGY (Single Source of Truth)
+    # 1.5 Calculate VO2max using same method as UI (pandas rolling)
+    # This ensures consistency between UI KPI display and PDF report
+    if source_df is not None and len(source_df) > 0:
+        try:
+            import pandas as pd
+            from modules.calculations.metrics import calculate_vo2max
+            
+            df_calc = source_df.copy()
+            df_calc.columns = df_calc.columns.str.lower().str.strip()
+            
+            # Get weight
+            weight = data.get("metadata", {}).get("rider_weight", 75) or 75
+            
+            # Find power column
+            power_col = None
+            for col in ['watts', 'power']:
+                if col in df_calc.columns:
+                    power_col = col
+                    break
+            
+            if power_col and weight > 0:
+                # Use SAME method as UI: rolling(window=300).mean().max()
+                mmp_5min = df_calc[power_col].rolling(window=300).mean().max()
+                
+                if pd.notna(mmp_5min) and mmp_5min > 0:
+                    vo2max_est = calculate_vo2max(mmp_5min, weight)
+                    
+                    # Store in metrics object with RICH METADATA DEFINITION
+                    if "metrics" not in data:
+                        data["metrics"] = {}
+                    
+                    # Structured VO2max with full traceability
+                    data["metrics"]["vo2max"] = round(vo2max_est, 2)
+                    data["metrics"]["vo2max_metadata"] = {
+                        "value": round(vo2max_est, 2),
+                        "mmp_5min_watts": round(mmp_5min, 1),
+                        "method": "rolling_300s_mean_max",
+                        "source": "persistence_pandas",
+                        "confidence": 0.70,
+                        "formula": "ACSM: (10.8 * P / kg) + 7",
+                        "weight_kg": weight
+                    }
+                    
+                    print(f"[VO2max] Calculated: {vo2max_est:.1f} ml/kg/min from MMP5={mmp_5min:.1f}W (method: rolling_300s_mean_max)")
+                    
+        except Exception as e:
+            print(f"[VO2max] Calculation failed: {e}")
+    
+    # 1.6 Build CANONICAL PHYSIOLOGY (Single Source of Truth)
     try:
         from modules.calculations.canonical_physio import build_canonical_physiology, format_canonical_for_report
         

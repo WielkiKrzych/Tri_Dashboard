@@ -21,14 +21,18 @@ def generate_biomech_chart(
     
     if source_df is not None and not source_df.empty:
         df = source_df.copy()
-        # Standardize column names
+        # Standardize column names safely
+        df = df.rename(columns={c: c.lower() for c in df.columns})
         col_map = {
             'heartrate': 'hr', 'heart_rate': 'hr', 'bpm': 'hr',
             'watts': 'power', 'power': 'power', 'watts_smooth': 'power',
             'cadence': 'cad_raw', 'cad': 'cad_raw',
-            'smo2': 'smo2', 'SmO2': 'smo2'
+            'smo2': 'smo2', 'smo2_smooth': 'smo2'
         }
-        df.columns = [col_map.get(c.lower(), c.lower()) for c in df.columns]
+        df = df.rename(columns=col_map)
+        
+        # If we have multiple columns with the same name, take the first one
+        df = df.loc[:, ~df.columns.duplicated()]
         
         if 'power' in df.columns and 'cad_raw' in df.columns:
             # Smooth data

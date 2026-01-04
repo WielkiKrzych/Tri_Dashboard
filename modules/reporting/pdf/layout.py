@@ -13,6 +13,8 @@ from reportlab.platypus import (
 from reportlab.platypus.tableofcontents import TableOfContents
 from reportlab.lib.units import mm
 from reportlab.lib.enums import TA_CENTER
+from reportlab.lib.styles import ParagraphStyle
+from reportlab.lib.colors import HexColor
 import os
 import logging
 from typing import Dict, Any, List, Optional
@@ -639,6 +641,89 @@ def build_page_smo2(smo2_data, smo2_manual, figure_paths, styles):
     quality_label = "Wysoka" if data_quality == "good" else ("Niska" if data_quality == "low" else "Brak danych")
     elements.append(Spacer(1, 4 * mm))
     elements.append(Paragraph(f"<font size='8' color='#7F8C8D'>Data Quality: </font><font size='8' color='{quality_color}'><b>{quality_label}</b></font>", styles["body"]))
+    
+    # ==========================================================================
+    # 5. REFERENCE BENCHMARK TABLE (MINI-BENCHMARK)
+    # ==========================================================================
+    elements.append(Spacer(1, 6 * mm))
+    elements.append(Paragraph("<b>REFERENCE BENCHMARK</b>", styles["subheading"]))
+    elements.append(Spacer(1, 2 * mm))
+    
+    # Interpret metrics for benchmark
+    slope_interp_full = "Typowe dla limitu centralnego" if slope < -4 else ("Umiarkowane - balans C/P" if slope < -2 else "Stabilne - limit lokalny")
+    if halftime:
+        ht_interp_full = "Elite (<25s)" if halftime < 25 else ("OK ale nie elite" if halftime < 50 else "Wolna - priorytet interwaly")
+    else:
+        ht_interp_full = "Brak danych"
+    coup_interp_full = "Silna dominacja serca (centralny)" if abs(coupling) > 0.6 else ("Zrownowazona" if abs(coupling) > 0.3 else "Dominacja obwodowa (lokalna)")
+    
+    bench_data = [
+        ["Metryka", "Twoja wartosc", "Interpretacja kliniczna"],
+        ["SmO2 slope", f"{slope:.1f} %/100W", slope_interp_full],
+        ["Reoxy half-time", f"{halftime:.0f} s" if halftime else "---", ht_interp_full],
+        ["HR-SmO2 r", f"{coupling:.2f}", coup_interp_full],
+    ]
+    
+    bench_table = Table(bench_data, colWidths=[40 * mm, 40 * mm, 85 * mm])
+    bench_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), HexColor("#1a1a2e")),
+        ('TEXTCOLOR', (0, 0), (-1, 0), HexColor("#FFFFFF")),
+        ('FONTNAME', (0, 0), (-1, -1), 'DejaVuSans'),
+        ('FONTNAME', (0, 0), (-1, 0), 'DejaVuSans-Bold'),
+        ('FONTNAME', (0, 1), (0, -1), 'DejaVuSans-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 8),
+        ('ALIGN', (1, 0), (1, -1), 'CENTER'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('GRID', (0, 0), (-1, -1), 0.5, HexColor("#555555")),
+        ('ROWHEIGHT', (0, 0), (-1, -1), 9 * mm),
+        ('BACKGROUND', (0, 1), (-1, 1), HexColor("#f5f5f5")),
+        ('TEXTCOLOR', (0, 1), (-1, 1), HexColor("#333333")),
+        ('BACKGROUND', (0, 2), (-1, 2), HexColor("#e8e8e8")),
+        ('TEXTCOLOR', (0, 2), (-1, 2), HexColor("#333333")),
+        ('BACKGROUND', (0, 3), (-1, 3), HexColor("#f5f5f5")),
+        ('TEXTCOLOR', (0, 3), (-1, 3), HexColor("#333333")),
+    ]))
+    elements.append(bench_table)
+    elements.append(Spacer(1, 6 * mm))
+    
+    # ==========================================================================
+    # 6. CONCLUSIVE STATEMENT (Links SmO2 with Biomechanics)
+    # ==========================================================================
+    
+    # Generate conclusive statement based on limiter type
+    if limiter_type == "central":
+        conclusion = (
+            "<b>WNIOSEK:</b> Poprawa VO2max da realny wzrost mocy tylko jesli utrzymasz "
+            "niska okluzje mechaniczna. Priorytet: treningi Z2/Z3 + interwaly <95% HR max."
+        )
+        conclusion_color = "#E74C3C"
+    elif limiter_type == "local":
+        conclusion = (
+            "<b>WNIOSEK:</b> Perfuzja miesniowa jest limitujaca - poprawa sily lub kadencji "
+            "moze zredukowac okluzje i zwolnic desaturacje. Priorytet: Strength Endurance."
+        )
+        conclusion_color = "#3498DB"
+    else:
+        conclusion = (
+            "<b>WNIOSEK:</b> Balans miedzy dostawa a zuzycie O2 jest dobry. "
+            "Kontynuuj zroznicowany trening, monitorujac SmO2 w sesjach tempo."
+        )
+        conclusion_color = "#27AE60"
+    
+    conclusion_style = ParagraphStyle('conclusion', parent=styles["body"], textColor=HexColor("#FFFFFF"), fontSize=9)
+    conclusion_box = Table(
+        [[Paragraph(conclusion, conclusion_style)]],
+        colWidths=[165 * mm]
+    )
+    conclusion_box.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), HexColor(conclusion_color)),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 8),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 8),
+        ('TOPPADDING', (0, 0), (-1, -1), 8),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+    ]))
+    elements.append(conclusion_box)
     
     return elements
 
@@ -1620,6 +1705,8 @@ def _build_education_block(title: str, content: str, styles: Dict) -> List:
 
 def build_page_theory(styles: Dict) -> List:
     """Build Page 5: Advanced Physiological Theory."""
+    from reportlab.lib.colors import HexColor
+    from reportlab.platypus import TableStyle
     elements = []
     
     elements.append(Paragraph("Model Metaboliczny (INSCYD/WKO5)", styles["title"]))
@@ -1670,30 +1757,82 @@ def build_page_theory(styles: Dict) -> List:
     ))
     elements.append(Spacer(1, 4 * mm))
     
-    # Advanced INSCYD Theory Table
     elements.append(Paragraph("Typy Zawodników i Strategie", styles["heading"]))
     data = [
         ["Typ", "VO2max", "VLaMax", "Charakterystyka"],
-        ["Sprinter", "Średni", "Wysoki", "Dynamika, punch, sprinty"],
-        ["Climber", "Wysoki", "Niski", "Długie wspinaczki, tempo"],
-        ["Time Trialist", "Wysoki", "Niski", "Równe tempo, aerodynamika"],
-        ["Puncheur", "Wysoki", "Średni", "Ataki, krótkie górki"]
+        ["Sprinter", "Sredni", "Wysoki", "Dynamika, punch, sprinty"],
+        ["Climber", "Wysoki", "Niski", "Dlugie wspinaczki, tempo"],
+        ["Time Trialist", "Wysoki", "Niski", "Rowne tempo, aerodynamika"],
+        ["Puncheur", "Wysoki", "Sredni", "Ataki, krotkie gorki"]
     ]
     t = Table(data, colWidths=[30*mm, 30*mm, 30*mm, 80*mm])
-    t.setStyle(get_table_style())
+    # Table should use DejaVuSans for Polish chars if needed, though ASCII used above
+    t.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), HexColor("#1a1a2e")),
+        ('TEXTCOLOR', (0, 0), (-1, 0), HexColor("#FFFFFF")),
+        ('FONTNAME', (0, 0), (-1, -1), 'DejaVuSans'),
+        ('FONTNAME', (0, 0), (-1, 0), 'DejaVuSans-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 9),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('GRID', (0, 0), (-1, -1), 0.5, HexColor("#555555")),
+        ('ROWHEIGHT', (0, 0), (-1, -1), 8 * mm),
+    ]))
     elements.append(t)
     
-    elements.append(Spacer(1, 4 * mm))
-    # Hierarchy & Protocol (New Content)
-    elements.append(Paragraph("3. Hierarchia Sygnałów i Protokół", styles["heading"]))
-    elements.append(Paragraph(
-        "Nie wszystkie dane są równe. W naszej metodologii najważniejsza jest Wentylacja (VE), "
-        "ponieważ najdokładniej odzwierciedla stan metaboliczny całego ciała. HR i SmO₂ to sygnały wspierające. "
-        "Długość kroku (np. 1-2 minuty) jest krytyczna, by sygnały zdążyły się ustabilizować. "
-        "Zrozumienie opóźnień (HR reaguje najwolniej, SmO₂ najszybciej) pozwala na precyzyjną detekcję progów.",
-        styles["body"]
-    ))
+    return elements
 
+
+# ============================================================================
+# NEW PAGE: PROTOKÓŁ I HIERARCHIA SYGNAŁÓW (Page 20 simulation)
+# ============================================================================
+
+def build_page_protocol(
+    styles: Dict
+) -> List:
+    """Build Page for Signal Hierarchy and Protocol information."""
+    elements = []
+    
+    elements.append(Spacer(1, 20 * mm)) # Move down for better placement
+    elements.append(Paragraph("3. Hierarchia Sygnałów i Protokół", styles["title"]))
+    elements.append(Spacer(1, 8 * mm))
+    
+    # Extensive Theory Section
+    elements.append(Paragraph("<b>FUNDAMENT METODOLOGII</b>", styles["heading"]))
+    elements.append(Spacer(1, 4 * mm))
+    
+    theory_text = (
+        "Współczesna analiza fizjologiczna opiera się na integracji wielu sygnałów, "
+        "jednak nie wszystkie mają taką samą wagę diagnostyczną. Kluczem do sukcesu "
+        "jest zrozumienie 'opóźnienia' i 'reaktywności' każdego z nich.<br/><br/>"
+        "<b>1. WENTYLACJA (VE):</b> Nasz główny sygnał (Golden Standard). Dlaczego? Ponieważ "
+        "wentylacja reaguje niemal natychmiast na zmiany pH krwi i poziomu CO2. Jest to "
+        "bezpośrednie odbicie metabolizmu całego organizmu.<br/><br/>"
+        "<b>2. OKSYDACJA MIĘŚNIOWA (SmO2):</b> Sygnał o najwyższej reaktywności lokalnej. "
+        "Pozwala zobaczyć co dzieje się bezpośrednio w pracującym mięśniu (dostawa vs zapotrzebowanie). "
+        "SmO2 reaguje najszybciej na zmiany obciążenia, ale jest sygnałem punktowym.<br/><br/>"
+        "<b>3. TĘTNO (HR):</b> Sygnał najbardziej opóźniony (Heart Rate Lag). HR jest sterowane "
+        "częścią autonomiczną układu nerwowego i potrzebuje czasu, aby 'dogonić' zapotrzebowanie "
+        "tlenowe. HR jest doskonałym wskaźnikiem kosztu ustrojowego, ale słabym narzędziem "
+        "do precyzyjnej detekcji progów w krótkich interwałach."
+    )
+    elements.append(Paragraph(theory_text, styles["body"]))
+    elements.append(Spacer(1, 10 * mm))
+    
+    elements.append(Paragraph("<b>ZNACZENIE PROTOKOŁU</b>", styles["heading"]))
+    elements.append(Spacer(1, 4 * mm))
+    
+    protocol_text = (
+        "Długość kroku (rampy) jest krytyczna. Standardowy protokół 1-minutowy często "
+        "prowadzi do przeszacowania mocy progowej, ponieważ sygnały (szczególnie HR i VE) "
+        "nie zdążą osiągnąć stanu stabilnego (Steady State).<br/><br/>"
+        "W naszej analizie stosujemy matematyczną korektę opóźnień lub zalecamy protokoły "
+        "o długości 2-3 minut na stopień, co pozwala na pełną stabilizację kinetyki gazowej "
+        "i parametrów krążeniowych. Dzięki temu wyznaczone progi VT1/VT2 oraz SmO2-LT "
+        "są powtarzalne i mają realne przełożenie na trening w terenie."
+    )
+    elements.append(Paragraph(protocol_text, styles["body"]))
+    
     return elements
 
 
@@ -1702,53 +1841,363 @@ def build_page_theory(styles: Dict) -> List:
 # ============================================================================
 
 def build_page_thermal(
+    thermo_data: Dict[str, Any],
     figure_paths: Dict[str, str],
     styles: Dict
 ) -> List:
-    """Build Page 6: Thermal Analysis."""
+    """Build Page 6: Thermal Analysis - Enhanced with metrics and recommendations."""
+    from reportlab.lib.colors import HexColor
+    # Removed redundant local import
+
+    from reportlab.platypus import TableStyle
+    
     elements = []
     
     elements.append(Paragraph("Analiza Termoregulacji", styles["title"]))
+    elements.append(Paragraph("<font size='10' color='#7F8C8D'>Dynamika temperatury, tolerancja cieplna, rekomendacje</font>", styles["body"]))
     elements.append(Spacer(1, 6 * mm))
     
     elements.append(Paragraph(
-        "Ciepło jest „cichym zabójcą” wydajności. Wzrost temperatury głębokiej (Core Temp) "
-        "powoduje przekierowanie krwi do skóry (chłodzenie), co zabiera tlen pracującym mięśniom.",
+        "Cieplo jest cichym zabojca wydajnosci. Wzrost temperatury glebokiej (Core Temp) "
+        "powoduje przekierowanie krwi do skory (chlodzenie), co zabiera tlen pracujacym miesniom.",
         styles["body"]
     ))
     elements.append(Spacer(1, 4 * mm))
     
     # Chart 1: Core Temp vs HSI
     if figure_paths and "thermal_hsi" in figure_paths:
-        elements.extend(_build_chart(figure_paths["thermal_hsi"], "Temp. Głęboka vs Indeks Zmęczenia (HSI)", styles))
-        elements.append(Spacer(1, 4 * mm))
-    else:
-        elements.append(Paragraph("Brak wykresu Temp vs HSI (brak danych)", styles["small"]))
+        elements.extend(_build_chart(figure_paths["thermal_hsi"], "Temp. Gleboka vs Indeks Zmeczenia (HSI)", styles))
+        elements.append(Spacer(1, 6 * mm))
+    
+    # === KEY NUMBERS TABLE (Thermoregulation) ===
+    # thermo_data is now passed directly
+    metrics = thermo_data.get("metrics", {})
+    classification = thermo_data.get("classification", {})
+    
+    # Check if we have actual data (not empty/default)
+    has_thermo_data = bool(metrics) and metrics.get("max_core_temp", 0) > 35
+    
+    # Get values with proper fallbacks
+    if has_thermo_data:
+        max_temp = metrics.get("max_core_temp", 0)
+        delta_10min = metrics.get("delta_per_10min", 0)
+        time_38_0 = metrics.get("time_to_38_0_min")
+        time_38_5 = metrics.get("time_to_38_5_min")
+        peak_hsi = metrics.get("peak_hsi", 0)
         
-    elements.append(Paragraph(
-        "<b>Heat Strain Index (HSI):</b> Skumulowane obciążenie cieplne. "
-        "Powyżej 38.5°C organizm wchodzi w strefę krytyczną.",
-        styles["body"]
-    ))
+        max_temp_str = f"{max_temp:.1f} C"
+        delta_str = f"{delta_10min:.2f} C"
+        peak_hsi_str = f"{peak_hsi:.1f}"
+    else:
+        max_temp_str = "---"
+        delta_str = "---"
+        time_38_0 = None
+        time_38_5 = None
+        peak_hsi_str = "---"
     
-    # FORCE PAGE BREAK BEFORE EFFICIENCY
-    elements.append(PageBreak())
+    # Classification
+    tolerance = classification.get("heat_tolerance", "unknown") if has_thermo_data else "unknown"
+    tolerance_color = classification.get("color", "#808080") if has_thermo_data else "#808080"
+    tolerance_label = {"good": "DOBRA", "moderate": "SREDNIA", "poor": "SLABA"}.get(tolerance, "BRAK DANYCH")
     
-    # Chart 2: Efficiency (Start of new page)
-    elements.append(Paragraph("Spadek Efektywności (Cardiac Drift)", styles["title"])) # Use title style for new page
+    elements.append(Paragraph("KEY NUMBERS", styles["heading"]))
+    elements.append(Spacer(1, 2 * mm))
+    
+    key_data = [
+        ["Metryka", "Wartosc", "Interpretacja"],
+        ["Max Core Temp", max_temp_str, "Szczytowa temperatura gleboka"],
+        ["Delta Temp / 10 min", delta_str, f"Tolerancja: {tolerance_label}"],
+        ["Czas do 38.0 C", f"{time_38_0:.0f} min" if time_38_0 else "---", "Prog ostrzegawczy"],
+        ["Czas do 38.5 C", f"{time_38_5:.0f} min" if time_38_5 else "---", "Prog krytyczny"],
+        ["Peak HSI", peak_hsi_str, "Indeks obciazenia cieplnego"],
+    ]
+    
+    table = Table(key_data, colWidths=[45 * mm, 35 * mm, 85 * mm])
+    table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), HexColor("#1a1a2e")),
+        ('TEXTCOLOR', (0, 0), (-1, 0), HexColor("#FFFFFF")),
+        ('FONTNAME', (0, 0), (-1, -1), 'DejaVuSans'),
+        ('FONTNAME', (0, 0), (-1, 0), 'DejaVuSans-Bold'),
+        ('FONTNAME', (0, 1), (0, -1), 'DejaVuSans-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 8),
+        ('ALIGN', (1, 0), (1, -1), 'CENTER'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('GRID', (0, 0), (-1, -1), 0.5, HexColor("#555555")),
+        ('ROWHEIGHT', (0, 0), (-1, -1), 10 * mm),
+        # Delta row gets classification color
+        ('BACKGROUND', (0, 2), (-1, 2), HexColor(tolerance_color)),
+        ('TEXTCOLOR', (0, 2), (-1, 2), HexColor("#FFFFFF")),
+        # Other rows light
+        ('BACKGROUND', (0, 1), (-1, 1), HexColor("#f5f5f5")),
+        ('TEXTCOLOR', (0, 1), (-1, 1), HexColor("#333333")),
+        ('BACKGROUND', (0, 3), (-1, 3), HexColor("#f5f5f5")),
+        ('TEXTCOLOR', (0, 3), (-1, 3), HexColor("#333333")),
+        ('BACKGROUND', (0, 4), (-1, 4), HexColor("#e8e8e8")),
+        ('TEXTCOLOR', (0, 4), (-1, 4), HexColor("#333333")),
+        ('BACKGROUND', (0, 5), (-1, 5), HexColor("#f5f5f5")),
+        ('TEXTCOLOR', (0, 5), (-1, 5), HexColor("#333333")),
+    ]))
+    elements.append(table)
     elements.append(Spacer(1, 6 * mm))
     
-    if figure_paths and "thermal_efficiency" in figure_paths:
-        elements.extend(_build_chart(figure_paths["thermal_efficiency"], "Efektywność vs Temperatura", styles))
-        elements.append(Spacer(1, 4 * mm))
+    # === CLASSIFICATION VERDICT ===
+    if tolerance == "poor":
+        verdict_text = (
+            "<b>SLABA TOLERANCJA CIEPLNA</b><br/>"
+            "Tempo narastania temperatury przekracza prog bezpieczny. "
+            "Redystrybucja krwi do skory konkuruje z dostawa O2 do miesni. "
+            "Ryzyko przegrzania jest wysokie."
+        )
+        verdict_color = "#E74C3C"
+    elif tolerance == "moderate":
+        verdict_text = (
+            "<b>SREDNIA TOLERANCJA</b><br/>"
+            "Uklad chlodzenia radzi sobie, ale istnieje margines do poprawy. "
+            "Adaptacja cieplna nie jest pelna."
+        )
+        verdict_color = "#F39C12"
     else:
-        elements.append(Paragraph("Brak wykresu Efektywności (brak danych)", styles["small"]))
-        
+        verdict_text = (
+            "<b>DOBRA TOLERANCJA</b><br/>"
+            "Tempo narastania temperatury miesci sie w normie. "
+            "Uklad termoregulacji skutecznie balansuje miedzy chlodzeniem a perfuzja."
+        )
+        verdict_color = "#27AE60"
+    
+    white_style = ParagraphStyle('thermo_verdict', parent=styles["body"], textColor=HexColor("#FFFFFF"), fontSize=9)
+    verdict_box = Table(
+        [[Paragraph(verdict_text, white_style)]],
+        colWidths=[165 * mm]
+    )
+    verdict_box.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), HexColor(verdict_color)),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 8),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 8),
+        ('TOPPADDING', (0, 0), (-1, -1), 6),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+    ]))
+    elements.append(verdict_box)
+    elements.append(Spacer(1, 6 * mm))
+    
+    # === HR/EF CONNECTION ===
+    elements.append(Paragraph("<b>POLACZENIE Z HR DRIFT I EF</b>", styles["heading"]))
+    elements.append(Spacer(1, 2 * mm))
     elements.append(Paragraph(
-        "<b>Efficiency Factor (W/bpm):</b> Wykres pokazuje, jak spada generowana moc na jedno uderzenie serca w miarę wzrostu temperatury. "
-        "Stromy spadek oznacza słabą termoregulację.",
+        "Wysoka temperatura wymusza redystrybucje krwi do skory. "
+        "Serce musi pompowac wieksza objetosc krwi, by utrzymac zarowno chlodzenie, "
+        "jak i dostawe O2 do miesni. Efekt: wzrost HR przy stalej mocy (dryf), "
+        "spadek Efficiency Factor (EF). To jest kardynalny syndrom przegrzania.",
         styles["body"]
     ))
+    elements.append(Spacer(1, 4 * mm))
+    
+    # === TRAINING RECOMMENDATIONS ===
+    elements.append(Paragraph("<b>REKOMENDACJE</b>", styles["heading"]))
+    elements.append(Spacer(1, 2 * mm))
+    
+    if tolerance == "poor":
+        recommendations = [
+            "PRIORYTET: Trening w cieple (heat acclimation) - 10-14 dni, 60-90min @ Z2",
+            "Pre-cooling: kamizelka lodowa przed startem",
+            "Nawodnienie: 500-800ml/h + elektrolity",
+            "Unikaj zawodow >28C do czasu adaptacji",
+        ]
+    elif tolerance == "moderate":
+        recommendations = [
+            "Rozwaz 5-7 dni treningu w cieple przed wazymi zawodami",
+            "Chlodzenie zewnetrzne: woda na glowe co 15-20 min",
+            "Kontroluj wage przed/po treningu (max -2%)",
+        ]
+    else:
+        recommendations = [
+            "Adaptacja wystarczajaca - mozesz startowac w cieple",
+            "Utrzymuj nawodnienie 400-600ml/h",
+            "Kontynuuj okresowy trening w cieple (1x/tyg)",
+        ]
+    
+    white_rec_style = ParagraphStyle('rec_white', parent=styles["body"], textColor=HexColor("#FFFFFF"), fontSize=9)
+    rec_data = [[Paragraph(f"* {rec}", white_rec_style)] for rec in recommendations]
+    rec_table = Table(rec_data, colWidths=[165 * mm])
+    rec_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), HexColor("#16213e")),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 8),
+        ('TOPPADDING', (0, 0), (-1, -1), 4),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+    ]))
+    elements.append(rec_table)
+    
+    # FORCE PAGE BREAK BEFORE CARDIAC DRIFT ANALYSIS
+    elements.append(PageBreak())
+    
+    # ========================================================================
+    # CARDIAC DRIFT ANALYSIS - PRO LAYOUT
+    # ========================================================================
+    elements.append(Paragraph("Analiza Dryfu Efektywnosci (Cardiac Drift)", styles["title"]))
+    elements.append(Paragraph("<font size='10' color='#7F8C8D'>Dynamika EF, klasyfikacja dryfu, implikacje treningowe</font>", styles["body"]))
+    elements.append(Spacer(1, 6 * mm))
+    
+    # Get drift data from thermo_data (will be populated by persistence.py)
+    drift_data = thermo_data.get("cardiac_drift", {})
+    drift_metrics = drift_data.get("metrics", {})
+    drift_signals = drift_data.get("key_signals", {})
+    drift_class = drift_data.get("classification", {})
+    drift_interp = drift_data.get("interpretation", {})
+    
+    # Check if we have drift data
+    has_drift_data = bool(drift_metrics) and drift_metrics.get("ef_start", 0) > 0
+    
+    if has_drift_data:
+        ef_start = drift_metrics.get("ef_start", 0)
+        ef_end = drift_metrics.get("ef_end", 0)
+        delta_pct = drift_metrics.get("delta_ef_pct", 0)
+        ef_slope = drift_metrics.get("ef_vs_temp_slope")
+        hsi_peak = drift_signals.get("hsi_peak", 0)
+        smo2_drift = drift_signals.get("smo2_drift_pct", 0)
+        
+        drift_level = drift_class.get("drift_level", "unknown")
+        drift_type = drift_class.get("drift_type", "unknown")
+        drift_color = drift_class.get("color", "#808080")
+        
+        # Status helpers
+        def get_delta_status(d):
+            if abs(d) < 5: return ("STABILNY", "#27AE60")
+            elif abs(d) < 10: return ("UMIARKOWANY", "#F39C12")
+            else: return ("WYSOKI", "#E74C3C")
+        
+        def get_hsi_status(h):
+            if h < 5: return ("NISKI", "#27AE60")
+            elif h < 8: return ("OSTRZEZENIE", "#F39C12")
+            else: return ("KRYTYCZNY", "#E74C3C")
+        
+        def get_smo2_status(s):
+            if abs(s) < 5: return ("STABILNY", "#27AE60")
+            else: return ("DRYF OBWODOWY", "#F39C12")
+        
+        delta_status, delta_color = get_delta_status(delta_pct)
+        hsi_status, hsi_color = get_hsi_status(hsi_peak)
+        smo2_status, smo2_color = get_smo2_status(smo2_drift)
+    else:
+        ef_start = 0
+        ef_end = 0
+        delta_pct = 0
+        ef_slope = None
+        hsi_peak = 0
+        smo2_drift = 0
+        drift_level = "unknown"
+        drift_type = "unknown"
+        drift_color = "#808080"
+        delta_status, delta_color = ("BRAK", "#808080")
+        hsi_status, hsi_color = ("BRAK", "#808080")
+        smo2_status, smo2_color = ("BRAK", "#808080")
+    
+    # === KEY SIGNALS BOX ===
+    elements.append(Paragraph("KEY SIGNALS", styles["heading"]))
+    elements.append(Spacer(1, 2 * mm))
+    
+    key_signals_data = [
+        ["Sygnal", "Wartosc", "Status"],
+        ["EF Start", f"{ef_start:.2f} W/bpm" if ef_start > 0 else "---", "BASELINE"],
+        ["EF End", f"{ef_end:.2f} W/bpm" if ef_end > 0 else "---", f"{delta_pct:+.1f}%" if has_drift_data else "---"],
+        ["dEF / dC", f"{ef_slope:.3f} W/bpm/C" if ef_slope else "---", drift_type.upper() if has_drift_data else "---"],
+        ["HSI Peak", f"{hsi_peak:.1f}" if hsi_peak > 0 else "---", hsi_status],
+        ["SmO2 Drift", f"{smo2_drift:+.1f}%" if has_drift_data else "---", smo2_status],
+    ]
+    
+    signals_table = Table(key_signals_data, colWidths=[45 * mm, 50 * mm, 70 * mm])
+    signals_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), HexColor("#1a1a2e")),
+        ('TEXTCOLOR', (0, 0), (-1, 0), HexColor("#FFFFFF")),
+        ('FONTNAME', (0, 0), (-1, -1), 'DejaVuSans'),
+        ('FONTNAME', (0, 0), (-1, 0), 'DejaVuSans-Bold'),
+        ('FONTNAME', (0, 1), (0, -1), 'DejaVuSans-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 8),
+        ('ALIGN', (1, 0), (-1, -1), 'CENTER'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('GRID', (0, 0), (-1, -1), 0.5, HexColor("#555555")),
+        ('ROWHEIGHT', (0, 0), (-1, -1), 9 * mm),
+        # Row backgrounds
+        ('BACKGROUND', (0, 1), (1, 1), HexColor("#e8f5e9")),
+        ('TEXTCOLOR', (0, 1), (1, 1), HexColor("#333333")),
+        ('BACKGROUND', (2, 1), (2, 1), HexColor("#3498DB")),
+        ('TEXTCOLOR', (2, 1), (2, 1), HexColor("#FFFFFF")),
+        # Delta row - color by status
+        ('BACKGROUND', (0, 2), (1, 2), HexColor("#f5f5f5")),
+        ('TEXTCOLOR', (0, 2), (1, 2), HexColor("#333333")),
+        ('BACKGROUND', (2, 2), (2, 2), HexColor(delta_color)),
+        ('TEXTCOLOR', (2, 2), (2, 2), HexColor("#FFFFFF")),
+        # EF slope row
+        ('BACKGROUND', (0, 3), (1, 3), HexColor("#e8e8e8")),
+        ('TEXTCOLOR', (0, 3), (1, 3), HexColor("#333333")),
+        ('BACKGROUND', (2, 3), (2, 3), HexColor(drift_color)),
+        ('TEXTCOLOR', (2, 3), (2, 3), HexColor("#FFFFFF")),
+        # HSI row
+        ('BACKGROUND', (0, 4), (1, 4), HexColor("#f5f5f5")),
+        ('TEXTCOLOR', (0, 4), (1, 4), HexColor("#333333")),
+        ('BACKGROUND', (2, 4), (2, 4), HexColor(hsi_color)),
+        ('TEXTCOLOR', (2, 4), (2, 4), HexColor("#FFFFFF")),
+        # SmO2 row
+        ('BACKGROUND', (0, 5), (1, 5), HexColor("#e8e8e8")),
+        ('TEXTCOLOR', (0, 5), (1, 5), HexColor("#333333")),
+        ('BACKGROUND', (2, 5), (2, 5), HexColor(smo2_color)),
+        ('TEXTCOLOR', (2, 5), (2, 5), HexColor("#FFFFFF")),
+    ]))
+    elements.append(signals_table)
+    elements.append(Spacer(1, 6 * mm))
+    
+    # === CLASSIFICATION VERDICT BOX ===
+    if has_drift_data:
+        mechanism = drift_interp.get("mechanism", "")
+        verdict_text = f"<b>{drift_level.upper()} DRYF {drift_type.upper()}</b><br/><br/>{mechanism}"
+    else:
+        verdict_text = "<b>BRAK DANYCH DRYFU</b><br/>Analiza drift wymaga danych EF (power/HR)."
+        drift_color = "#808080"
+    
+    verdict_style = ParagraphStyle('verdict_white', parent=styles["body"], textColor=HexColor("#FFFFFF"), fontSize=9)
+    verdict_box = Table(
+        [[Paragraph(verdict_text, verdict_style)]],
+        colWidths=[165 * mm]
+    )
+    verdict_box.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), HexColor(drift_color)),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 8),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 8),
+        ('TOPPADDING', (0, 0), (-1, -1), 8),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+    ]))
+    elements.append(verdict_box)
+    elements.append(Spacer(1, 6 * mm))
+    
+    # Chart: EF vs Time/Temp
+    if figure_paths and "thermal_efficiency" in figure_paths:
+        elements.extend(_build_chart(figure_paths["thermal_efficiency"], "Efektywnosc vs Czas/Temperatura", styles))
+        elements.append(Spacer(1, 4 * mm))
+    
+    # === TRAINING IMPLICATIONS BOX ===
+    elements.append(Paragraph("TRAINING IMPLICATIONS", styles["heading"]))
+    elements.append(Spacer(1, 2 * mm))
+    
+    if has_drift_data:
+        implications = drift_interp.get("training_implications", [])[:4]  # Limit to 4 items
+    else:
+        implications = [
+            "Brak danych do wygenerowania rekomendacji",
+            "Upewnij sie, ze plik zrodlowy zawiera kolumny Power i HR",
+        ]
+    
+    impl_style = ParagraphStyle('impl_white', parent=styles["body"], textColor=HexColor("#FFFFFF"), fontSize=8)
+    impl_data = [[Paragraph(f"→ {impl}", impl_style)] for impl in implications]
+    impl_table = Table(impl_data, colWidths=[165 * mm])
+    impl_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), HexColor("#16213e")),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 8),
+        ('TOPPADDING', (0, 0), (-1, -1), 3),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+    ]))
+    elements.append(impl_table)
     
     return elements
 
@@ -1758,60 +2207,200 @@ def build_page_thermal(
 # ============================================================================
 
 # ============================================================================
-# NEW PAGE: BIOMECHANIKA
+# NEW PAGE: BIOMECHANIKA (Premium INSCYD/WKO Quality)
 # ============================================================================
 
 def build_page_biomech(
     figure_paths: Dict[str, str],
-    styles: Dict
+    styles: Dict,
+    biomech_data: Optional[Dict[str, Any]] = None
 ) -> List:
-    """Build Biomechanics page."""
+    """Build Biomechanics & Occlusion Physiology page - INSCYD/WKO Quality."""
+    from reportlab.lib.colors import HexColor
+    from reportlab.lib.styles import ParagraphStyle
+    
     elements = []
     
     elements.append(Paragraph("Analiza Biomechaniczna (Transfer Mocy)", styles["title"]))
+    elements.append(Paragraph("<font size='10' color='#7F8C8D'>Fizjologia okluzji i relacja siła–tlen</font>", styles["body"]))
     elements.append(Spacer(1, 6 * mm))
-    
-    elements.append(Paragraph(
-        "Biomechanika kolarstwa analizuje sposób, w jaki generujesz moc. "
-        "Kluczowym elementem jest balans między kadencją (szybkością) a momentem obrotowym (siłą).",
-        styles["body"]
-    ))
     
     # Chart 1: Torque vs Cadence
     if figure_paths and "biomech_summary" in figure_paths:
         elements.extend(_build_chart(figure_paths["biomech_summary"], "Moment Obrotowy vs Kadencja", styles))
         elements.append(Spacer(1, 4 * mm))
         
-    # Chart 2: Torque vs SmO2
+    # Chart 2: Torque vs SmO2 (Occlusion)
     if figure_paths and "biomech_torque_smo2" in figure_paths:
         elements.extend(_build_chart(figure_paths["biomech_torque_smo2"], "Fizjologia Okluzji (Siła vs Tlen)", styles))
-        elements.append(Spacer(1, 4 * mm))
+        elements.append(Spacer(1, 6 * mm))
+    
+    # === KEY NUMBERS BOX ===
+    if biomech_data and "metrics" in biomech_data:
+        metrics = biomech_data["metrics"]
+        classification = biomech_data.get("classification", {})
         
-    elements.append(Paragraph(
-        "<b>Interpretacja:</b> Spadek saturacji (SmO₂) przy wysokich momentach obrotowych może świadczyć o okluzji mechanicznej "
-        "lub niskiej efektywności układu krążenia w warunkach wysokiego napięcia mięśniowego.",
-        styles["body"]
-    ))
+        elements.append(Paragraph("KEY NUMBERS", styles["heading"]))
+        elements.append(Spacer(1, 2 * mm))
+        
+        # Determine colors based on classification
+        level = classification.get("level", "unknown")
+        level_color = classification.get("color", "#808080")
+        level_label = {"low": "NISKA", "moderate": "UMIARKOWANA", "high": "WYSOKA"}.get(level, "---")
+        
+        # Build metrics table
+        occlusion_idx = metrics.get("occlusion_index", 0)
+        slope = metrics.get("regression_slope", 0)
+        r2 = metrics.get("regression_r2", 0)
+        smo2_base = metrics.get("smo2_baseline", 0)
+        torque_base = metrics.get("torque_at_baseline", 0)
+        torque_10 = metrics.get("torque_at_minus_10")
+        torque_20 = metrics.get("torque_at_minus_20")
+        
+        key_data = [
+            ["Metryka", "Wartosc", "Interpretacja"],
+            ["OCCLUSION INDEX", f"{occlusion_idx:.3f}", f"Okluzja: {level_label}"],
+            ["Nachylenie SmO2/Torque", f"{slope:.4f} %/Nm", f"R2 = {r2:.2f}"],
+            ["SmO2 baseline", f"{smo2_base:.1f} %", f"@ {torque_base:.0f} Nm"],
+            ["Torque @ SmO2 -10%", f"{torque_10:.0f} Nm" if torque_10 else "---", "Prog umiarkowanej okluzji"],
+            ["Torque @ SmO2 -20%", f"{torque_20:.0f} Nm" if torque_20 else "---", "Prog istotnej okluzji"],
+        ]
+        
+        table = Table(key_data, colWidths=[50 * mm, 40 * mm, 75 * mm])
+        table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), HexColor("#1a1a2e")),
+            ('TEXTCOLOR', (0, 0), (-1, 0), HexColor("#FFFFFF")),
+            ('BACKGROUND', (0, 1), (-1, 1), HexColor(level_color)),  # OCCLUSION INDEX row
+            ('TEXTCOLOR', (0, 1), (-1, 1), HexColor("#FFFFFF")),
+            ('FONTNAME', (0, 0), (-1, -1), 'DejaVuSans'),  # ALL cells
+            ('FONTNAME', (0, 0), (-1, 0), 'DejaVuSans-Bold'),
+            ('FONTNAME', (0, 1), (0, -1), 'DejaVuSans-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 8),
+            ('ALIGN', (1, 0), (1, -1), 'CENTER'),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('GRID', (0, 0), (-1, -1), 0.5, HexColor("#555555")),
+            ('ROWHEIGHT', (0, 0), (-1, -1), 12 * mm),
+            # Light backgrounds for data rows (except OCCLUSION INDEX row)
+            ('BACKGROUND', (0, 2), (-1, 2), HexColor("#f5f5f5")),
+            ('TEXTCOLOR', (0, 2), (-1, 2), HexColor("#333333")),
+            ('BACKGROUND', (0, 3), (-1, 3), HexColor("#e8e8e8")),
+            ('TEXTCOLOR', (0, 3), (-1, 3), HexColor("#333333")),
+            ('BACKGROUND', (0, 4), (-1, 4), HexColor("#f5f5f5")),
+            ('TEXTCOLOR', (0, 4), (-1, 4), HexColor("#333333")),
+            ('BACKGROUND', (0, 5), (-1, 5), HexColor("#e8e8e8")),
+            ('TEXTCOLOR', (0, 5), (-1, 5), HexColor("#333333")),
+        ]))
+        elements.append(table)
+        elements.append(Spacer(1, 6 * mm))
+        
+        # === VERDICT BOX ===
+        elements.append(Paragraph("VERDICT", styles["heading"]))
+        elements.append(Spacer(1, 2 * mm))
+        
+        # Verdict based on classification
+        if level == "high":
+            verdict_text = (
+                "<b>WYSOKA OKLUZJA MECHANICZNA</b><br/>"
+                "Przy wysokich momentach obrotowych naczynia mięśniowe są mechanicznie "
+                "kompresowane, ograniczając perfuzję mimo dostępnego VO₂ systemowego. "
+                "Styl siłowy (niska kadencja) prowadzi do przedwczesnej hipoksji lokalnej."
+            )
+            verdict_color = "#E74C3C"
+        elif level == "moderate":
+            verdict_text = (
+                "<b>UMIARKOWANA OKLUZJA</b><br/>"
+                "Spadek SmO₂ jest proporcjonalny do wzrostu momentu obrotowego. "
+                "Mięśnie wykazują pewną tolerancję na siły, ale istnieje wyraźna granica "
+                "powyżej której desaturacja przyspiesza."
+            )
+            verdict_color = "#F39C12"
+        else:
+            verdict_text = (
+                "<b>NISKA OKLUZJA</b><br/>"
+                "Kapilaryzacja mięśniowa jest wystarczająca, aby utrzymać perfuzję "
+                "nawet przy wysokich momentach obrotowych. Możliwość efektywnej pracy siłowej."
+            )
+            verdict_color = "#27AE60"
+        
+        verdict_box = Table(
+            [[Paragraph(verdict_text, ParagraphStyle('verdict', parent=styles["body"], textColor=HexColor("#FFFFFF"), fontSize=9))]],
+            colWidths=[165 * mm]
+        )
+        verdict_box.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, -1), HexColor(verdict_color)),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('LEFTPADDING', (0, 0), (-1, -1), 8),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 8),
+            ('TOPPADDING', (0, 0), (-1, -1), 6),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+            ('BOX', (0, 0), (-1, -1), 1, HexColor(verdict_color)),
+        ]))
+        elements.append(verdict_box)
+        elements.append(Spacer(1, 6 * mm))
+        
+        # === MECHANISM DESCRIPTION ===
+        interpretation = biomech_data.get("interpretation", {})
+        mechanism = interpretation.get("mechanism", "")
+        riding_style = interpretation.get("riding_style", "")
+        
+        if mechanism:
+            elements.append(Paragraph("<b>MECHANIZM FIZJOLOGICZNY</b>", styles["heading"]))
+            elements.append(Spacer(1, 2 * mm))
+            elements.append(Paragraph(mechanism, styles["body"]))
+            elements.append(Spacer(1, 4 * mm))
+        
+        if riding_style:
+            elements.append(Paragraph("<b>WPŁYW NA STYL JAZDY</b>", styles["heading"]))
+            elements.append(Spacer(1, 2 * mm))
+            elements.append(Paragraph(riding_style, styles["body"]))
+            elements.append(Spacer(1, 4 * mm))
+        
+        # === TRAINING RECOMMENDATIONS ===
+        recommendations = interpretation.get("recommendations", [])
+        if recommendations:
+            elements.append(Paragraph("<b>ZALECENIA TRENINGOWE</b>", styles["heading"]))
+            elements.append(Spacer(1, 2 * mm))
+            
+            # Use white text style for visibility on dark background
+            white_style = ParagraphStyle('white_body', parent=styles["body"], textColor=HexColor("#FFFFFF"), fontSize=9)
+            rec_data = [[Paragraph(f"• {rec}", white_style)] for rec in recommendations]
+            rec_table = Table(rec_data, colWidths=[165 * mm])
+            rec_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, -1), HexColor("#16213e")),
+                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                ('LEFTPADDING', (0, 0), (-1, -1), 8),
+                ('TOPPADDING', (0, 0), (-1, -1), 4),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+            ]))
+            elements.append(rec_table)
+    else:
+        # Fallback for legacy data without biomech analysis
+        elements.append(Paragraph(
+            "<b>Interpretacja:</b> Spadek saturacji (SmO₂) przy wysokich momentach obrotowych "
+            "może świadczyć o okluzji mechanicznej lub niskiej efektywności układu krążenia "
+            "w warunkach wysokiego napięcia mięśniowego.",
+            styles["body"]
+        ))
     
     return elements
 
 
 # ============================================================================
-# NEW PAGE: DRYF FIZJOLOGICZNY I KPI
+# NEW PAGE: DRYF FIZJOLOGICZNY
 # ============================================================================
 
-def build_page_drift_kpi(
+def build_page_drift(
     kpi: Dict[str, Any],
     figure_paths: Dict[str, str],
     styles: Dict
 ) -> List:
-    """Build Physiological Drift and KPI page."""
+    """Build Physiological Drift page (heatmaps only, no KPI table)."""
     elements = []
     
-    elements.append(Paragraph("Dryf Fizjologiczny i Wskaźniki KPI", styles["title"]))
+    elements.append(Paragraph("Dryf Fizjologiczny", styles["title"]))
     elements.append(Spacer(1, 6 * mm))
     
-    # 1. Heatmaps (Side by side or sequential)
+    # Heatmaps
     if figure_paths and "drift_heatmap_hr" in figure_paths:
         elements.extend(_build_chart(figure_paths["drift_heatmap_hr"], "Mapa Dryfu (HR vs Power)", styles))
         elements.append(Spacer(1, 4 * mm))
@@ -1819,68 +2408,177 @@ def build_page_drift_kpi(
     if figure_paths and "drift_heatmap_smo2" in figure_paths:
         elements.extend(_build_chart(figure_paths["drift_heatmap_smo2"], "Mapa Oksydacji (SmO2 vs Power)", styles))
         elements.append(Spacer(1, 4 * mm))
-
-    # 2. KPI Table
-    elements.append(Paragraph("Kluczowe Wskaźniki Wydajności (KPI)", styles["heading"]))
     
-    def fmt(val, unit=""):
-        if val is None or val == "brak danych": return "---"
-        try:
-            return f"{float(val):.2f}{unit}"
-        except:
-            return f"{val}{unit}"
-
-    # =========================================================================
-    # CRITICAL: VO2max MUST come from canonical source via kpi["vo2max_est"]
-    # DO NOT calculate VO2max here - it is READ-ONLY display
-    # =========================================================================
-    vo2max_val = kpi.get("vo2max_est")
-    vo2max_source = kpi.get("vo2max_source", "")
-    
-    # Format VO2max label - NO "Estimate" in name
-    if vo2max_val and vo2max_val != "brak danych":
-        vo2max_display = fmt(vo2max_val, " ml/kg")
-        vo2max_label = "VO₂max"
-        if vo2max_source:
-            source_short = {"acsm_5min": "(ACSM)", "acsm_cp": "(~CP)", "metrics_fallback": ""}.get(vo2max_source, "")
-            vo2max_label = f"VO₂max {source_short}".strip()
-    else:
-        vo2max_display = "n/a"
-        vo2max_label = "VO₂max"
-
-    data = [
-        ["Metryka", "Wartość", "Interpretacja"],
-        ["Efficiency Factor (EF)", fmt(kpi.get("ef")), "Moc na uderzenie serca (im wyżej, tym lepiej)"],
-        ["Pa:Hr (Decoupling)", fmt(kpi.get("pa_hr"), "%"), "Stabilność układu krążenia"],
-        ["% SmO2 Drift", fmt(kpi.get("smo2_drift"), "%"), "Zmęczenie lokalne mięśni"],
-        [vo2max_label, vo2max_display, "Pułap tlenowy (canonical)"]
-    ]
-    
-    table = Table(data, colWidths=[50 * mm, 30 * mm, 85 * mm])
-    table.setStyle(get_table_style())
-    elements.append(table)
-    
-    elements.append(Spacer(1, 6 * mm))
-    elements.append(Paragraph(
-        "<b>Dryf (Pa:Hr):</b> Wartość powyżej 5% sugeruje niepełną adaptację do danego obciążenia "
-        "lub wpływ czynników zewnętrznych (upał, odwodnienie, chroniczne zmęczenie).",
-        styles["body"]
-    ))
-    
-    # === EDUCATION BLOCK: DRIFT ===
+    # Drift education block
     elements.append(Spacer(1, 6 * mm))
     elements.extend(_build_education_block(
         "Dlaczego to ma znaczenie? (Cardiac Drift)",
         "Dryf tętna to sygnał ostrzegawczy Twojego układu chłodzenia, którego nie wolno ignorować. "
         "Jeśli przy stałej mocy tętno systematycznie rośnie, serce musi pracować ciężej, "
-        "by przetłoczyć krew nie tylko do mięśni, ale i do skóry w celu ochłodzenia organizmu. "
-        "Oznacza to spadek efektywności (EF) i nieproporcjonalnie wysoki koszt energetyczny ruchu. "
-        "Śledząc ten parametr, wiemy kiedy warto zainwestować w trening w cieple lub poprawić picie. "
-        "To klucz do utrzymania stabilnego tempa w drugiej połowie długodystansowych startów.",
+        "by przetłoczyć krew nie tylko do mięśni, ale i do skóry w celu ochłodzenia organizmu.",
         styles
     ))
-
+    
     return elements
+
+
+# ============================================================================
+# NEW PAGE: KLUCZOWE WSKAŹNIKI WYDAJNOŚCI (KPI) - PREMIUM DASHBOARD
+# ============================================================================
+
+def build_page_kpi_dashboard(
+    kpi: Dict[str, Any],
+    styles: Dict
+) -> List:
+    """Build dedicated KPI Dashboard page - premium quality."""
+    from reportlab.lib.colors import HexColor
+    from reportlab.lib.styles import ParagraphStyle
+    from reportlab.platypus import TableStyle
+    
+    elements = []
+    
+    elements.append(Paragraph("Kluczowe Wskaźniki Wydajności (KPI)", styles["title"]))
+    elements.append(Paragraph("<font size='10' color='#7F8C8D'>Dashboard stabilności układu krążenia i kosztu energetycznego</font>", styles["body"]))
+    elements.append(Spacer(1, 8 * mm))
+    
+    # === HELPER FUNCTIONS ===
+    def get_ef_status(val):
+        """Efficiency Factor status."""
+        if val is None: return ("n/a", "BRAK", "#808080")
+        try:
+            v = float(val)
+            if v < 1.8: return (f"{v:.2f}", "SŁABO", "#E74C3C")
+            elif v < 2.2: return (f"{v:.2f}", "OK", "#27AE60")
+            else: return (f"{v:.2f}", "BARDZO DOBRZE", "#2ECC71")
+        except: return ("n/a", "BRAK", "#808080")
+    
+    def get_pahr_status(val):
+        """Pa:Hr Decoupling status."""
+        if val is None: return ("n/a", "BRAK", "#808080")
+        try:
+            v = float(val)
+            if v < 5: return (f"{v:.1f}%", "STABILNY", "#27AE60")
+            elif v < 8: return (f"{v:.1f}%", "OSTRZEŻENIE", "#F39C12")
+            else: return (f"{v:.1f}%", "RYZYKO", "#E74C3C")
+        except: return ("n/a", "BRAK", "#808080")
+    
+    def get_smo2_drift_status(val):
+        """SmO2 Drift status."""
+        if val is None: return ("n/a", "BRAK", "#808080")
+        try:
+            v = float(val)
+            if v < 5: return (f"{v:.1f}%", "STABILNY", "#27AE60")
+            else: return (f"{v:.1f}%", "ZMĘCZENIE OBWODOWE", "#F39C12")
+        except: return ("n/a", "BRAK", "#808080")
+    
+    # === GET VALUES ===
+    ef_val, ef_status, ef_color = get_ef_status(kpi.get("ef"))
+    pahr_val, pahr_status, pahr_color = get_pahr_status(kpi.get("pa_hr"))
+    smo2_val, smo2_status, smo2_color = get_smo2_drift_status(kpi.get("smo2_drift"))
+    
+    # VO2max from canonical source
+    vo2max_raw = kpi.get("vo2max_est")
+    vo2max_source = kpi.get("vo2max_source", "")
+    if vo2max_raw and vo2max_raw != "brak danych":
+        try:
+            vo2max_val = f"{float(vo2max_raw):.1f} ml/kg"
+            vo2max_status = "CANONICAL"
+            vo2max_color = "#3498DB"
+        except:
+            vo2max_val = "n/a"
+            vo2max_status = "BRAK"
+            vo2max_color = "#808080"
+    else:
+        vo2max_val = "n/a"
+        vo2max_status = "BRAK"
+        vo2max_color = "#808080"
+    
+    # === BUILD KPI TABLE - Use ASCII for Polish chars in table ===
+    header = ["Metryka", "Wartosc", "Zakres Ref.", "Status"]
+    
+    rows = [
+        header,
+        ["Efficiency Factor (EF)", ef_val, "<1.8 slabo | 1.8-2.2 ok | >2.2 b.dobrze", ef_status],
+        ["Pa:Hr Decoupling", pahr_val, "<5% stab. | 5-8% ostrz. | >8% ryzyko", pahr_status],
+        ["SmO2 Drift", smo2_val, "<5% stabilny | >5% zmeczenie", smo2_status],
+        ["VO2max", vo2max_val, f"Zrodlo: {vo2max_source}", vo2max_status],
+    ]
+    
+    table = Table(rows, colWidths=[40 * mm, 28 * mm, 65 * mm, 32 * mm])
+    
+    # Dynamic styling based on status colors
+    table_style = [
+        # Header
+        ('BACKGROUND', (0, 0), (-1, 0), HexColor("#1a1a2e")),
+        ('TEXTCOLOR', (0, 0), (-1, 0), HexColor("#FFFFFF")),
+        ('FONTNAME', (0, 0), (-1, 0), 'DejaVuSans-Bold'),
+        ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+        # ALL CELLS must use DejaVuSans for Polish characters
+        ('FONTNAME', (0, 1), (-1, -1), 'DejaVuSans'),
+        ('FONTSIZE', (0, 0), (-1, -1), 9),
+        ('ALIGN', (1, 1), (1, -1), 'CENTER'),
+        ('ALIGN', (3, 1), (3, -1), 'CENTER'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('GRID', (0, 0), (-1, -1), 0.5, HexColor("#555555")),
+        ('ROWHEIGHT', (0, 0), (-1, -1), 14 * mm),
+        # Data row backgrounds - lighter for readability
+        ('BACKGROUND', (0, 1), (2, 1), HexColor("#f5f5f5")),
+        ('TEXTCOLOR', (0, 1), (2, 1), HexColor("#333333")),
+        ('BACKGROUND', (0, 2), (2, 2), HexColor("#e8e8e8")),
+        ('TEXTCOLOR', (0, 2), (2, 2), HexColor("#333333")),
+        ('BACKGROUND', (0, 3), (2, 3), HexColor("#f5f5f5")),
+        ('TEXTCOLOR', (0, 3), (2, 3), HexColor("#333333")),
+        ('BACKGROUND', (0, 4), (2, 4), HexColor("#e8e8e8")),
+        ('TEXTCOLOR', (0, 4), (2, 4), HexColor("#333333")),
+        # Status column colors per row - bright colors with white text
+        ('BACKGROUND', (3, 1), (3, 1), HexColor(ef_color)),
+        ('TEXTCOLOR', (3, 1), (3, 1), HexColor("#FFFFFF")),
+        ('BACKGROUND', (3, 2), (3, 2), HexColor(pahr_color)),
+        ('TEXTCOLOR', (3, 2), (3, 2), HexColor("#FFFFFF")),
+        ('BACKGROUND', (3, 3), (3, 3), HexColor(smo2_color)),
+        ('TEXTCOLOR', (3, 3), (3, 3), HexColor("#FFFFFF")),
+        ('BACKGROUND', (3, 4), (3, 4), HexColor(vo2max_color)),
+        ('TEXTCOLOR', (3, 4), (3, 4), HexColor("#FFFFFF")),
+        ('FONTNAME', (3, 1), (3, -1), 'DejaVuSans-Bold'),
+    ]
+    
+    table.setStyle(TableStyle(table_style))
+    elements.append(table)
+    elements.append(Spacer(1, 8 * mm))
+    
+    # === LEGEND ===
+    legend_style = ParagraphStyle('legend', parent=styles["body"], fontSize=8, textColor=HexColor("#95A5A6"))
+    elements.append(Paragraph(
+        "<b>Legenda statusów:</b> "
+        "<font color='#27AE60'>■ OK/STABILNY</font> | "
+        "<font color='#F39C12'>■ OSTRZEŻENIE</font> | "
+        "<font color='#E74C3C'>■ RYZYKO/SŁABO</font> | "
+        "<font color='#808080'>■ BRAK DANYCH</font>",
+        legend_style
+    ))
+    elements.append(Spacer(1, 6 * mm))
+    
+    # === INTERPRETIVE FOOTER ===
+    footer_text = (
+        "<b>Interpretacja:</b> KPI odzwierciedlają stabilność układu krążenia i koszt energetyczny "
+        "utrzymania mocy. Efficiency Factor (EF) pokazuje ile watów generujesz na każde uderzenie "
+        "serca - wyższy EF oznacza lepszą sprawność aerobową. Pa:Hr Decoupling >5% świadczy o "
+        "niepełnej adaptacji termicznej lub chronicznym zmęczeniu. SmO2 Drift wskazuje na lokalne "
+        "wyczerpanie mięśni niezależne od układu sercowo-naczyniowego."
+    )
+    elements.append(Paragraph(footer_text, styles["body"]))
+    
+    return elements
+
+
+# Legacy compatibility wrapper
+def build_page_drift_kpi(
+    kpi: Dict[str, Any],
+    figure_paths: Dict[str, str],
+    styles: Dict
+) -> List:
+    """Legacy wrapper - combines drift page content only, KPI is on separate page now."""
+    return build_page_drift(kpi, figure_paths, styles)
 
 
 # ============================================================================

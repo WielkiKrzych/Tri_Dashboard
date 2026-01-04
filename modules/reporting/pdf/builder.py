@@ -227,6 +227,8 @@ def map_ramp_json_to_pdf_data(report_json: Dict[str, Any]) -> Dict[str, Any]:
         "vent_advanced": report_json.get("vent_advanced", {}),
         "metabolic_strategy": metabolic_strategy,
         "canonical_physiology": report_json.get("canonical_physiology", {}),
+        "biomech_occlusion": report_json.get("biomech_occlusion", {}),
+        "thermo_analysis": report_json.get("thermo_analysis", {}),
         "executive_summary": generate_executive_summary(
             thresholds=mapped_thresholds,
             smo2_manual=mapped_smo2_manual,
@@ -381,10 +383,12 @@ def build_ramp_pdf(
 
     # === NEW PAGE: Biomechanika ===
     from .layout import build_page_biomech, build_page_drift_kpi
-    if any(k in figure_paths for k in ["biomech_summary", "biomech_torque_smo2"]):
+    biomech_data = pdf_data.get("biomech_occlusion", {})
+    if any(k in figure_paths for k in ["biomech_summary", "biomech_torque_smo2"]) or biomech_data:
         story.extend(build_page_biomech(
             figure_paths=figure_paths,
-            styles=styles
+            styles=styles,
+            biomech_data=biomech_data
         ))
         story.append(PageBreak())
 
@@ -399,14 +403,22 @@ def build_ramp_pdf(
         ))
         story.append(PageBreak())
 
-    # === NEW PAGE: Dryf i KPI ===
-    if any(k in figure_paths for k in ["drift_heatmap_hr", "drift_heatmap_smo2"]) or pdf_data["kpi"].get("ef") != "brak danych":
+    # === NEW PAGE: Dryf ===
+    if any(k in figure_paths for k in ["drift_heatmap_hr", "drift_heatmap_smo2"]):
         story.extend(build_page_drift_kpi(
             kpi=pdf_data["kpi"],
             figure_paths=figure_paths,
             styles=styles
         ))
         story.append(PageBreak())
+    
+    # === NEW PAGE: KPI Dashboard (Premium) ===
+    from .layout import build_page_kpi_dashboard
+    story.extend(build_page_kpi_dashboard(
+        kpi=pdf_data["kpi"],
+        styles=styles
+    ))
+    story.append(PageBreak())
     
     # === PAGE 4: Interpretacja Wyników ===
     story.extend(build_page_interpretation(
@@ -422,9 +434,15 @@ def build_ramp_pdf(
     
     # === PAGE 6: Analiza Termoregulacji ===
     story.extend(build_page_thermal(
+        thermo_data=pdf_data.get("thermo_analysis", {}),
         figure_paths=figure_paths,
         styles=styles
     ))
+    story.append(PageBreak())
+    
+    # === NEW PAGE: Protokół i Hierarchia (Page 20 simulation) ===
+    from .layout import build_page_protocol
+    story.extend(build_page_protocol(styles=styles))
     story.append(PageBreak())
     
     # === PAGE 7: Strefy Treningowe ===

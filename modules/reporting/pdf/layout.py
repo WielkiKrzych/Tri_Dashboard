@@ -8,7 +8,7 @@ No physiological calculations - only layout and formatting.
 Per specification: methodology/ramp_test/10_pdf_layout.md
 """
 from reportlab.platypus import (
-    Paragraph, Spacer, Table, Image, PageBreak, KeepTogether
+    Paragraph, Spacer, Table, Image, PageBreak, KeepTogether, TableStyle
 )
 from reportlab.platypus.tableofcontents import TableOfContents
 from reportlab.lib.units import mm
@@ -196,12 +196,19 @@ def build_page_thresholds(
     table = Table(data, colWidths=[50 * mm, 50 * mm, 30 * mm, 30 * mm])
     table.setStyle(get_table_style())
     elements.append(table)
-    elements.append(Spacer(1, 8 * mm))
-    
-    # === VE PROFILE CHART ===
-    if figure_paths and "ve_profile" in figure_paths:
-        elements.extend(_build_chart(figure_paths["ve_profile"], "Wizualizacja Progów (Wentylacja)", styles))
-        elements.append(Spacer(1, 8 * mm))
+    # === EDUCATION BLOCK: VT1/VT2 ===
+    elements.append(Spacer(1, 4 * mm))
+    elements.extend(_build_education_block(
+        "Dlaczego to ma znaczenie? (VT1 / VT2)",
+        "Progi wentylacyjne to Twoje najważniejsze drogowskazy w planowaniu obciążeń. "
+        "VT1 wyznacza granicę komfortu tlenowego i „przepalania” tłuszczy – to tu budujesz bazę na długie godziny. "
+        "VT2 to Twój „szklany sufit” – powyżej niego kwas narasta szybciej niż organizm go utylizuje, "
+        "co wymaga długiej regeneracji. Znajomość tych punktów pozwala unikać „strefy zgubnej” między progami, "
+        "gdzie zmęczenie jest duże, a adaptacje nieoptymalne. Jako trener używam ich, by każda Twoja minuta "
+        "na rowerze miała konkretny cel fizjologiczny. Dzięki temu nie trenujesz po prostu „ciężko”, "
+        "ale trenujesz mądrze i precyzyjnie.",
+        styles
+    ))
     
     return elements
 
@@ -266,6 +273,18 @@ def build_page_smo2(smo2_data, smo2_manual, figure_paths, styles):
         "Nie zastępują progów wentylacyjnych, ale pomagają je potwierdzić.</i>"
     )
     elements.append(Paragraph(smo2_text, styles["body"]))
+    # === EDUCATION BLOCK: SmO2 ===
+    elements.append(Spacer(1, 6 * mm))
+    elements.extend(_build_education_block(
+        "Dlaczego to ma znaczenie? (SmO₂ LT1 / LT2)",
+        "Saturacja mięśniowa pokazuje prawda bezpośrednio z Twoich nóg, reagując bez opóźnień typowych dla tętna. "
+        "LT1 to moment, gdy zapotrzebowanie na tlen zaczyna przeważać nad dostawą – sygnał początku realnej pracy. "
+        "LT2 to punkt, w którym system traci kontrolę nad bilansem tlenowym i wchodzi w głęboką desaturację. "
+        "Monitorując te trendy, wykrywamy czy ograniczeniem jest Twoje serce, czy naczynia krwionośne w nogach. "
+        "Jeśli progi mięśniowe występują przed wentylacyjnymi, wiemy że musimy popracować nad kapilaryzacją. "
+        "To narzędzie pozwala nam doprecyzować Twoje strefy z dokładnością do kilku watów.",
+        styles
+    ))
     
     return elements
 
@@ -341,6 +360,19 @@ def build_page_pdc(
     if figure_paths and "pdc_curve" in figure_paths:
         elements.extend(_build_chart(figure_paths["pdc_curve"], "Power-Duration Curve", styles))
     
+    # === EDUCATION BLOCK: CP/W' ===
+    elements.append(Spacer(1, 6 * mm))
+    elements.extend(_build_education_block(
+        "Dlaczego to ma znaczenie? (CP / W')",
+        "Model CP/W' to Twoja cyfrowa bateria, która mówi na co Cię stać w decydującym momencie wyścigu. "
+        "Critical Power (CP) to Twoja najwyższa moc „długodystansowa”, utrzymywana bez wyczerpania rezerw. "
+        "W' to Twój „bak paliwa” na ataki, krótkie podjazdy i sprinty powyżej mocy progowej. "
+        "Każdy skok powyżej CP kosztuje konkretną ilość dżuli, a regeneracja następuje dopiero poniżej tego progu. "
+        "Rozumienie tego balansu pozwala decydować, czy odpowiedzieć na atak, czy czekać na swoją szansę. "
+        "To serce Twojej strategii, które mówi nam, jak optymalnie zarządzać Twoimi siłami.",
+        styles
+    ))
+
     return elements
 
 
@@ -541,7 +573,6 @@ def build_page_limitations(
     # === CONDITIONAL WARNING ===
     if is_conditional:
         elements.append(Spacer(1, 4 * mm))
-        from reportlab.platypus import TableStyle
         warning_text = (
             "<b>⚠️ Ten raport został wygenerowany dla testu rozpoznanego warunkowo.</b><br/>"
             "Profil mocy lub czas kroków wykazują odchylenia od standardowego protokołu Ramp Test. "
@@ -607,8 +638,36 @@ def _build_chart(chart_path: str, title: str, styles: Dict) -> List:
         elements.append(img)
     except Exception as e:
         logger.error(f"PDF Layout: Error embedding chart '{title}' from {chart_path}: {e}")
-        elements.append(Paragraph(f"Wykres niedostępny (błąd: {e})", styles["small"]))
+    return elements
+
+
+def _build_education_block(title: str, content: str, styles: Dict) -> List:
+    """Helper to build a consistent education block with 'Dlaczego to ma znaczenie?'."""
+    elements = []
     
+    # Label
+    label = Paragraph("<b>Część edukacyjna – do zrozumienia wyników</b>", styles["small"])
+    elements.append(label)
+    
+    # Title & Text in a subtle box
+    inner_story = [
+        Paragraph(f"<b>{title}</b>", styles["heading"]),
+        Spacer(1, 1 * mm),
+        Paragraph(content, styles["body_italic"])
+    ]
+    
+    table = Table([[inner_story]], colWidths=[170 * mm])
+    table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), COLORS["light_grey"]),
+        ('INNERGRID', (0, 0), (-1, -1), 0.25, COLORS["grey"]),
+        ('BOX', (0, 0), (-1, -1), 0.25, COLORS["grey"]),
+        ('LEFTPADDING', (0, 0), (-1, -1), 4 * mm),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 4 * mm),
+        ('TOPPADDING', (0, 0), (-1, -1), 4 * mm),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 4 * mm),
+    ]))
+    
+    elements.append(table)
     return elements
 
 
@@ -682,10 +741,16 @@ def build_page_theory(styles: Dict) -> List:
     elements.append(t)
     
     elements.append(Spacer(1, 4 * mm))
-    elements.append(Paragraph("Jak Zmienić Swój Profil?", styles["heading"]))
-    elements.append(Paragraph("⬇️ Obniżyć VLaMax: Długie jazdy Z2, trening na czczo.", styles["body"]))
-    elements.append(Paragraph("⬆️ Podnieść FTP: Sweet Spot (88-94%), Threshold (95-105%).", styles["body"]))
-    
+    # Hierarchy & Protocol (New Content)
+    elements.append(Paragraph("3. Hierarchia Sygnałów i Protokół", styles["heading"]))
+    elements.append(Paragraph(
+        "Nie wszystkie dane są równe. W naszej metodologii najważniejsza jest Wentylacja (VE), "
+        "ponieważ najdokładniej odzwierciedla stan metaboliczny całego ciała. HR i SmO₂ to sygnały wspierające. "
+        "Długość kroku (np. 1-2 minuty) jest krytyczna, by sygnały zdążyły się ustabilizować. "
+        "Zrozumienie opóźnień (HR reaguje najwolniej, SmO₂ najszybciej) pozwala na precyzyjną detekcję progów.",
+        styles["body"]
+    ))
+
     return elements
 
 
@@ -841,6 +906,19 @@ def build_page_drift_kpi(
         styles["body"]
     ))
     
+    # === EDUCATION BLOCK: DRIFT ===
+    elements.append(Spacer(1, 6 * mm))
+    elements.extend(_build_education_block(
+        "Dlaczego to ma znaczenie? (Cardiac Drift)",
+        "Dryf tętna to sygnał ostrzegawczy Twojego układu chłodzenia, którego nie wolno ignorować. "
+        "Jeśli przy stałej mocy tętno systematycznie rośnie, serce musi pracować ciężej, "
+        "by przetłoczyć krew nie tylko do mięśni, ale i do skóry w celu ochłodzenia organizmu. "
+        "Oznacza to spadek efektywności (EF) i nieproporcjonalnie wysoki koszt energetyczny ruchu. "
+        "Śledząc ten parametr, wiemy kiedy warto zainwestować w trening w cieple lub poprawić picie. "
+        "To klucz do utrzymania stabilnego tempa w drugiej połowie długodystansowych startów.",
+        styles
+    ))
+
     return elements
 
 

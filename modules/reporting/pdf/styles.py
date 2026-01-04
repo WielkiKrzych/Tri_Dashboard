@@ -41,6 +41,8 @@ COLORS = {
     "text_light": HexColor("#7F8C8D"),
     "background": HexColor("#F8F9FA"),
     "border": HexColor("#DEE2E6"),
+    "grey": HexColor("#95A5A6"),
+    "light_grey": HexColor("#ECF0F1"),
     "white": white,
     "black": black,
 }
@@ -62,13 +64,15 @@ def register_fonts():
         
         pdfmetrics.registerFont(TTFont("DejaVuSans", os.path.join(font_dir, "DejaVuSans.ttf")))
         pdfmetrics.registerFont(TTFont("DejaVuSans-Bold", os.path.join(font_dir, "DejaVuSans-Bold.ttf")))
+        pdfmetrics.registerFont(TTFont("DejaVuSans-Italic", os.path.join(font_dir, "DejaVuSans-Oblique.ttf")))
+        pdfmetrics.registerFont(TTFont("DejaVuSans-BoldItalic", os.path.join(font_dir, "DejaVuSans-BoldOblique.ttf")))
         
-        return "DejaVuSans", "DejaVuSans-Bold"
+        return "DejaVuSans", "DejaVuSans-Bold", "DejaVuSans-Italic", "DejaVuSans-BoldItalic"
     except Exception:
         # Fallback to standard fonts if registration fails
-        return "Helvetica", "Helvetica-Bold"
+        return "Helvetica", "Helvetica-Bold", "Helvetica-Oblique", "Helvetica-BoldOblique"
 
-FONT_FAMILY, FONT_FAMILY_BOLD = register_fonts()
+FONT_FAMILY, FONT_FAMILY_BOLD, FONT_FAMILY_ITALIC, FONT_FAMILY_BOLD_ITALIC = register_fonts()
 
 FONT_SIZE_BODY = 10
 FONT_SIZE_SMALL = 8
@@ -142,6 +146,13 @@ def create_styles() -> Dict[str, ParagraphStyle]:
         leading=14,
         spaceAfter=3 * mm,
         alignment=TA_LEFT,
+    )
+    
+    # Body Italic style
+    styles["body_italic"] = ParagraphStyle(
+        "BodyItalic",
+        parent=styles["body"],
+        fontName=FONT_FAMILY_ITALIC,
     )
     
     # Small text style (captions, footnotes)

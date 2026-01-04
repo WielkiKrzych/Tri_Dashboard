@@ -111,6 +111,17 @@ def build_ramp_docx(
             cells[2].text = str(hr)
             cells[3].text = str(ve)
 
+        _add_education_block(doc,
+            "Dlaczego to ma znaczenie? (VT1 / VT2)",
+            "Progi wentylacyjne to Twoje najważniejsze drogowskazy w planowaniu obciążeń. "
+            "VT1 wyznacza granicę komfortu tlenowego i „przepalania” tłuszczy – to tu budujesz bazę na długie godziny. "
+            "VT2 to Twój „szklany sufit” – powyżej niego kwas narasta szybciej niż organizm go utylizuje, "
+            "co wymaga długiej regeneracji. Znajomość tych punktów pozwala unikać „strefy zgubnej” między progami, "
+            "gdzie zmęczenie jest duże, a adaptacje nieoptymalne. Jako trener używam ich, by każda Twoja minuta "
+            "na rowerze miała konkretny cel fizjologiczny. Dzięki temu nie trenujesz po prostu „ciężko”, "
+            "ale trenujesz mądrze i precyzyjnie."
+        )
+
         if "ve_profile" in figure_paths:
              doc.add_picture(figure_paths["ve_profile"], width=Inches(6))
              
@@ -141,6 +152,16 @@ def build_ramp_docx(
         r2[1].text = str(smo2_manual.get('lt2_watts'))
         r2[2].text = str(smo2_manual.get('lt2_hr'))
 
+        _add_education_block(doc,
+            "Dlaczego to ma znaczenie? (SmO₂ LT1 / LT2)",
+            "Saturacja mięśniowa pokazuje prawda bezpośrednio z Twoich nóg, reagując bez opóźnień typowych dla tętna. "
+            "LT1 to moment, gdy zapotrzebowanie na tlen zaczyna przeważać nad dostawą – sygnał początku realnej pracy. "
+            "LT2 to punkt, w którym system traci kontrolę nad bilansem tlenowym i wchodzi w głęboką desaturację. "
+            "Monitorując te trendy, wykrywamy czy ograniczeniem jest Twoje serce, czy naczynia krwionośne w nogach. "
+            "Jeśli progi mięśniowe występują przed wentylacyjnymi, wiemy że musimy popracować nad kapilaryzacją. "
+            "To narzędzie pozwala nam doprecyzować Twoje strefy z dokładnością do kilku watów."
+        )
+
         if "smo2_power" in figure_paths:
              doc.add_picture(figure_paths["smo2_power"], width=Inches(6))
 
@@ -153,6 +174,16 @@ def build_ramp_docx(
             
             doc.add_paragraph(f"Critical Power (CP): {cp['cp_watts']} W")
             doc.add_paragraph(f"W' (Pojemność Beztlenowa): {cp['w_prime_kj']} kJ")
+
+            _add_education_block(doc,
+                "Dlaczego to ma znaczenie? (CP / W')",
+                "Model CP/W' to Twoja cyfrowa bateria, która mówi na co Cię stać w decydującym momencie wyścigu. "
+                "Critical Power (CP) to Twoja najwyższa moc „długodystansowa”, utrzymywana bez wyczerpania rezerw. "
+                "W' to Twój „bak paliwa” na ataki, krótkie podjazdy i sprinty powyżej mocy progowej. "
+                "Każdy skok powyżej CP kosztuje konkretną ilość dżuli, a regeneracja następuje dopiero poniżej tego progu. "
+                "Rozumienie tego balansu pozwala decydować, czy odpowiedzieć na atak, czy czekać na swoją szansę. "
+                "To serce Twojej strategii, które mówi nam, jak optymalnie zarządzać Twoimi siłami."
+            )
             
             doc.add_page_break()
 
@@ -222,6 +253,16 @@ def build_ramp_docx(
             add_kpi("Pa:Hr (Decoupling)", f"{kpi.get('pa_hr', '---')}%", "Stabilność krążenia")
             add_kpi("% SmO2 Drift", f"{kpi.get('smo2_drift', '---')}%", "Zmęczenie lokalne")
             add_kpi("VO2max Estimate", f"{kpi.get('vo2max_est', '---')} ml/kg", "Szacowany pułap")
+
+            _add_education_block(doc,
+                "Dlaczego to ma znaczenie? (Cardiac Drift)",
+                "Dryf tętna to sygnał ostrzegawczy Twojego układu chłodzenia, którego nie wolno ignorować. "
+                "Jeśli przy stałej mocy tętno systematycznie rośnie, serce musi pracować ciężej, "
+                "by przetłoczyć krew nie tylko do mięśni, ale i do skóry w celu ochłodzenia organizmu. "
+                "Oznacza to spadek efektywności (EF) i nieproporcjonalnie wysoki koszt energetyczny ruchu. "
+                "Śledząc ten parametr, wiemy kiedy warto zainwestować w trening w cieple lub poprawić picie. "
+                "To klucz do utrzymania stabilnego tempa w drugiej połowie długodystansowych startów."
+            )
 
             doc.add_page_break()
 
@@ -311,6 +352,14 @@ def build_ramp_docx(
             "VO2max to pułap tlenowy, VLaMax to maksymalne tempo produkcji mleczanu. "
             "To współzależność tych dwóch parametrów determinuje Twoją moc progową (FTP/CP)."
         )
+
+        doc.add_heading("Hierarchia Sygnałów i Protokół", 2)
+        doc.add_paragraph(
+            "Nie wszystkie dane są równe. W naszej metodologii najważniejsza jest Wentylacja (VE), "
+            "ponieważ najdokładniej odzwierciedla stan metaboliczny całego ciała. HR i SmO₂ to sygnały wspierające. "
+            "Długość kroku (np. 1-2 minuty) jest krytyczna, by sygnały zdążyły się ustabilizować. "
+            "Zrozumienie opóźnień (HR reaguje najwolniej, SmO₂ najszybciej) pozwala na precyzyjną detekcję progów."
+        )
         
         doc.add_page_break()
         
@@ -345,3 +394,22 @@ def build_ramp_docx(
         return None
     
     return None
+
+def _add_education_block(doc, title: str, content: str):
+    """Helper to add a styled education block to DOCX."""
+    doc.add_paragraph("Część edukacyjna – do zrozumienia wyników", style='Caption')
+    
+    # Simple distinguished block using indentation and italics
+    p = doc.add_paragraph()
+    p.paragraph_format.left_indent = Inches(0.3)
+    p.paragraph_format.right_indent = Inches(0.3)
+    p.paragraph_format.space_before = Pt(6)
+    p.paragraph_format.space_after = Pt(6)
+    
+    run_title = p.add_run(f"{title}\n")
+    run_title.bold = True
+    run_title.font.size = Pt(11)
+    
+    run_content = p.add_run(content)
+    run_content.italic = True
+    run_content.font.color.rgb = RGBColor(80, 80, 80)

@@ -76,8 +76,11 @@ def generate_biomech_chart(
         else:
             time_min, cadence_data, torque_data = [], [], []
 
+    # Prepare config
+    cfg = config.__dict__ if hasattr(config, "__dict__") else (config or {})
+    
     if not time_min or not torque_data:
-        return create_empty_figure("Brak danych mocy/kadencji dla biomechaniki", output_path)
+        return create_empty_figure("Brak danych mocy/kadencji dla biomechaniki", "Biomechanika", output_path, **cfg)
 
     # Use the prepared data
     df_plot = pd.DataFrame({
@@ -85,6 +88,10 @@ def generate_biomech_chart(
         'cadence': cadence_data,
         'torque_smooth': torque_data
     })
+
+    # Prepare config
+    cfg = config.__dict__ if hasattr(config, "__dict__") else (config or {})
+    figsize = cfg.get("figsize", (10, 6))
 
     # 2. Create Plot
     fig, ax1 = plt.subplots(figsize=figsize)
@@ -144,8 +151,11 @@ def generate_torque_smo2_chart(
         cadence_vals = time_series.get("cadence_rpm", [])
         smo2_vals = time_series.get("smo2_pct", [])
 
+    # Prepare config
+    cfg = config.__dict__ if hasattr(config, "__dict__") else (config or {})
+
     if not all([power_vals, cadence_vals, smo2_vals]):
-        return create_empty_figure("Brak danych (Power, Cad, SmO2) dla Torque-SmO2", output_path)
+        return create_empty_figure("Brak danych (Power, Cad, SmO2) dla Torque-SmO2", "Fizjologia Okluzji", output_path, **cfg)
 
     # Prepare DataFrame for binning
     df_calc = pd.DataFrame({
@@ -165,7 +175,7 @@ def generate_torque_smo2_chart(
     df_clean = df_calc[mask].copy()
     
     if len(df_clean) < 20:
-        return create_empty_figure("Za mało punktów danych do analizy Torque-SmO2", output_path)
+        return create_empty_figure("Za mało punktów danych do analizy Torque-SmO2", "Fizjologia Okluzji", output_path, **cfg)
 
     # Binning by Torque (every 2 Nm)
     df_clean['torque_bin'] = (df_clean['torque'] // 2 * 2).astype(int)

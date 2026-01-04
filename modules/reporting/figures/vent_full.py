@@ -46,8 +46,7 @@ def generate_full_vent_chart(
     title_size = cfg.get('title_size', 14)
     
     if source_df is None or source_df.empty:
-        fig = create_empty_figure("Brak danych źródłowych", "Dynamika Wentylacji", **cfg)
-        return save_figure(fig, output_path, **cfg)
+        return create_empty_figure("Brak danych źródłowych", "Dynamika Wentylacji", output_path, **cfg)
 
     # Resolve columns
     df = source_df.copy()
@@ -56,8 +55,7 @@ def generate_full_vent_chart(
     time_col = _find_column(df, ['time_min', 'time'])
     
     if not ve_col:
-        fig = create_empty_figure("Brak danych Wentylacji", "Dynamika Wentylacji", **cfg)
-        return save_figure(fig, output_path, **cfg)
+        return create_empty_figure("Brak danych Wentylacji", "Dynamika Wentylacji", output_path, **cfg)
 
     # Normalize time
     if time_col == 'time':

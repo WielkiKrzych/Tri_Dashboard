@@ -46,24 +46,21 @@ def generate_radar_chart(
     title_size = cfg.get('title_size', 14)
     
     if source_df is None or source_df.empty:
-        fig = create_empty_figure("Brak danych źródłowych", "Profil Metaboliczny", **cfg)
-        return save_figure(fig, output_path, **cfg)
+        return create_empty_figure("Brak danych źródłowych", "Profil Metaboliczny", output_path, **cfg)
 
     # Resolve columns
     df = source_df.copy()
     pwr_col = _find_column(df, ['watts', 'watts_smooth', 'power', 'Power'])
     
     if not pwr_col:
-        fig = create_empty_figure("Brak danych Mocy", "Profil Metaboliczny", **cfg)
-        return save_figure(fig, output_path, **cfg)
+        return create_empty_figure("Brak danych Mocy", "Profil Metaboliczny", output_path, **cfg)
 
     # Rolling 5min (300s)
     window_sec = 300
     df['rolling_watts'] = df[pwr_col].rolling(window=window_sec, min_periods=window_sec).mean()
     
     if df['rolling_watts'].isna().all():
-        fig = create_empty_figure("Za krótki trening (<5min)", "Profil Metaboliczny", **cfg)
-        return save_figure(fig, output_path, **cfg)
+        return create_empty_figure("Za krótki trening (<5min)", "Profil Metaboliczny", output_path, **cfg)
     
     peak_idx = df['rolling_watts'].idxmax()
     start_idx = max(0, peak_idx - window_sec + 1)
@@ -171,7 +168,7 @@ def generate_vlamax_balance_chart(
             mmp_20min = df[pwr_col].rolling(1200).mean().max()
             
     if not mmp_20min or mmp_20min == 0:
-        return create_empty_figure("Brak danych (wymagane min. 20 min mmp)", output_path)
+        return create_empty_figure("Brak danych (MMP 20 min)", "Profil Metaboliczny", output_path, **cfg)
 
     ratio = mmp_5min / mmp_20min
     

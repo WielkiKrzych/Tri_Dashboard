@@ -70,8 +70,7 @@ def generate_power_hr_scatter(
         c_vals = time_series.get("time_sec", [])
     
     if not hr_data or not power_data:
-        fig = create_empty_figure("Brak danych Power/HR", "Power vs HR", **cfg)
-        return save_figure(fig, output_path, **cfg)
+        return create_empty_figure("Brak danych Power/HR", "Power vs HR", output_path, **cfg)
 
     fig, ax = plt.subplots(figsize=figsize, dpi=dpi)
     
@@ -139,9 +138,8 @@ def generate_power_smo2_scatter(
         smo2_data = time_series.get("smo2_pct", [])
         c_vals = time_series.get("time_sec", [])
         
-    if not smo2_col or not pwr_col:
-        fig = create_empty_figure("Brak danych Power/SmO2", "Power vs SmO2", **cfg)
-        return save_figure(fig, output_path, **cfg)
+    if not power_data or not smo2_data:
+        return create_empty_figure("Brak danych Power/SmO2", "Power vs SmO2", output_path, **cfg)
 
     fig, ax = plt.subplots(figsize=figsize, dpi=dpi)
     
@@ -221,7 +219,7 @@ def generate_drift_heatmap(
         title = "Mapa Oksydacji: Moc vs Saturacja"
 
     if not power_data or not target_data or len(power_data) < 100:
-        return create_empty_figure(f"Za mało danych dla mapy gęstości {mode.upper()}", output_path, **cfg)
+        return create_empty_figure(f"Za mało danych dla mapy gęstości {mode.upper()}", "Mapa Dryfu", output_path, **cfg)
 
     fig, ax = plt.subplots(figsize=figsize, dpi=dpi)
     

@@ -96,8 +96,7 @@ def generate_ramp_profile_chart(
     
     # Handle missing data
     if not time_data or not power_data:
-        fig = create_empty_figure("Brak danych mocy", "Profil Ramp Test", **cfg)
-        return save_figure(fig, output_path, **cfg)
+        return create_empty_figure("Brak danych mocy", "Profil Ramp Test", output_path, **cfg)
     
     # Get threshold values from thresholds dict (nested structure)
     vt1_data = thresholds.get("vt1", {})

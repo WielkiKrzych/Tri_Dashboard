@@ -67,8 +67,7 @@ def generate_ve_profile_chart(
         power_data = time_series.get("power_watts", [])
         
     if not time_data or not ve_data:
-        fig = create_empty_figure("Brak danych wentylacji", "Dynamika Wentylacji", **cfg)
-        return save_figure(fig, output_path, **cfg)
+        return create_empty_figure("Brak danych wentylacji", "Dynamika Wentylacji", output_path, **cfg)
     
     # Get threshold values
     thresholds = report_data.get("thresholds", {})

@@ -68,8 +68,7 @@ def generate_cp_curve_chart(
     
     # Handle missing data
     if not durations or not powers:
-        fig = create_empty_figure("Brak danych PDC", "Power-Duration Curve", **cfg)
-        return save_figure(fig, output_path, **cfg)
+        return create_empty_figure("Brak danych PDC", "Power-Duration Curve", output_path, **cfg)
     
     # Create figure
     fig, ax = plt.subplots(figsize=figsize, dpi=dpi)

@@ -59,8 +59,8 @@ def save_figure(fig, output_path: Optional[str] = None, **kwargs) -> bytes:
             
     return data
 
-def create_empty_figure(message: str, title: str, **kwargs):
-    """Create a figure with an error/empty message."""
+def create_empty_figure(message: str, title: str, output_path: Optional[str] = None, **kwargs):
+    """Create a figure with an error/empty message and optionally save it."""
     figsize = kwargs.get('figsize', (10, 6))
     dpi = kwargs.get('dpi', 150)
     
@@ -68,4 +68,7 @@ def create_empty_figure(message: str, title: str, **kwargs):
     ax.text(0.5, 0.5, message, ha='center', va='center', fontsize=12, color='red')
     ax.set_title(title, fontsize=kwargs.get('title_size', 14), fontweight='bold')
     ax.axis('off')
+    
+    if output_path:
+        return save_figure(fig, output_path, **kwargs)
     return fig

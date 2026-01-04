@@ -46,8 +46,7 @@ def generate_thermal_chart(
     title_size = cfg.get('title_size', 14)
     
     if source_df is None or source_df.empty:
-        fig = create_empty_figure("Brak danych źródłowych", "Termoregulacja", **cfg)
-        return save_figure(fig, output_path, **cfg)
+        return create_empty_figure("Brak danych źródłowych", "Termoregulacja", output_path, **cfg)
 
     # Resolve columns
     df = source_df.copy()
@@ -56,8 +55,7 @@ def generate_thermal_chart(
     time_col = _find_column(df, ['time_min', 'time'])
     
     if not temp_col or not hsi_col:
-        fig = create_empty_figure("Brak danych Temp/HSI", "Termoregulacja", **cfg)
-        return save_figure(fig, output_path, **cfg)
+        return create_empty_figure("Brak danych Temp/HSI", "Termoregulacja", output_path, **cfg)
 
     # Normalize time to minutes if needed
     if time_col == 'time':
@@ -119,8 +117,7 @@ def generate_efficiency_chart(
     title_size = cfg.get('title_size', 14)
     
     if source_df is None or source_df.empty:
-        fig = create_empty_figure("Brak danych źródłowych", "Spadek Efektywności", **cfg)
-        return save_figure(fig, output_path, **cfg)
+        return create_empty_figure("Brak danych źródłowych", "Spadek Efektywności", output_path, **cfg)
         
     df = source_df.copy()
     temp_col = _find_column(df, ['core_temperature_smooth', 'core_temperature', 'core_temp'])
@@ -128,16 +125,14 @@ def generate_efficiency_chart(
     pwr_col = _find_column(df, ['watts', 'watts_smooth', 'power'])
     
     if not (temp_col and hr_col and pwr_col):
-        fig = create_empty_figure("Brak danych Power/HR/Temp", "Spadek Efektywności", **cfg)
-        return save_figure(fig, output_path, **cfg)
+        return create_empty_figure("Brak danych Power/HR/Temp", "Spadek Efektywności", output_path, **cfg)
         
     # Filter valid data
     mask = (df[pwr_col] > 10) & (df[hr_col] > 60)
     df_clean = df[mask].copy()
     
     if df_clean.empty:
-        fig = create_empty_figure("Zbyt mało danych", "Spadek Efektywności", **cfg)
-        return save_figure(fig, output_path, **cfg)
+        return create_empty_figure("Zbyt mało danych", "Spadek Efektywności", output_path, **cfg)
 
     # Calculate Efficiency (W/HR)
     df_clean['eff_raw'] = df_clean[pwr_col] / df_clean[hr_col]

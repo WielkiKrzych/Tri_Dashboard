@@ -78,8 +78,7 @@ def generate_smo2_power_chart(
     
     # Handle missing data
     if not power_data or not smo2_data:
-        fig = create_empty_figure("Brak danych SmO₂", "SmO₂ vs Moc", **cfg)
-        return save_figure(fig, output_path, **cfg)
+        return create_empty_figure("Brak danych SmO₂", "SmO₂ vs Moc", output_path, **cfg)
     
     # Get SmO2 drop point from smo2_context
     drop_point = smo2_context.get("drop_point", {})

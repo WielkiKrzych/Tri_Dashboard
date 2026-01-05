@@ -283,6 +283,418 @@ def build_page_executive_summary(
 
 
 # ============================================================================
+# PAGE 2: EXECUTIVE VERDICT (1-PAGE DECISION SUMMARY)
+# ============================================================================
+
+def build_page_executive_verdict(
+    canonical_physio: Dict[str, Any],
+    smo2_advanced: Dict[str, Any],
+    biomech_occlusion: Dict[str, Any],
+    thermo_analysis: Dict[str, Any],
+    cardio_advanced: Dict[str, Any],
+    metadata: Dict[str, Any],
+    styles: Dict
+) -> List:
+    """Build Page 2: EXECUTIVE VERDICT - 1-page decision summary.
+    
+    Contains ONLY decision boxes, numbers and conclusions. NO CHARTS.
+    
+    Sections:
+    A. HERO BOX - Main verdict with profile
+    B. GREEN BOX - Strengths (VO2max, coupling, reoxy)
+    C. RED/AMBER BOX - Limiters (occlusion, thermoregulation)
+    D. 3 STARTUP RISKS
+    E. 3 TRAINING PRIORITIES
+    F. TAGLINE
+    G. TECHNICAL FOOTER
+    """
+    from reportlab.lib.colors import HexColor
+    
+    elements = []
+    
+    # ==========================================================================
+    # EXTRACT DATA with fallbacks
+    # ==========================================================================
+    
+    # Canonical physiology
+    summary = canonical_physio.get("summary", {})
+    vo2max = summary.get("vo2max")
+    vo2max_source = summary.get("vo2max_source", "unknown")
+    
+    # SmO2 advanced
+    hr_coupling = smo2_advanced.get("hr_coupling_r", 0)
+    halftime = smo2_advanced.get("halftime_reoxy_sec")
+    smo2_slope = smo2_advanced.get("slope_per_100w", 0)
+    limiter_type = smo2_advanced.get("limiter_type", "unknown")
+    smo2_drift = smo2_advanced.get("drift_pct", 0)
+    
+    # Biomech occlusion
+    biomech_metrics = biomech_occlusion.get("metrics", {})
+    occlusion_index = biomech_metrics.get("occlusion_index", 0)
+    torque_10 = biomech_metrics.get("torque_at_minus_10")
+    torque_20 = biomech_metrics.get("torque_at_minus_20")
+    occlusion_level = biomech_occlusion.get("classification", {}).get("level", "unknown")
+    
+    # Thermoregulation
+    thermo_metrics = thermo_analysis.get("metrics", {})
+    max_core_temp = thermo_metrics.get("max_core_temp", 0)
+    peak_hsi = thermo_metrics.get("peak_hsi", 0)
+    
+    # Cardiac drift
+    cardiac_drift = thermo_analysis.get("cardiac_drift", {})
+    ef_delta_pct = cardiac_drift.get("delta_pct", 0)
+    drift_classification = cardiac_drift.get("classification", "unknown")
+    
+    # Cardio advanced
+    ef = cardio_advanced.get("efficiency_factor", 0)
+    hr_drift_pct = cardio_advanced.get("hr_drift_pct", 0)
+    
+    # Metadata
+    test_date = metadata.get("test_date", "---")
+    
+    # ==========================================================================
+    # GENERATE PROFILE DESCRIPTION
+    # ==========================================================================
+    
+    profile_parts = []
+    
+    # Central capacity
+    if vo2max and vo2max > 50:
+        profile_parts.append("STABILNY CENTRALNIE")
+    elif vo2max:
+        profile_parts.append("UMIARKOWANY CENTRALNIE")
+    else:
+        profile_parts.append("PROFIL NIEZNANY")
+    
+    # Limiters
+    limiters = []
+    if occlusion_level in ["high", "moderate"]:
+        limiters.append("OGRANICZANY MECHANICZNIE")
+    if max_core_temp > 38.0 or peak_hsi > 6:
+        limiters.append("OGRANICZANY TERMICZNIE")
+    if abs(smo2_drift) > 8:
+        limiters.append("DRYF OBWODOWY")
+    
+    if limiters:
+        profile_parts.extend(limiters)
+    
+    profile_description = ", ".join(profile_parts)
+    
+    # Generate main interpretation
+    if limiter_type == "central":
+        main_interpretation = (
+            "Wydajność VO₂max jest wysoka, układ krążenia dyktuje tempo. "
+            "Priorytet: rozbudowa pojemności minutowej serca."
+        )
+    elif limiter_type == "local":
+        main_interpretation = (
+            "Potencjał VO₂max jest wysoki, ale jego wykorzystanie ogranicza okluzja mięśniowa "
+            "przy wysokim momencie obrotowym oraz narastający koszt termoregulacyjny."
+        )
+    else:
+        main_interpretation = (
+            "Profil mieszany: zarówno zdolność centralna jak i obwodowa wymagają równoczesnej pracy. "
+            "Treningi zrównoważone dadzą najlepsze efekty."
+        )
+    
+    # Confidence score
+    confidence_score = smo2_advanced.get("limiter_confidence", 0.5)
+    
+    # ==========================================================================
+    # A. HERO BOX - MAIN VERDICT
+    # ==========================================================================
+    
+    elements.append(Paragraph("EXECUTIVE VERDICT", styles["title"]))
+    elements.append(Paragraph(
+        "<font size='10' color='#7F8C8D'>Decyzyjne podsumowanie całego raportu fizjologicznego</font>",
+        styles["center"]
+    ))
+    elements.append(Spacer(1, 6 * mm))
+    
+    hero_content = [
+        [Paragraph(
+            f"<font size='12' color='#FFFFFF'><b>WERDYKT GŁÓWNY</b></font>",
+            styles["center"]
+        )],
+        [Paragraph(
+            f"<font size='11' color='#F1C40F'><b>Profil wydolnościowy: {profile_description}</b></font>",
+            styles["center"]
+        )],
+        [Spacer(1, 2 * mm)],
+        [Paragraph(
+            f"<font size='10' color='#FFFFFF'>{main_interpretation}</font>",
+            styles["center"]
+        )],
+        [Spacer(1, 2 * mm)],
+        [Paragraph(
+            f"<font size='8' color='#BDC3C7'>Confidence score: {confidence_score:.2f} | "
+            f"Źródła: VO₂max ({vo2max_source}), SmO₂, HR coupling, Core Temp</font>",
+            styles["center"]
+        )],
+    ]
+    
+    hero_table = Table(hero_content, colWidths=[170 * mm])
+    hero_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), HexColor("#1a1a2e")),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('TOPPADDING', (0, 0), (-1, -1), 8),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+        ('LEFTPADDING', (0, 0), (-1, -1), 10),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 10),
+    ]))
+    elements.append(hero_table)
+    elements.append(Spacer(1, 6 * mm))
+    
+    # ==========================================================================
+    # B. GREEN BOX - STRENGTHS
+    # ==========================================================================
+    
+    elements.append(Paragraph("<b>CO JEST MOCNE</b>", styles["subheading"]))
+    elements.append(Spacer(1, 2 * mm))
+    
+    # Prepare strength items
+    strengths = []
+    
+    if vo2max:
+        vo2_interp = "Wysoka wydolność aerobowa" if vo2max > 55 else ("Dobra wydolność" if vo2max > 45 else "Do poprawy")
+        strengths.append(f"• <b>VO₂max (canonical):</b> {vo2max:.1f} ml/kg/min → {vo2_interp}")
+    
+    if abs(hr_coupling) > 0.5:
+        coup_interp = "Silna korelacja HR-SmO₂ – układ spójny" if abs(hr_coupling) > 0.7 else "Umiarkowana korelacja"
+        strengths.append(f"• <b>HR–SmO₂ coupling (r):</b> {hr_coupling:.2f} → {coup_interp}")
+    
+    if halftime and halftime < 60:
+        ht_interp = "Szybka reoksygenacja – dobra kapilaryzacja" if halftime < 30 else "Akceptowalna reoksygenacja"
+        strengths.append(f"• <b>Reoxy half-time:</b> {halftime:.0f} s → {ht_interp}")
+    
+    if ef > 1.8:
+        ef_interp = "Wysoka efektywność sercowa"
+        strengths.append(f"• <b>Efficiency Factor:</b> {ef:.2f} W/bpm → {ef_interp}")
+    
+    if not strengths:
+        strengths.append("• Brak wyróżniających się mocnych stron w danych")
+    
+    # Strength conclusion
+    strength_conclusion = "Wniosek: układ krążenia jest gotowy na dalszą intensyfikację treningową."
+    
+    strength_text = "<br/>".join(strengths) + f"<br/><br/><i>{strength_conclusion}</i>"
+    
+    green_style = ParagraphStyle('green_box', parent=styles["body"], textColor=HexColor("#FFFFFF"), fontSize=9)
+    green_box = Table(
+        [[Paragraph(strength_text, green_style)]],
+        colWidths=[170 * mm]
+    )
+    green_box.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), HexColor("#27AE60")),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 10),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 10),
+        ('TOPPADDING', (0, 0), (-1, -1), 8),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+    ]))
+    elements.append(green_box)
+    elements.append(Spacer(1, 4 * mm))
+    
+    # ==========================================================================
+    # C. RED/AMBER BOX - LIMITERS
+    # ==========================================================================
+    
+    elements.append(Paragraph("<b>CO OGRANICZA WYNIK</b>", styles["subheading"]))
+    elements.append(Spacer(1, 2 * mm))
+    
+    # --- OCCLUSION LIMITER ---
+    occlusion_items = []
+    occlusion_items.append("<b>1. OKLUZJA MECHANICZNA</b>")
+    occlusion_items.append(f"• Moment przy −10% SmO₂: {torque_10:.0f} Nm" if torque_10 else "• Moment przy −10% SmO₂: ---")
+    occlusion_items.append(f"• Moment przy −20% SmO₂: {torque_20:.0f} Nm" if torque_20 else "• Moment przy −20% SmO₂: ---")
+    occlusion_items.append(f"• Occlusion Index: {occlusion_index:.3f}" if occlusion_index else "• Occlusion Index: ---")
+    occlusion_items.append("<i>Moc dostępna centralnie, ale ograniczona przez kompresję naczyń w mięśniu.</i>")
+    
+    occlusion_color = "#E74C3C" if occlusion_level == "high" else ("#F39C12" if occlusion_level == "moderate" else "#7F8C8D")
+    
+    red_style = ParagraphStyle('red_box', parent=styles["body"], textColor=HexColor("#FFFFFF"), fontSize=9)
+    occlusion_box = Table(
+        [[Paragraph("<br/>".join(occlusion_items), red_style)]],
+        colWidths=[82 * mm]
+    )
+    occlusion_box.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), HexColor(occlusion_color)),
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 8),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 8),
+        ('TOPPADDING', (0, 0), (-1, -1), 6),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+    ]))
+    
+    # --- THERMOREGULATION LIMITER ---
+    thermo_items = []
+    thermo_items.append("<b>2. TERMOREGULACJA</b>")
+    thermo_items.append(f"• Max Core Temp: {max_core_temp:.1f} °C" if max_core_temp > 0 else "• Max Core Temp: ---")
+    thermo_items.append(f"• Peak HSI: {peak_hsi:.1f}" if peak_hsi else "• Peak HSI: ---")
+    thermo_items.append(f"• Cardiac Drift (ΔEF): {ef_delta_pct:+.1f}%" if ef_delta_pct else "• Cardiac Drift: ---")
+    thermo_items.append("<i>Wzrost temperatury zwiększa koszt utrzymania mocy i przyspiesza dryf serca.</i>")
+    
+    thermo_color = "#E74C3C" if max_core_temp > 38.5 or peak_hsi > 8 else ("#F39C12" if max_core_temp > 38.0 or peak_hsi > 6 else "#7F8C8D")
+    
+    thermo_box = Table(
+        [[Paragraph("<br/>".join(thermo_items), red_style)]],
+        colWidths=[82 * mm]
+    )
+    thermo_box.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), HexColor(thermo_color)),
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 8),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 8),
+        ('TOPPADDING', (0, 0), (-1, -1), 6),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+    ]))
+    
+    # Two columns
+    limiter_row = Table([[occlusion_box, thermo_box]], colWidths=[85 * mm, 85 * mm])
+    limiter_row.setStyle(TableStyle([('VALIGN', (0, 0), (-1, -1), 'TOP')]))
+    elements.append(limiter_row)
+    elements.append(Spacer(1, 4 * mm))
+    
+    # ==========================================================================
+    # D. 3 STARTUP RISKS
+    # ==========================================================================
+    
+    elements.append(Paragraph("<b>3 NAJWAŻNIEJSZE RYZYKA STARTOWE</b>", styles["subheading"]))
+    elements.append(Spacer(1, 2 * mm))
+    
+    risks = []
+    
+    # Risk 1: Power drop
+    if abs(ef_delta_pct) > 15 or max_core_temp > 38.0:
+        risks.append("Ryzyko spadku mocy w drugiej połowie wysiłku z powodu narastającego kosztu termoregulacyjnego")
+    else:
+        risks.append("Umiarkowane ryzyko spadku mocy przy wydłużonych wysiłkach – monitoruj EF")
+    
+    # Risk 2: SmO2 collapse
+    if occlusion_level == "high" or abs(smo2_slope) > 6:
+        risks.append("Ryzyko załamania SmO₂ przy niskiej kadencji / wysokim momencie obrotowym")
+    else:
+        risks.append("Profil okluzyjny w normie – zachowaj ostrożność przy ekstremalnych momentach")
+    
+    # Risk 3: HR drift
+    if abs(hr_drift_pct) > 8:
+        risks.append("Ryzyko nieproporcjonalnego wzrostu HR przy stałej mocy (cardiac drift >8%)")
+    else:
+        risks.append("Stabilność HR w zakresie normy – kontynuuj obecną strategię nawodnienia")
+    
+    risk_style = ParagraphStyle('risk_box', parent=styles["body"], textColor=HexColor("#FFFFFF"), fontSize=9)
+    risk_text = "<br/>".join([f"<b>{i+1}.</b> {r}" for i, r in enumerate(risks)])
+    
+    risk_box = Table(
+        [[Paragraph(risk_text, risk_style)]],
+        colWidths=[170 * mm]
+    )
+    risk_box.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), HexColor("#2C3E50")),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 10),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 10),
+        ('TOPPADDING', (0, 0), (-1, -1), 6),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+    ]))
+    elements.append(risk_box)
+    elements.append(Spacer(1, 4 * mm))
+    
+    # ==========================================================================
+    # E. 3 TRAINING PRIORITIES
+    # ==========================================================================
+    
+    elements.append(PageBreak())
+    elements.append(Paragraph("<b>3 PRIORYTETY TRENINGOWE</b>", styles["subheading"]))
+    elements.append(Spacer(1, 2 * mm))
+    
+    priorities = []
+    
+    # Priority 1: Based on limiter
+    if limiter_type == "central":
+        priorities.append({
+            "name": "VO₂max (centralnie)",
+            "example": "4–6 × 4 min @ 106–120% FTP, Cel: zwiększyć rzut serca bez wzrostu kosztu EF"
+        })
+    else:
+        priorities.append({
+            "name": "Baza aerobowa (objętość)",
+            "example": "3–4h @ Z2 (60–75% FTP), Cel: rozbudowa kapilaryzacji i objętości wyrzutowej"
+        })
+    
+    # Priority 2: Occlusion reduction
+    if occlusion_level in ["high", "moderate"]:
+        priorities.append({
+            "name": "Redukcja okluzji (kadencja, SmO₂)",
+            "example": "Treningi @ 95–105 rpm, unikaj momentów >50 Nm, monitoruj SmO₂ w czasie rzeczywistym"
+        })
+    else:
+        priorities.append({
+            "name": "Siła wytrzymałościowa",
+            "example": "4×8 min @ 50–60 rpm pod LT1, Cel: poprawa rekrutacji włókien wolnokurczliwych"
+        })
+    
+    # Priority 3: Heat adaptation
+    if max_core_temp > 38.0 or peak_hsi > 6:
+        priorities.append({
+            "name": "Adaptacja cieplna",
+            "example": "10–14 dni treningu w cieple (sauna post-workout), nawodnienie 500–750 ml/h + elektrolity"
+        })
+    else:
+        priorities.append({
+            "name": "Strategia nawodnienia",
+            "example": "500 ml/h minimum, CHO 60–80g/h podczas wysiłków >90 min"
+        })
+    
+    priority_style = ParagraphStyle('priority', parent=styles["body"], fontSize=9)
+    
+    for i, p in enumerate(priorities):
+        prio_text = f"<b>PRIORYTET {i+1} — {p['name']}</b><br/>• {p['example']}"
+        prio_box = Table(
+            [[Paragraph(prio_text, priority_style)]],
+            colWidths=[170 * mm]
+        )
+        prio_box.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, -1), HexColor("#ECF0F1")),
+            ('BOX', (0, 0), (-1, -1), 1, HexColor("#3498DB")),
+            ('LEFTPADDING', (0, 0), (-1, -1), 8),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 8),
+            ('TOPPADDING', (0, 0), (-1, -1), 4),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+        ]))
+        elements.append(prio_box)
+        elements.append(Spacer(1, 2 * mm))
+    
+    # ==========================================================================
+    # F. TAGLINE
+    # ==========================================================================
+    
+    elements.append(Spacer(1, 2 * mm))
+    tagline_style = ParagraphStyle('tagline', parent=styles["center"], fontSize=10, textColor=HexColor("#7F8C8D"))
+    elements.append(Paragraph(
+        "<i>Ten raport pokazuje nie 'ile możesz', ale 'dlaczego tracisz' – i jak to naprawić.</i>",
+        tagline_style
+    ))
+    elements.append(Spacer(1, 4 * mm))
+    
+    # ==========================================================================
+    # G. TECHNICAL FOOTER
+    # ==========================================================================
+    
+    footer_style = ParagraphStyle('footer', parent=styles["body"], fontSize=7, textColor=HexColor("#95A5A6"))
+    footer_text = (
+        f"<b>Typ testu:</b> Ramp Test | "
+        f"<b>Metodologia:</b> Ventilatory & BreathRate + SmO₂ + Core Temp | "
+        f"<b>Źródło VO₂max:</b> {vo2max_source} | "
+        f"<b>System:</b> Tri Dashboard v2.0"
+    )
+    elements.append(Paragraph(footer_text, footer_style))
+    
+    return elements
+
+
+# ============================================================================
 # PAGE 1: OKŁADKA / PODSUMOWANIE
 # ============================================================================
 
@@ -1536,6 +1948,140 @@ def build_page_metabolic_engine(metabolic_data: Dict[str, Any], styles: Dict) ->
 
 
 # ============================================================================
+# PAGE: LIMITER RADAR (20 MIN FTP ANALYSIS)
+# ============================================================================
+
+def build_page_limiter_radar(
+    limiter_data: Dict[str, Any],
+    figure_paths: Dict[str, str],
+    styles: Dict
+) -> List:
+    """Build page for 20min FTP Limiter Radar analysis.
+    
+    Contains:
+    - Diagnosis table (Serce, Płuca, Mięśnie, Moc percentages)
+    - Limiting factor identification
+    - Training suggestions
+    """
+    from reportlab.lib.colors import HexColor
+    
+    elements = []
+    
+    # Title
+    elements.append(Paragraph("Radar Obciążenia Systemów", styles["title"]))
+    elements.append(Paragraph(
+        "<font size='10' color='#7F8C8D'>Analiza limiterów fizjologicznych dla 20 min (FTP)</font>",
+        styles["center"]
+    ))
+    elements.append(Spacer(1, 6 * mm))
+    
+    # Extract data
+    window = limiter_data.get("window", "20 min (FTP)")
+    peak_power = limiter_data.get("peak_power", 0)
+    pct_hr = limiter_data.get("pct_hr", 0)
+    pct_ve = limiter_data.get("pct_ve", 0)
+    pct_smo2 = limiter_data.get("pct_smo2_util", 0)
+    pct_power = limiter_data.get("pct_power", 0)
+    limiting_factor = limiter_data.get("limiting_factor", "unknown")
+    interpretation = limiter_data.get("interpretation", {})
+    
+    # ==========================================================================
+    # RADAR CHART (if available)
+    # ==========================================================================
+    
+    if figure_paths and "limiter_radar" in figure_paths:
+        elements.extend(_build_chart(figure_paths["limiter_radar"], f"Profil Obciążenia: {window} ({peak_power:.0f} W)", styles))
+        elements.append(Spacer(1, 6 * mm))
+    
+    # ==========================================================================
+    # DIAGNOSIS TABLE
+    # ==========================================================================
+    
+    elements.append(Paragraph(f"<b>DIAGNOZA: {window}</b>", styles["heading"]))
+    elements.append(Spacer(1, 2 * mm))
+    
+    # Determine status for each system
+    def get_status(system, value):
+        if limiting_factor == system:
+            return ("🔴 Limiter", "#E74C3C")
+        return ("🟢 OK", "#27AE60")
+    
+    hr_status, hr_color = get_status("Serce", pct_hr)
+    ve_status, ve_color = get_status("Płuca", pct_ve)
+    smo2_status, smo2_color = get_status("Mięśnie", pct_smo2)
+    
+    # Build diagnosis table
+    header = ["System", "Wartość", "Interpretacja"]
+    rows = [
+        header,
+        ["Serce", f"{pct_hr:.1f}% HRmax", hr_status],
+        ["Płuca", f"{pct_ve:.1f}% VEmax", ve_status],
+        ["Mięśnie", f"{pct_smo2:.1f}% Desat", smo2_status],
+        ["Moc", f"{pct_power:.0f}% CP", "—"],
+    ]
+    
+    table = Table(rows, colWidths=[50 * mm, 50 * mm, 70 * mm])
+    table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), COLORS["primary"]),
+        ('TEXTCOLOR', (0, 0), (-1, 0), HexColor("#FFFFFF")),
+        ('FONTNAME', (0, 0), (-1, 0), FONT_FAMILY_BOLD),
+        ('FONTSIZE', (0, 0), (-1, -1), 9),
+        ('ALIGN', (1, 0), (-1, -1), 'CENTER'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('GRID', (0, 0), (-1, -1), 0.5, COLORS["border"]),
+        ('TOPPADDING', (0, 0), (-1, -1), 5),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+        # Color the Limiter row
+        ('BACKGROUND', (0, 1), (0, 1), HexColor(hr_color) if limiting_factor == "Serce" else HexColor("#F8F9FA")),
+        ('BACKGROUND', (0, 2), (0, 2), HexColor(ve_color) if limiting_factor == "Płuca" else HexColor("#F8F9FA")),
+        ('BACKGROUND', (0, 3), (0, 3), HexColor(smo2_color) if limiting_factor == "Mięśnie" else HexColor("#F8F9FA")),
+    ]))
+    elements.append(table)
+    elements.append(Spacer(1, 4 * mm))
+    
+    # Main limiter
+    elements.append(Paragraph(f"<b>Główny Limiter: {limiting_factor}</b>", styles["subheading"]))
+    elements.append(Spacer(1, 4 * mm))
+    
+    # ==========================================================================
+    # INTERPRETATION BOX
+    # ==========================================================================
+    
+    title = interpretation.get("title", f"Ograniczenie: {limiting_factor}")
+    description = interpretation.get("description", "")
+    suggestions = interpretation.get("suggestions", [])
+    
+    # Color based on limiter type
+    limiter_colors = {
+        "Serce": "#E74C3C",
+        "Płuca": "#3498DB", 
+        "Mięśnie": "#F39C12"
+    }
+    box_color = limiter_colors.get(limiting_factor, "#7F8C8D")
+    
+    interp_content = f"<b>{title}</b><br/><br/>{description}<br/><br/><b>Sugestie:</b>"
+    for s in suggestions:
+        interp_content += f"<br/>• {s}"
+    
+    interp_style = ParagraphStyle('interp', parent=styles["body"], textColor=HexColor("#FFFFFF"), fontSize=9)
+    interp_box = Table(
+        [[Paragraph(interp_content, interp_style)]],
+        colWidths=[170 * mm]
+    )
+    interp_box.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), HexColor(box_color)),
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 10),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 10),
+        ('TOPPADDING', (0, 0), (-1, -1), 8),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+    ]))
+    elements.append(interp_box)
+    
+    return elements
+
+
+# ============================================================================
 # PAGE 5: STREFY TRENINGOWE
 # ============================================================================
 
@@ -1966,7 +2512,7 @@ def build_page_thermal(
     
     key_data = [
         ["Metryka", "Wartość", "Interpretacja"],
-        ["Max Core Temp", max_temp_str, "Szczytowa temperatura gleboka"],
+        ["Max Core Temp", max_temp_str, "Szczytowa temperatura głęboka"],
         ["Delta Temp / 10 min", delta_str, f"Tolerancja: {tolerance_label}"],
         ["Czas do 38.0 C", f"{time_38_0:.0f} min" if time_38_0 else "---", "Prog ostrzegawczy"],
         ["Czas do 38.5 C", f"{time_38_5:.0f} min" if time_38_5 else "---", "Prog krytyczny"],
@@ -2042,13 +2588,28 @@ def build_page_thermal(
     elements.append(Spacer(1, 6 * mm))
     
     # === HR/EF CONNECTION ===
-    elements.append(Paragraph("<b>POLACZENIE Z HR DRIFT I EF</b>", styles["heading"]))
+    elements.append(PageBreak())
+    elements.append(Paragraph("<b>POŁĄCZENIE Z HR DRIFT I EF</b>", styles["heading"]))
     elements.append(Spacer(1, 2 * mm))
     elements.append(Paragraph(
-        "Wysoka temperatura wymusza redystrybucje krwi do skory. "
-        "Serce musi pompowac wieksza objetosc krwi, by utrzymac zarowno chlodzenie, "
-        "jak i dostawe O2 do miesni. Efekt: wzrost HR przy stalej mocy (dryf), "
+        "<b>Mechanizm fizjologiczny:</b> Wysoka temperatura wymusza redystrybucję krwi do skóry "
+        "w celu chłodzenia. Serce musi pompować większą objętość krwi, by utrzymać zarówno chłodzenie, "
+        "jak i dostawę O₂ do mięśni. Efekt: wzrost HR przy stałej mocy (cardiac drift), "
         "spadek Efficiency Factor (EF). To jest kardynalny syndrom przegrzania.",
+        styles["body"]
+    ))
+    elements.append(Spacer(1, 2 * mm))
+    elements.append(Paragraph(
+        "<b>Konsekwencje dla wydolności:</b> Każdy 1°C wzrostu temperatury rdzenia powoduje "
+        "wzrost HR o 8-10 bpm oraz spadek VO₂max o 1.5-2%. Przy temperaturze >39°C następuje "
+        "ochronne ograniczenie rekrutacji jednostek motorycznych przez OUN.",
+        styles["body"]
+    ))
+    elements.append(Spacer(1, 2 * mm))
+    elements.append(Paragraph(
+        "<b>Adaptacja cieplna:</b> Po 10-14 dniach treningu w cieple (60-90min @ Z2, temp >28°C) "
+        "obserwuje się: wcześniejsze pocenie, niższy HR przy tej samej mocy, zmniejszony drift, "
+        "oraz poprawę tolerancji cieplnej o 15-20%.",
         styles["body"]
     ))
     elements.append(Spacer(1, 4 * mm))
@@ -2095,7 +2656,7 @@ def build_page_thermal(
     # ========================================================================
     # CARDIAC DRIFT ANALYSIS - PRO LAYOUT
     # ========================================================================
-    elements.append(Paragraph("Analiza Dryfu Efektywnosci (Cardiac Drift)", styles["title"]))
+    elements.append(Paragraph("Analiza Dryfu Efektywności (Cardiac Drift)", styles["title"]))
     elements.append(Paragraph("<font size='10' color='#7F8C8D'>Dynamika EF, klasyfikacja dryfu, implikacje treningowe</font>", styles["body"]))
     elements.append(Spacer(1, 6 * mm))
     
@@ -2237,15 +2798,32 @@ def build_page_thermal(
         elements.append(Spacer(1, 4 * mm))
     
     # === TRAINING IMPLICATIONS BOX ===
+    elements.append(PageBreak())
     elements.append(Paragraph("TRAINING IMPLICATIONS", styles["heading"]))
+    elements.append(Spacer(1, 2 * mm))
+    
+    # Add extended introduction
+    elements.append(Paragraph(
+        "<b>Zastosowanie w praktyce:</b> Poniższe zalecenia treningowe wynikają bezpośrednio "
+        "z analizy dryfu sercowego i termicznego. Dostosuj intensywność i strategię "
+        "nawodnienia do warunków środowiskowych.",
+        styles["body"]
+    ))
     elements.append(Spacer(1, 2 * mm))
     
     if has_drift_data:
         implications = drift_interp.get("training_implications", [])[:4]  # Limit to 4 items
+        # Add extra recommendations
+        extra_implications = [
+            "Monitoruj EF w czasie rzeczywistym podczas długich wysiłków >2h",
+            "Stosuj pre-cooling przed zawodami w gorącu (kamizelka lodowa, zimny napój)",
+            "Nawadniaj regularnie: 500-750ml/h + 500-1000mg Na+/h w gorącu"
+        ]
+        implications.extend(extra_implications[:2])  # Add 2 extra
     else:
         implications = [
             "Brak danych do wygenerowania rekomendacji",
-            "Upewnij sie, ze plik zrodlowy zawiera kolumny Power i HR",
+            "Upewnij się, że plik źródłowy zawiera kolumny Power i HR",
         ]
     
     impl_style = ParagraphStyle('impl_white', parent=styles["body"], textColor=HexColor("#FFFFFF"), fontSize=8)
@@ -2301,6 +2879,7 @@ def build_page_biomech(
         metrics = biomech_data["metrics"]
         classification = biomech_data.get("classification", {})
         
+        elements.append(PageBreak())
         elements.append(Paragraph("KEY NUMBERS", styles["heading"]))
         elements.append(Spacer(1, 2 * mm))
         

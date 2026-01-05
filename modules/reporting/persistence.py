@@ -26,6 +26,40 @@ METHOD_VERSION = RAMP_METHOD_VERSION  # Pipeline version
 INDEX_COLUMNS = ["session_id", "test_date", "athlete_id", "method_version", "json_path", "pdf_path", "source_file"]
 
 
+def _get_limiter_interpretation(limiting_factor: str) -> dict:
+    """Get interpretation text for limiting factor."""
+    interpretations = {
+        "Serce": {
+            "title": "Ograniczenie Centralne (Serce)",
+            "description": "Twoje serce pracuje na maksymalnych obrotach, ale mięśnie mogłyby więcej.",
+            "suggestions": [
+                "Więcej treningu Z2 (podniesienie SV - objętości wyrzutowej)",
+                "Interwały 4×8 min @ 88-94% HRmax",
+                "Rozważ pracę nad VO₂max (Hill Repeats)"
+            ]
+        },
+        "Płuca": {
+            "title": "Ograniczenie Oddechowe (Płuca)",
+            "description": "Wentylacja jest na limicie.",
+            "suggestions": [
+                "Ćwiczenia oddechowe (pranayama, Wim Hof)",
+                "Trening na wysokości (lub maska hipoksyjna)",
+                "Sprawdź technikę oddychania podczas wysiłku"
+            ]
+        },
+        "Mięśnie": {
+            "title": "Ograniczenie Peryferyjne (Mięśnie)",
+            "description": "Mięśnie zużywają cały dostarczany tlen.",
+            "suggestions": [
+                "Więcej pracy siłowej (squat, deadlift)",
+                "Interwały 'over-under' (93-97% / 103-107% FTP)",
+                "Sprawdź pozycję na rowerze (okluzja mechaniczna?)"
+            ]
+        }
+    }
+    return interpretations.get(limiting_factor, interpretations["Serce"])
+
+
 def _check_source_file_exists(base_dir: str, source_file: str) -> bool:
     """
     Check if a source file has already been saved in the index.
@@ -422,6 +456,69 @@ def save_ramp_test_report(
         print(f"[Canonical Physio / Metabolic Engine] Analysis failed: {e}")
         import traceback
         traceback.print_exc()
+    
+    # 1.7 Limiter Analysis (20min FTP window for radar chart)
+    try:
+        # Calculate 20min MMP window
+        window_sec = 1200  # 20 min
+        if 'watts' in analysis_df.columns:
+            analysis_df['rolling_watts_20m'] = analysis_df['watts'].rolling(window=window_sec, min_periods=window_sec).mean()
+            
+            if not analysis_df['rolling_watts_20m'].isna().all():
+                peak_idx = analysis_df['rolling_watts_20m'].idxmax()
+                
+                if not pd.isna(peak_idx):
+                    start_idx = max(0, peak_idx - window_sec + 1)
+                    df_peak = analysis_df.iloc[start_idx:peak_idx+1]
+                    
+                    # Calculate percentages
+                    pct_hr = 0
+                    pct_ve = 0
+                    pct_smo2_util = 0
+                    pct_power = 0
+                    
+                    # HR%
+                    if 'hr' in analysis_df.columns:
+                        peak_hr_avg = df_peak['hr'].mean()
+                        max_hr = analysis_df['hr'].max()
+                        pct_hr = (peak_hr_avg / max_hr * 100) if max_hr > 0 else 0
+                    
+                    # VE%
+                    ve_col = next((c for c in ['tymeventilation', 've', 'ventilation'] if c in analysis_df.columns), None)
+                    if ve_col:
+                        peak_ve_avg = df_peak[ve_col].mean()
+                        max_ve = analysis_df[ve_col].max() * 1.1  # Estimate VEmax
+                        pct_ve = (peak_ve_avg / max_ve * 100) if max_ve > 0 else 0
+                    
+                    # SmO2 utilization (desaturation)
+                    if 'smo2' in analysis_df.columns:
+                        peak_smo2_avg = df_peak['smo2'].mean()
+                        pct_smo2_util = 100 - peak_smo2_avg
+                    
+                    # Power%
+                    peak_w_avg = df_peak['watts'].mean()
+                    cp_watts = data.get('canonical_physiology', {}).get('summary', {}).get('cp_watts', 0) or peak_w_avg
+                    pct_power = (peak_w_avg / cp_watts * 100) if cp_watts > 0 else 0
+                    
+                    # Determine limiting factor
+                    limiting_factor = "Serce"
+                    if pct_ve >= max(pct_hr, pct_smo2_util):
+                        limiting_factor = "Płuca"
+                    elif pct_smo2_util >= pct_hr:
+                        limiting_factor = "Mięśnie"
+                    
+                    data['limiter_analysis'] = {
+                        "window": "20 min (FTP)",
+                        "peak_power": round(peak_w_avg, 0),
+                        "pct_hr": round(pct_hr, 1),
+                        "pct_ve": round(pct_ve, 1),
+                        "pct_smo2_util": round(pct_smo2_util, 1),
+                        "pct_power": round(pct_power, 1),
+                        "limiting_factor": limiting_factor,
+                        "interpretation": _get_limiter_interpretation(limiting_factor)
+                    }
+    except Exception as e:
+        print(f"[Limiter Analysis] Calculation failed: {e}")
     
     # 2. Enrich metadata
     now = datetime.now()

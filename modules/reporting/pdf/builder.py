@@ -37,9 +37,11 @@ from .layout import (
     build_page_limiters,
     build_page_extra,
     build_page_executive_summary,
+    build_page_executive_verdict,
     build_page_cardiovascular,
     build_page_ventilation,
     build_page_metabolic_engine,
+    build_page_limiter_radar,
 )
 from ...calculations.executive_summary import generate_executive_summary
 
@@ -246,6 +248,7 @@ def map_ramp_json_to_pdf_data(report_json: Dict[str, Any]) -> Dict[str, Any]:
         "canonical_physiology": report_json.get("canonical_physiology", {}),
         "biomech_occlusion": report_json.get("biomech_occlusion", {}),
         "thermo_analysis": report_json.get("thermo_analysis", {}),
+        "limiter_analysis": report_json.get("limiter_analysis", {}),
         "executive_summary": generate_executive_summary(
             thresholds=mapped_thresholds,
             smo2_manual=mapped_smo2_manual,
@@ -344,7 +347,19 @@ def build_ramp_pdf(
     ))
     story.append(PageBreak())
     
-    # === PAGE 2: Szczegóły Progów VT1/VT2 ===
+    # === PAGE 2: EXECUTIVE VERDICT (1-page decision summary) ===
+    story.extend(build_page_executive_verdict(
+        canonical_physio=pdf_data.get("canonical_physiology", {}),
+        smo2_advanced=pdf_data.get("smo2", {}).get("advanced_metrics", {}),
+        biomech_occlusion=pdf_data.get("biomech_occlusion", {}),
+        thermo_analysis=pdf_data.get("thermo_analysis", {}),
+        cardio_advanced=pdf_data.get("cardio_advanced", {}),
+        metadata=metadata,
+        styles=styles
+    ))
+    story.append(PageBreak())
+    
+    # === PAGE 3: Szczegóły Progów VT1/VT2 ===
     story.extend(build_page_thresholds(
         thresholds=thresholds,
         smo2=pdf_data["smo2"],
@@ -385,6 +400,16 @@ def build_ramp_pdf(
     if metabolic_data:
         story.extend(build_page_metabolic_engine(
             metabolic_data=metabolic_data,
+            styles=styles
+        ))
+        story.append(PageBreak())
+    
+    # === PAGE: LIMITER RADAR (20 min FTP Analysis) ===
+    limiter_data = pdf_data.get("limiter_analysis", {})
+    if limiter_data:
+        story.extend(build_page_limiter_radar(
+            limiter_data=limiter_data,
+            figure_paths=figure_paths,
             styles=styles
         ))
         story.append(PageBreak())

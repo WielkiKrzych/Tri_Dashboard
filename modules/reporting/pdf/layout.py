@@ -22,7 +22,7 @@ from typing import Dict, Any, List, Optional
 from .styles import (
     COLORS, PAGE_WIDTH, MARGIN,
     create_styles, get_table_style, get_card_style,
-    FONT_FAMILY_BOLD, FONT_SIZE_BODY,
+    FONT_FAMILY, FONT_FAMILY_BOLD, FONT_FAMILY_ITALIC, FONT_SIZE_BODY,
 )
 
 # Setup logger
@@ -444,6 +444,91 @@ def build_page_executive_verdict(
         ('RIGHTPADDING', (0, 0), (-1, -1), 10),
     ]))
     elements.append(hero_table)
+    elements.append(Spacer(1, 6 * mm))
+    
+    # ==========================================================================
+    # A2. DECISION MATRIX (WHY / WHAT / HOW)
+    # ==========================================================================
+    
+    elements.append(Paragraph("<b>DECISION MATRIX (WHY / WHAT / HOW)</b>", styles["subheading"]))
+    elements.append(Spacer(1, 2 * mm))
+    
+    # Determine PRIMARY BOTTLENECK based on logic
+    bottleneck = "MIXED"
+    bottleneck_color = "#7F8C8D"
+    
+    # Logic: mechanical if torque_at_-20 < 65 Nm
+    if torque_20 and torque_20 < 65:
+        bottleneck = "MECHANICAL (Occlusion)"
+        bottleneck_color = "#E74C3C"
+    # Logic: thermal if cardiac_drift > 15% AND core_temp > 38.0
+    elif hr_drift_pct > 15 and max_core_temp > 38.0:
+        bottleneck = "THERMAL (Heat Strain)"
+        bottleneck_color = "#F39C12"
+    # Logic: central if HR-SmO2 r < -0.75 (strong negative = preserved delivery)
+    elif hr_coupling < -0.75:
+        bottleneck = "CENTRAL (Cardiac Output)"
+        bottleneck_color = "#3498DB"
+    elif limiter_type == "central":
+        bottleneck = "CENTRAL (Cardiac Output)"
+        bottleneck_color = "#3498DB"
+    elif limiter_type == "local":
+        bottleneck = "PERIPHERAL (O2 Extraction)"
+        bottleneck_color = "#9B59B6"
+    
+    # Generate WHY text based on bottleneck
+    why_text = ""
+    what_text = ""
+    how_text = ""
+    
+    if "MECHANICAL" in bottleneck:
+        why_text = f"Kompresja naczyniowa przy momencie >{torque_20 or 0:.0f} Nm ogranicza perfuzję mięśniową mimo dostępnego O₂ systemowego."
+        what_text = "Szybszy spadek SmO₂, wcześniejsze zmęczenie nóg, utrata reaktywności na ataki."
+        how_text = "Zwiększ kadencję do 95-105 rpm. Trenuj wysoko-kadencyjnie. Sprawdź ustawienie siodła."
+    elif "THERMAL" in bottleneck:
+        why_text = f"Core temp {max_core_temp:.1f}°C + drift {hr_drift_pct:.0f}% → redystrybucja krwi do skóry ogranicza dostawę do mięśni."
+        what_text = "Postępujący spadek mocy po 45-60 min, wysokie HR przy niskiej mocy, ryzyko DNF."
+        how_text = "Heat acclimation 10-14 dni. Pre-cooling przed startem. Nawodnienie 750ml/h + Na+."
+    elif "CENTRAL" in bottleneck:
+        why_text = f"Układ krążenia przy {vo2max or 0:.0f} ml/kg/min dyktuje limit – mięśnie mają rezerwę."
+        what_text = "Limit tętna osiągany przed zmęczeniem mięśni. Płaski profil SmO₂ przy wysokim HR."
+        how_text = "Interwały VO₂max (5×5 min @ 106-120% FTP). Z2 dla podniesienia SV. Hill repeats."
+    elif "PERIPHERAL" in bottleneck:
+        why_text = "Ekstrakcja O₂ w mięśniu jest limitem – niska kapilaryzacja lub wysoka glikoliza."
+        what_text = "SmO₂ spada szybko przy submaksymalnych wysiłkach. Szybka lokalna kwasica."
+        how_text = "Sweet spot + threshold work. Siła na rowerze. Trening low-cadence."
+    else:
+        why_text = "Brak jednoznacznego limitera – wydolność zbalansowana między systemami."
+        what_text = "Równomierne obciążenie wszystkich układów. Brak dominującego ograniczenia."
+        how_text = "Kontynuuj polaryzowany trening. Monitoruj wszystkie KPI równolegle."
+    
+    # Build 4 decision blocks
+    matrix_rows = [
+        ["PRIMARY BOTTLENECK", bottleneck],
+        ["WHY IT LIMITS PERFORMANCE", why_text],
+        ["WHAT IT CAUSES IN RACE", what_text],
+        ["HOW TO FIX IT", how_text],
+    ]
+    
+    matrix_table = Table(matrix_rows, colWidths=[50 * mm, 120 * mm])
+    matrix_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (0, -1), HexColor("#2C3E50")),
+        ('BACKGROUND', (1, 0), (1, 0), HexColor(bottleneck_color)),
+        ('BACKGROUND', (1, 1), (1, -1), HexColor("#34495E")),
+        ('TEXTCOLOR', (0, 0), (-1, -1), HexColor("#FFFFFF")),
+        ('FONTNAME', (0, 0), (0, -1), FONT_FAMILY_BOLD),
+        ('FONTNAME', (1, 0), (1, -1), FONT_FAMILY),
+        ('FONTSIZE', (0, 0), (-1, -1), 8),
+        ('ALIGN', (0, 0), (0, -1), 'LEFT'),
+        ('ALIGN', (1, 0), (1, -1), 'LEFT'),
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ('GRID', (0, 0), (-1, -1), 0.5, HexColor("#1a1a2e")),
+        ('TOPPADDING', (0, 0), (-1, -1), 6),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+        ('LEFTPADDING', (0, 0), (-1, -1), 6),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 6),
+    ]))
+    elements.append(matrix_table)
     elements.append(Spacer(1, 6 * mm))
     
     # ==========================================================================
@@ -2025,6 +2110,7 @@ def build_page_limiter_radar(
         ('BACKGROUND', (0, 0), (-1, 0), COLORS["primary"]),
         ('TEXTCOLOR', (0, 0), (-1, 0), HexColor("#FFFFFF")),
         ('FONTNAME', (0, 0), (-1, 0), FONT_FAMILY_BOLD),
+        ('FONTNAME', (0, 1), (-1, -1), FONT_FAMILY),
         ('FONTSIZE', (0, 0), (-1, -1), 9),
         ('ALIGN', (1, 0), (-1, -1), 'CENTER'),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),

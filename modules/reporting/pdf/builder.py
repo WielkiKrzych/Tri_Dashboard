@@ -175,8 +175,10 @@ def map_ramp_json_to_pdf_data(report_json: Dict[str, Any]) -> Dict[str, Any]:
         "lt2_hr": get_num("smo2_manual", "lt2_hr", ["lt2_hr"])
     }
 
-    # 7. KPI mapping - use CANONICAL VO2max for consistency
+    # 7. KPI mapping - use CANONICAL VO2max and cardio_advanced for EF/Pa:Hr
     m_data = report_json.get("metrics", {})
+    cardio_adv = report_json.get("cardio_advanced", {})
+    smo2_adv = report_json.get("smo2_advanced", {})
     
     # Get canonical VO2max (Single Source of Truth)
     canonical = report_json.get("canonical_physiology", {}).get("summary", {})
@@ -188,10 +190,25 @@ def map_ramp_json_to_pdf_data(report_json: Dict[str, Any]) -> Dict[str, Any]:
         vo2max_canonical = m_data.get("vo2max", m_data.get("estimated_vo2max"))
         vo2max_source = "metrics_fallback"
     
+    # Extract EF from cardio_advanced (primary source)
+    ef_value = cardio_adv.get("efficiency_factor")
+    if not ef_value:
+        ef_value = m_data.get("ef", m_data.get("efficiency_factor"))
+    
+    # Extract Pa:Hr (HR drift) from cardio_advanced
+    pa_hr_value = cardio_adv.get("hr_drift_pct")
+    if not pa_hr_value:
+        pa_hr_value = m_data.get("pa_hr", m_data.get("decoupling_pct"))
+    
+    # Extract SmO2 drift from smo2_advanced
+    smo2_drift_value = smo2_adv.get("drift_pct")
+    if not smo2_drift_value:
+        smo2_drift_value = m_data.get("smo2_drift")
+    
     mapped_kpi = {
-        "ef": m_data.get("ef", m_data.get("efficiency_factor", "brak danych")),
-        "pa_hr": m_data.get("pa_hr", m_data.get("decoupling_pct", "brak danych")),
-        "smo2_drift": m_data.get("smo2_drift", "brak danych"),
+        "ef": ef_value if ef_value else "brak danych",
+        "pa_hr": pa_hr_value if pa_hr_value else "brak danych",
+        "smo2_drift": smo2_drift_value if smo2_drift_value else "brak danych",
         "vo2max_est": vo2max_canonical if vo2max_canonical else "brak danych",
         "vo2max_source": vo2max_source
     }

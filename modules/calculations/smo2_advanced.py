@@ -32,6 +32,7 @@ class SmO2AdvancedMetrics:
     slope_per_100w: float = 0.0           # SmO2 drop per 100W [%/100W]
     halftime_reoxy_sec: Optional[float] = None  # Half-time to reoxygenation [s]
     hr_coupling_r: float = 0.0            # Correlation SmO2 vs HR changes
+    drift_pct: float = 0.0                # SmO2 drift first half vs second half [%]
     
     # Limiter classification
     limiter_type: str = "unknown"         # local, central, metabolic, balanced
@@ -394,7 +395,51 @@ def analyze_smo2_advanced(
     
     metrics.data_quality = "good" if metrics.slope_r2 > 0.3 else "low"
     
+    # Calculate SmO2 drift (first half vs second half)
+    metrics.drift_pct = calculate_smo2_drift(df, smo2_col, power_col)
+    
     return metrics
+
+
+def calculate_smo2_drift(
+    df: pd.DataFrame,
+    smo2_col: str = "SmO2",
+    power_col: str = "watts",
+    min_power: float = 100.0
+) -> float:
+    """
+    Calculate SmO2 drift as percentage change from first half to second half.
+    
+    Positive drift = SmO2 increased (recovery)
+    Negative drift = SmO2 decreased (fatigue)
+    
+    Returns:
+        Drift percentage (e.g., -7.5 means 7.5% drop)
+    """
+    if smo2_col not in df.columns or power_col not in df.columns:
+        return 0.0
+    
+    # Filter to ramp portion (power > threshold)
+    mask = df[power_col] > min_power
+    if mask.sum() < 20:
+        return 0.0
+    
+    filtered = df.loc[mask, smo2_col].dropna()
+    if len(filtered) < 20:
+        return 0.0
+    
+    n = len(filtered)
+    mid = n // 2
+    
+    first_half_avg = filtered.iloc[:mid].mean()
+    second_half_avg = filtered.iloc[mid:].mean()
+    
+    if first_half_avg == 0:
+        return 0.0
+    
+    drift_pct = ((second_half_avg - first_half_avg) / first_half_avg) * 100
+    
+    return float(drift_pct)
 
 
 def format_smo2_metrics_for_report(metrics: SmO2AdvancedMetrics) -> Dict[str, Any]:
@@ -403,6 +448,7 @@ def format_smo2_metrics_for_report(metrics: SmO2AdvancedMetrics) -> Dict[str, An
         "slope_per_100w": round(metrics.slope_per_100w, 2),
         "halftime_reoxy_sec": round(metrics.halftime_reoxy_sec, 1) if metrics.halftime_reoxy_sec else None,
         "hr_coupling_r": round(metrics.hr_coupling_r, 3),
+        "drift_pct": round(metrics.drift_pct, 2),
         "limiter_type": metrics.limiter_type,
         "limiter_confidence": round(metrics.limiter_confidence, 2),
         "interpretation": metrics.interpretation,

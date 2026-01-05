@@ -658,7 +658,7 @@ def build_page_smo2(smo2_data, smo2_manual, figure_paths, styles):
     coup_interp_full = "Silna dominacja serca (centralny)" if abs(coupling) > 0.6 else ("Zrownowazona" if abs(coupling) > 0.3 else "Dominacja obwodowa (lokalna)")
     
     bench_data = [
-        ["Metryka", "Twoja wartosc", "Interpretacja kliniczna"],
+        ["Metryka", "Twoja wartość", "Interpretacja kliniczna"],
         ["SmO2 slope", f"{slope:.1f} %/100W", slope_interp_full],
         ["Reoxy half-time", f"{halftime:.0f} s" if halftime else "---", ht_interp_full],
         ["HR-SmO2 r", f"{coupling:.2f}", coup_interp_full],
@@ -828,10 +828,10 @@ def build_page_interpretation(
     """Build Page 4: Results Interpretation.
     
     Contains:
-    - VT1 explanation with values
-    - VT2 explanation with values
-    - Tempo zone explanation
-    - CP practical usage
+    - VT1 explanation with values + CHO/metabolic info + example workouts
+    - VT2 explanation with values + CHO/metabolic info + example workouts
+    - Tempo zone explanation + substrate usage
+    - CP practical usage + pacing examples
     """
     elements = []
     
@@ -851,7 +851,21 @@ def build_page_interpretation(
         "Treningi poniżej VT1 budują bazę tlenową i służą regeneracji.",
         styles["body"]
     ))
-    elements.append(Spacer(1, 4 * mm))
+    elements.append(Spacer(1, 2 * mm))
+    elements.append(Paragraph(
+        "<b>Metabolizm:</b> Poniżej VT1 spalasz głównie tłuszcze (~60-70% energii z lipidów). "
+        "Zużycie węglowodanów (CHO) wynosi ok. <b>30-50g/h</b>. "
+        "To strefa idealna do długich treningów bez uzupełniania CHO.",
+        styles["small"]
+    ))
+    elements.append(Spacer(1, 2 * mm))
+    elements.append(Paragraph(
+        f"<b>Przykładowe jednostki:</b> "
+        f"• Regeneracja: 60-90 min @ {int(vt1_watts*0.65) if isinstance(vt1_watts, (int,float)) else '?'}-{int(vt1_watts*0.75) if isinstance(vt1_watts, (int,float)) else '?'} W | "
+        f"• Baza aerobowa: 2-4h @ {int(vt1_watts*0.8) if isinstance(vt1_watts, (int,float)) else '?'}-{vt1_watts} W",
+        styles["small"]
+    ))
+    elements.append(Spacer(1, 6 * mm))
     
     # === VT2 ===
     elements.append(Paragraph("Próg beztlenowy (VT2)", styles["heading"]))
@@ -862,17 +876,50 @@ def build_page_interpretation(
         "Treningi powyżej VT2 rozwijają VO₂max, ale wymagają pełnej regeneracji.",
         styles["body"]
     ))
-    elements.append(Spacer(1, 4 * mm))
+    elements.append(Spacer(1, 2 * mm))
+    elements.append(Paragraph(
+        "<b>Metabolizm:</b> Powyżej VT2 dominuje glikoliza beztlenowa. "
+        "Zużycie CHO rośnie do <b>90-120g/h</b>. Akumulacja mleczanu prowadzi do szybkiego zmęczenia. "
+        "Wysiłek powyżej VT2 można utrzymać max 20-60 min.",
+        styles["small"]
+    ))
+    elements.append(Spacer(1, 2 * mm))
+    elements.append(Paragraph(
+        f"<b>Przykładowe jednostki:</b> "
+        f"• VO₂max: 5×5 min @ {int(vt2_watts*1.05) if isinstance(vt2_watts, (int,float)) else '?'}-{int(vt2_watts*1.15) if isinstance(vt2_watts, (int,float)) else '?'} W (4 min odpoczynku) | "
+        f"• Tolerancja mleczanu: 3×8 min @ {vt2_watts} W (5 min odpoczynku)",
+        styles["small"]
+    ))
+    elements.append(Spacer(1, 6 * mm))
     
     # === TEMPO ZONE ===
     elements.append(Paragraph("Strefa Tempo", styles["heading"]))
     elements.append(Paragraph(
-        f"Strefa między <b>{vt1_watts}</b> a <b>{vt2_watts} W</b> to Twoja strefa „tempo”. "
+        f"Strefa między <b>{vt1_watts}</b> a <b>{vt2_watts} W</b> to Twoja strefa 'tempo'. "
         "Jest idealna do treningu wytrzymałościowego i poprawy progu. "
         "W tej strefie możesz spędzać znaczną część czasu treningowego bez nadmiernego zmęczenia.",
         styles["body"]
     ))
-    elements.append(Spacer(1, 4 * mm))
+    elements.append(Spacer(1, 2 * mm))
+    elements.append(Paragraph(
+        "<b>Metabolizm:</b> W strefie tempo następuje przejście z lipidów na CHO. "
+        "Spalanie tłuszczów spada do ~30-40%, rośnie zużycie CHO (<b>60-80g/h</b>). "
+        "To strefa kluczowa dla rozwoju FatMax i przesunięcia krzywej spalania.",
+        styles["small"]
+    ))
+    elements.append(Spacer(1, 2 * mm))
+    
+    tempo_mid = ""
+    if isinstance(vt1_watts, (int, float)) and isinstance(vt2_watts, (int, float)):
+        tempo_mid = f"{int((vt1_watts + vt2_watts) / 2)}"
+    
+    elements.append(Paragraph(
+        f"<b>Przykładowe jednostki:</b> "
+        f"• Sweet Spot: 2×20 min @ {tempo_mid if tempo_mid else '?'}-{int(vt2_watts*0.94) if isinstance(vt2_watts, (int,float)) else '?'} W | "
+        f"• Tempo długie: 1×45-60 min @ {vt1_watts}-{tempo_mid if tempo_mid else '?'} W",
+        styles["small"]
+    ))
+    elements.append(Spacer(1, 6 * mm))
     
     # === CP ===
     elements.append(Paragraph("Critical Power", styles["heading"]))
@@ -881,6 +928,20 @@ def build_page_interpretation(
         "Możesz używać tej wartości do planowania interwałów i wyznaczania stref treningowych. "
         "CP jest przydatne do pacing'u podczas zawodów i długich treningów.",
         styles["body"]
+    ))
+    elements.append(Spacer(1, 2 * mm))
+    elements.append(Paragraph(
+        "<b>Praktyka:</b> CP reprezentuje moc możliwą do utrzymania przez ~30-60 min. "
+        "Treningi @ CP rozwijają próg mleczanowy i wydolność tlenową. "
+        "Używaj CP jako górnej granicy dla długich, rytmicznych interwałów.",
+        styles["small"]
+    ))
+    elements.append(Spacer(1, 2 * mm))
+    elements.append(Paragraph(
+        f"<b>Przykładowe jednostki:</b> "
+        f"• Under/Over: 3×12 min (2 min @ {int(cp_watts*0.92) if isinstance(cp_watts, (int,float)) else '?'} W / 1 min @ {int(cp_watts*1.08) if isinstance(cp_watts, (int,float)) else '?'} W) | "
+        f"• Threshold: 2×20 min @ {int(cp_watts*0.95) if isinstance(cp_watts, (int,float)) else '?'}-{cp_watts} W",
+        styles["small"]
     ))
     
     return elements
@@ -1904,7 +1965,7 @@ def build_page_thermal(
     elements.append(Spacer(1, 2 * mm))
     
     key_data = [
-        ["Metryka", "Wartosc", "Interpretacja"],
+        ["Metryka", "Wartość", "Interpretacja"],
         ["Max Core Temp", max_temp_str, "Szczytowa temperatura gleboka"],
         ["Delta Temp / 10 min", delta_str, f"Tolerancja: {tolerance_label}"],
         ["Czas do 38.0 C", f"{time_38_0:.0f} min" if time_38_0 else "---", "Prog ostrzegawczy"],
@@ -2097,7 +2158,7 @@ def build_page_thermal(
     elements.append(Spacer(1, 2 * mm))
     
     key_signals_data = [
-        ["Sygnal", "Wartosc", "Status"],
+        ["Sygnał", "Wartość", "Status"],
         ["EF Start", f"{ef_start:.2f} W/bpm" if ef_start > 0 else "---", "BASELINE"],
         ["EF End", f"{ef_end:.2f} W/bpm" if ef_end > 0 else "---", f"{delta_pct:+.1f}%" if has_drift_data else "---"],
         ["dEF / dC", f"{ef_slope:.3f} W/bpm/C" if ef_slope else "---", drift_type.upper() if has_drift_data else "---"],
@@ -2258,7 +2319,7 @@ def build_page_biomech(
         torque_20 = metrics.get("torque_at_minus_20")
         
         key_data = [
-            ["Metryka", "Wartosc", "Interpretacja"],
+            ["Metryka", "Wartość", "Interpretacja"],
             ["OCCLUSION INDEX", f"{occlusion_idx:.3f}", f"Okluzja: {level_label}"],
             ["Nachylenie SmO2/Torque", f"{slope:.4f} %/Nm", f"R2 = {r2:.2f}"],
             ["SmO2 baseline", f"{smo2_base:.1f} %", f"@ {torque_base:.0f} Nm"],
@@ -2493,8 +2554,8 @@ def build_page_kpi_dashboard(
         vo2max_status = "BRAK"
         vo2max_color = "#808080"
     
-    # === BUILD KPI TABLE - Use ASCII for Polish chars in table ===
-    header = ["Metryka", "Wartosc", "Zakres Ref.", "Status"]
+    # === BUILD KPI TABLE - Polish chars with proper encoding ===
+    header = ["Metryka", "Wartość", "Zakres Ref.", "Status"]
     
     rows = [
         header,

@@ -50,18 +50,29 @@ from ...calculations.executive_summary import generate_executive_summary
 logger = logging.getLogger("Tri_Dashboard.PDFBuilder")
 
 
-def map_ramp_json_to_pdf_data(report_json: Dict[str, Any]) -> Dict[str, Any]:
+def map_ramp_json_to_pdf_data(report_json: Dict[str, Any], manual_overrides: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """Map canonical JSON report to internal PDF data structure.
     
     This is the ONLY function that reads the raw JSON structure.
     Ensures all required fields for layouts are present with safe fallbacks.
     
+    MANUAL OVERRIDE PRIORITY:
+    Manual values from session_state ALWAYS take priority over auto-detected values.
+    Keys checked in manual_overrides (from st.session_state):
+    - manual_vt1_watts, manual_vt2_watts (VT power)
+    - vt1_hr, vt2_hr, vt1_ve, vt2_ve, vt1_br, vt2_br (VT parameters)
+    - smo2_lt1_m, smo2_lt2_m (SmO2 thresholds)
+    - cp_input (CP from Sidebar)
+    
     Args:
         report_json: Raw canonical JSON report
+        manual_overrides: Dict of manual values from st.session_state (optional)
         
     Returns:
         Dict mapped for PDF generation
     """
+    if manual_overrides is None:
+        manual_overrides = {}
     def get_num(section: str, key: str, path: List[str], fallback: str = "brak danych"):
         """Deep get with formatting and logging."""
         curr = report_json.get(section, {})
@@ -137,7 +148,56 @@ def map_ramp_json_to_pdf_data(report_json: Dict[str, Any]) -> Dict[str, Any]:
         "vt2_raw_midpoint": report_json.get("thresholds", {}).get("vt2", {}).get("midpoint_watts"),
     }
     
-    # Range formatting is now handled inside get_num
+    # =========================================================================
+    # MANUAL OVERRIDE APPLICATION (from session_state)
+    # Manual values ALWAYS take priority over auto-detected
+    # =========================================================================
+    
+    # VT1 overrides
+    if manual_overrides.get("manual_vt1_watts") and manual_overrides["manual_vt1_watts"] > 0:
+        mapped_thresholds["vt1_watts"] = str(int(manual_overrides["manual_vt1_watts"]))
+        mapped_thresholds["vt1_raw_midpoint"] = float(manual_overrides["manual_vt1_watts"])
+        logger.info(f"PDF: VT1 power overridden to {mapped_thresholds['vt1_watts']} W (manual)")
+    
+    if manual_overrides.get("vt1_hr") and manual_overrides["vt1_hr"] > 0:
+        mapped_thresholds["vt1_hr"] = str(int(manual_overrides["vt1_hr"]))
+        
+    if manual_overrides.get("vt1_ve") and manual_overrides["vt1_ve"] > 0:
+        mapped_thresholds["vt1_ve"] = f"{manual_overrides['vt1_ve']:.1f}"
+        
+    if manual_overrides.get("vt1_br") and manual_overrides["vt1_br"] > 0:
+        mapped_thresholds["vt1_br"] = str(int(manual_overrides["vt1_br"]))
+    
+    # VT2 overrides
+    if manual_overrides.get("manual_vt2_watts") and manual_overrides["manual_vt2_watts"] > 0:
+        mapped_thresholds["vt2_watts"] = str(int(manual_overrides["manual_vt2_watts"]))
+        mapped_thresholds["vt2_raw_midpoint"] = float(manual_overrides["manual_vt2_watts"])
+        logger.info(f"PDF: VT2 power overridden to {mapped_thresholds['vt2_watts']} W (manual)")
+        
+    if manual_overrides.get("vt2_hr") and manual_overrides["vt2_hr"] > 0:
+        mapped_thresholds["vt2_hr"] = str(int(manual_overrides["vt2_hr"]))
+        
+    if manual_overrides.get("vt2_ve") and manual_overrides["vt2_ve"] > 0:
+        mapped_thresholds["vt2_ve"] = f"{manual_overrides['vt2_ve']:.1f}"
+        
+    if manual_overrides.get("vt2_br") and manual_overrides["vt2_br"] > 0:
+        mapped_thresholds["vt2_br"] = str(int(manual_overrides["vt2_br"]))
+    
+    # RANGE RECALCULATION: When manual midpoint is set, recalculate range as ±5%
+    # This fixes the issue where table shows old auto-detected range with new manual midpoint
+    if manual_overrides.get("manual_vt1_watts") and manual_overrides["manual_vt1_watts"] > 0:
+        vt1_mid = float(manual_overrides["manual_vt1_watts"])
+        vt1_low = int(vt1_mid * 0.95)
+        vt1_high = int(vt1_mid * 1.05)
+        mapped_thresholds["vt1_range_watts"] = f"{vt1_low}–{vt1_high}"
+        logger.info(f"PDF: VT1 range recalculated to {mapped_thresholds['vt1_range_watts']} (based on manual midpoint)")
+    
+    if manual_overrides.get("manual_vt2_watts") and manual_overrides["manual_vt2_watts"] > 0:
+        vt2_mid = float(manual_overrides["manual_vt2_watts"])
+        vt2_low = int(vt2_mid * 0.95)
+        vt2_high = int(vt2_mid * 1.05)
+        mapped_thresholds["vt2_range_watts"] = f"{vt2_low}–{vt2_high}"
+        logger.info(f"PDF: VT2 range recalculated to {mapped_thresholds['vt2_range_watts']} (based on manual midpoint)")
 
     # 3. SmO2 Context
     smo2 = report_json.get("smo2_context", {})
@@ -158,6 +218,11 @@ def map_ramp_json_to_pdf_data(report_json: Dict[str, Any]) -> Dict[str, Any]:
     w_prime = cp.get("w_prime_joules")
     if w_prime is not None and isinstance(w_prime, (int, float)):
         mapped_cp["w_prime_kj"] = f"{w_prime / 1000:.0f}"
+    
+    # CP override from sidebar
+    if manual_overrides.get("cp_input") and manual_overrides["cp_input"] > 0:
+        mapped_cp["cp_watts"] = str(int(manual_overrides["cp_input"]))
+        logger.info(f"PDF: CP overridden to {mapped_cp['cp_watts']} W (sidebar)")
 
     # 5. Interpretation & Confidence
     interp = report_json.get("interpretation", {})
@@ -176,6 +241,15 @@ def map_ramp_json_to_pdf_data(report_json: Dict[str, Any]) -> Dict[str, Any]:
         "lt1_hr": get_num("smo2_manual", "lt1_hr", ["lt1_hr"]),
         "lt2_hr": get_num("smo2_manual", "lt2_hr", ["lt2_hr"])
     }
+    
+    # SmO2 LT1/LT2 override from session_state
+    if manual_overrides.get("smo2_lt1_m") and manual_overrides["smo2_lt1_m"] > 0:
+        mapped_smo2_manual["lt1_watts"] = str(int(manual_overrides["smo2_lt1_m"]))
+        logger.info(f"PDF: SmO2 LT1 overridden to {mapped_smo2_manual['lt1_watts']} W (manual)")
+        
+    if manual_overrides.get("smo2_lt2_m") and manual_overrides["smo2_lt2_m"] > 0:
+        mapped_smo2_manual["lt2_watts"] = str(int(manual_overrides["smo2_lt2_m"]))
+        logger.info(f"PDF: SmO2 LT2 overridden to {mapped_smo2_manual['lt2_watts']} W (manual)")
 
     # 7. KPI mapping - use CANONICAL VO2max and cardio_advanced for EF/Pa:Hr
     m_data = report_json.get("metrics", {})
@@ -234,6 +308,24 @@ def map_ramp_json_to_pdf_data(report_json: Dict[str, Any]) -> Dict[str, Any]:
             else:
                 metabolic_strategy["profile"]["vo2max_vlamax_ratio"] = None
 
+    # === MANUAL OVERRIDE: CCI Breakpoint ===
+    cardio_advanced_data = report_json.get("cardio_advanced", {}).copy()
+    if manual_overrides.get("cci_breakpoint_manual") and manual_overrides["cci_breakpoint_manual"] > 0:
+        cardio_advanced_data["cci_breakpoint_watts"] = float(manual_overrides["cci_breakpoint_manual"])
+        logger.info(f"PDF: CCI breakpoint overridden to {cardio_advanced_data['cci_breakpoint_watts']} W (manual)")
+    
+    # === MANUAL OVERRIDE: VE Breakpoint ===
+    vent_advanced_data = report_json.get("vent_advanced", {}).copy()
+    if manual_overrides.get("ve_breakpoint_manual") and manual_overrides["ve_breakpoint_manual"] > 0:
+        vent_advanced_data["ve_breakpoint_watts"] = float(manual_overrides["ve_breakpoint_manual"])
+        logger.info(f"PDF: VE breakpoint overridden to {vent_advanced_data['ve_breakpoint_watts']} W (manual)")
+    
+    # === MANUAL OVERRIDE: SmO2 Reoxy half-time ===
+    smo2_advanced_data = report_json.get("smo2_advanced", {}).copy()
+    if manual_overrides.get("reoxy_halftime_manual") and manual_overrides["reoxy_halftime_manual"] > 0:
+        smo2_advanced_data["halftime_reoxy_sec"] = float(manual_overrides["reoxy_halftime_manual"])
+        logger.info(f"PDF: Reoxy half-time overridden to {smo2_advanced_data['halftime_reoxy_sec']} s (manual)")
+
     return {
         "metadata": mapped_meta,
         "thresholds": mapped_thresholds,
@@ -242,8 +334,9 @@ def map_ramp_json_to_pdf_data(report_json: Dict[str, Any]) -> Dict[str, Any]:
         "smo2_manual": mapped_smo2_manual,
         "confidence": mapped_confidence,
         "kpi": mapped_kpi,
-        "cardio_advanced": report_json.get("cardio_advanced", {}),
-        "vent_advanced": report_json.get("vent_advanced", {}),
+        "cardio_advanced": cardio_advanced_data,
+        "vent_advanced": vent_advanced_data,
+        "smo2_advanced": smo2_advanced_data,
         "metabolic_strategy": metabolic_strategy,
         "canonical_physiology": report_json.get("canonical_physiology", {}),
         "biomech_occlusion": report_json.get("biomech_occlusion", {}),
@@ -263,7 +356,8 @@ def build_ramp_pdf(
     report_data: Dict[str, Any],
     figure_paths: Optional[Dict[str, str]] = None,
     output_path: Optional[str] = None,
-    config: Optional[PDFConfig] = None
+    config: Optional[PDFConfig] = None,
+    manual_overrides: Optional[Dict[str, Any]] = None
 ) -> bytes:
     """Build complete Ramp Test PDF report (6 pages).
     
@@ -275,6 +369,8 @@ def build_ramp_pdf(
         figure_paths: Dict mapping figure name to file path
         output_path: Optional file path to save PDF
         config: PDF configuration
+        manual_overrides: Dict of manual threshold values from session_state
+            (VT1/VT2, SmO2 LT1/LT2, CP from sidebar) - these override auto-detected
         
     Returns:
         PDF bytes
@@ -285,8 +381,8 @@ def build_ramp_pdf(
     # Setup document with custom page callback for footer
     buffer = BytesIO()
     
-    # Map data with robust fallbacks
-    pdf_data = map_ramp_json_to_pdf_data(report_data)
+    # Map data with robust fallbacks and apply manual overrides
+    pdf_data = map_ramp_json_to_pdf_data(report_data, manual_overrides=manual_overrides)
     
     metadata = pdf_data["metadata"]
     thresholds = pdf_data["thresholds"]
@@ -350,7 +446,7 @@ def build_ramp_pdf(
     # === PAGE 2: EXECUTIVE VERDICT (1-page decision summary) ===
     story.extend(build_page_executive_verdict(
         canonical_physio=pdf_data.get("canonical_physiology", {}),
-        smo2_advanced=pdf_data.get("smo2", {}).get("advanced_metrics", {}),
+        smo2_advanced=pdf_data.get("smo2_advanced", pdf_data.get("smo2", {}).get("advanced_metrics", {})),
         biomech_occlusion=pdf_data.get("biomech_occlusion", {}),
         thermo_analysis=pdf_data.get("thermo_analysis", {}),
         cardio_advanced=pdf_data.get("cardio_advanced", {}),

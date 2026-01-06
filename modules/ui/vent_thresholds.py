@@ -97,23 +97,70 @@ def render_vent_thresholds_tab(target_df, training_notes, uploaded_file_name, cp
                 ramp_classification = st.session_state.get('ramp_classification')
                 ramp_confidence = ramp_classification.confidence if ramp_classification else 0.0
                 
+                # Check if confidence is low and offer manual save option
+                force_save = False
+                if ramp_confidence > 0 and ramp_confidence < 0.5:
+                    st.warning(f"⚠️ Pewność klasyfikacji Ramp Test: **{ramp_confidence:.0%}** (minimum: 50%)")
+                    st.caption("Raport nie zostanie automatycznie zapisany z powodu niskiej pewności.")
+                    force_save = st.checkbox(
+                        "💾 Wymuś zapis raportu mimo niskiej pewności klasyfikacji",
+                        key="force_save_ramp",
+                        help="Zaznacz, aby ręcznie zatwierdzić zapis raportu. Wyniki mogą być mniej wiarygodne."
+                    )
+                    if force_save:
+                        # Override confidence to bypass gating
+                        ramp_confidence = 1.0  # Force pass
+                        st.success("✅ Wymuszone zapisanie raportu zaakceptowane.")
+                
+                # Build manual overrides from session_state
+                manual_overrides = {
+                    # VT1/VT2 from Manual Thresholds tab
+                    "manual_vt1_watts": st.session_state.get("manual_vt1_watts", 0),
+                    "manual_vt2_watts": st.session_state.get("manual_vt2_watts", 0),
+                    "vt1_hr": st.session_state.get("vt1_hr", 0),
+                    "vt2_hr": st.session_state.get("vt2_hr", 0),
+                    "vt1_ve": st.session_state.get("vt1_ve", 0),
+                    "vt2_ve": st.session_state.get("vt2_ve", 0),
+                    "vt1_br": st.session_state.get("vt1_br", 0),
+                    "vt2_br": st.session_state.get("vt2_br", 0),
+                    # SmO2 from Manual SmO2 tab
+                    "smo2_lt1_m": st.session_state.get("smo2_lt1_m", 0),
+                    "smo2_lt2_m": st.session_state.get("smo2_lt2_m", 0),
+                    # CP from Sidebar
+                    "cp_input": float(cp_input) if cp_input else 0,
+                    # CCI Breakpoint from Intervals tab
+                    "cci_breakpoint_manual": st.session_state.get("cci_breakpoint_manual", 0),
+                    # VE Breakpoint from Manual Thresholds tab
+                    "ve_breakpoint_manual": st.session_state.get("ve_breakpoint_manual", 0),
+                    # Reoxy Half-Time from SmO2 Manual tab
+                    "reoxy_halftime_manual": st.session_state.get("reoxy_halftime_manual", 0),
+                }
+                
                 save_result = save_ramp_test_report(
                     pipeline_result,
-                    notes=f"Auto-save from UI. File: {uploaded_file_name}",
+                    notes=f"{'[FORCE SAVE] ' if force_save else ''}Auto-save from UI. File: {uploaded_file_name}",
                     session_type=session_type,
                     ramp_confidence=ramp_confidence,
                     source_file=uploaded_file_name,
-                    source_df=target_df
+                    source_df=target_df,
+                    manual_overrides=manual_overrides
                 )
                 session_id = save_result.get('session_id', 'unknown')
                 saved_path = save_result.get('path', '')
                 
+                # Check if gated (not saved)
+                if save_result.get('gated'):
+                    reason = save_result.get('reason', 'unknown')
+                    print(f"[Gated] Report NOT saved: {reason}")
+                    st.toast(f"ℹ️ Raport nie zapisany: {reason}", icon="🚫")
                 # Check if deduplicated
-                if save_result.get('deduplicated'):
+                elif save_result.get('deduplicated'):
                     print(f"[Dedup] Report already exists for {uploaded_file_name}")
-                else:
+                elif saved_path:
                     st.toast(f"✅ Ramp Test report saved: {session_id[:8]}", icon="💾")
                     print(f"Ramp Test report saved: {session_id} -> {saved_path}")
+                else:
+                    print(f"[Warning] Save returned but no path: {save_result}")
             else:
                 st.toast("⚠️ Raport NIE zapisany (Test Invalid)", icon="⛔")
                 

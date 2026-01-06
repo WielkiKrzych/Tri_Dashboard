@@ -84,6 +84,11 @@ def generate_smo2_power_chart(
     drop_point = smo2_context.get("drop_point", {})
     lt1_watts = drop_point.get("midpoint_watts", 0) if drop_point else 0
     
+    # MANUAL OVERRIDE: Check config for manual SmO2 LT1 (priority over saved)
+    manual_overrides = cfg.get('manual_overrides', {})
+    if manual_overrides.get('smo2_lt1_m') and manual_overrides['smo2_lt1_m'] > 0:
+        lt1_watts = float(manual_overrides['smo2_lt1_m'])
+    
     # Define LT ranges (±5% for visual band width)
     lt1_range = (lt1_watts * 0.95, lt1_watts * 1.05) if lt1_watts else None
     

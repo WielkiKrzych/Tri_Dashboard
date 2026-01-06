@@ -21,7 +21,8 @@ def generate_all_ramp_figures(
     report_data: Dict[str, Any],
     output_dir: str,
     config: Optional[Any] = None,
-    source_df: Optional["pd.DataFrame"] = None
+    source_df: Optional["pd.DataFrame"] = None,
+    manual_overrides: Optional[Dict[str, Any]] = None
 ) -> Dict[str, str]:
     """Generate all ramp test figures and save to directory.
     
@@ -30,11 +31,14 @@ def generate_all_ramp_figures(
         output_dir: Directory to save figures
         config: Optional configuration dictionary or object
         source_df: Optional source DataFrame with raw data
+        manual_overrides: Dict of manual threshold values that override saved values
+            (VT1/VT2 watts, SmO2 LT1/LT2, etc.)
         
     Returns:
         Dict mapping figure name to file path
     """
     config = config or {}
+    manual_overrides = manual_overrides or {}
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
     
@@ -43,10 +47,16 @@ def generate_all_ramp_figures(
     # Handle config as dict if passed, or use attributes
     if isinstance(config, dict):
         ext = config.get('format', 'png')
+        # Merge manual_overrides into config for passing to generators
+        config['manual_overrides'] = manual_overrides
     else:
         ext = getattr(config, 'format', 'png')
+        # If config is object, add manual_overrides as attribute
+        if hasattr(config, '__dict__'):
+            config.__dict__['manual_overrides'] = manual_overrides
     
     paths = {}
+    failed_charts = []
     
     # helper to generate path and run function
     def add_fig(name, fn, args=None, needs_df=True):
@@ -57,9 +67,12 @@ def generate_all_ramp_figures(
             else:
                 fn(report_data, config, str(fpath))
             paths[name] = str(fpath)
+            print(f"[Figures] ✔ Generated: {name}")
         except Exception as e:
             import logging
             logging.getLogger("figures").error(f"Failed to generate {name}: {e}")
+            failed_charts.append(f"{name}: {e}")
+            print(f"[Figures] ✗ FAILED: {name} - {e}")
 
     # 1. Core
     add_fig("ramp_profile", generate_ramp_profile_chart)
@@ -89,6 +102,11 @@ def generate_all_ramp_figures(
     
     # 6. Optional: Vent Full
     add_fig("vent_full", generate_full_vent_chart)
+    
+    # Summary log
+    print(f"[Figures] Summary: {len(paths)} generated, {len(failed_charts)} failed")
+    if failed_charts:
+        print(f"[Figures] Failed charts: {failed_charts}")
     
     return paths
 

@@ -137,11 +137,44 @@ def render_ramp_archive():
                         key=f"pdf_dl_{session_id}"
                     )
                     
-                    # Also offer regeneration
+                    # Simple regeneration (uses saved JSON values)
                     if st.button("🔄 Wygeneruj PDF ponownie", key=f"regen_pdf_{session_id}"):
                         from modules.reporting.persistence import generate_ramp_test_pdf
                         with st.spinner("Generowanie..."):
                             generate_ramp_test_pdf(session_id)
+                            st.rerun()
+                    
+                    # Force regeneration with CURRENT MANUAL VALUES from session_state
+                    if st.button("⚡ Generuj z wartościami manualnymi", key=f"regen_manual_{session_id}", type="secondary"):
+                        from modules.reporting.persistence import generate_ramp_test_pdf
+                        
+                        # Collect manual overrides from session_state
+                        manual_overrides = {
+                            # VT1/VT2 from Manual Thresholds tab
+                            "manual_vt1_watts": st.session_state.get("manual_vt1_watts", 0),
+                            "manual_vt2_watts": st.session_state.get("manual_vt2_watts", 0),
+                            "vt1_hr": st.session_state.get("vt1_hr", 0),
+                            "vt2_hr": st.session_state.get("vt2_hr", 0),
+                            "vt1_ve": st.session_state.get("vt1_ve", 0),
+                            "vt2_ve": st.session_state.get("vt2_ve", 0),
+                            "vt1_br": st.session_state.get("vt1_br", 0),
+                            "vt2_br": st.session_state.get("vt2_br", 0),
+                            # SmO2 from Manual SmO2 tab
+                            "smo2_lt1_m": st.session_state.get("smo2_lt1_m", 0),
+                            "smo2_lt2_m": st.session_state.get("smo2_lt2_m", 0),
+                            # CP from Sidebar
+                            "cp_input": st.session_state.get("cp_input", 0),
+                            # CCI Breakpoint from Intervals tab
+                            "cci_breakpoint_manual": st.session_state.get("cci_breakpoint_manual", 0),
+                            # VE Breakpoint from Manual Thresholds tab
+                            "ve_breakpoint_manual": st.session_state.get("ve_breakpoint_manual", 0),
+                            # Reoxy Half-Time from SmO2 Manual tab
+                            "reoxy_halftime_manual": st.session_state.get("reoxy_halftime_manual", 0),
+                        }
+                        
+                        with st.spinner("Generowanie PDF z wartościami manualnymi..."):
+                            generate_ramp_test_pdf(session_id, manual_overrides=manual_overrides)
+                            st.success("✅ PDF wygenerowany z wartościami manualnymi!")
                             st.rerun()
                 except Exception as e:
                     st.error(f"Błąd PDF: {e}")

@@ -113,6 +113,19 @@ def render_smo2_manual_thresholds_tab(target_df, training_notes, uploaded_file_n
         manual_lt2_hr = st.number_input("LT2 HR (bpm)", min_value=0, max_value=250, value=int(lt2_hr_est) if lt2_hr_est else 0, step=1, key="smo2_lt2_hr_m")
         manual_lt2_smo2 = st.number_input("LT2 SmO2 (%)", min_value=0.0, max_value=100.0, value=float(lt2_smo2_est) if lt2_smo2_est else 0.0, step=0.5, key="smo2_lt2_smo2_m")
 
+    # Reoxy Half-Time - manual input for PDF report
+    st.markdown("---")
+    st.caption("⏱️ Reoxy Half-Time dla raportu PDF (czas półodnowy reoxygenacji):")
+    reoxy_halftime_manual = st.number_input(
+        "Reoxy Half-Time (s)", 
+        min_value=0, 
+        max_value=300, 
+        value=0, 
+        step=5, 
+        key="reoxy_halftime_manual",
+        help="Czas w sekundach do połowy reoxygenacji po wysiłku. Wartość 0 = użyj automatycznie wykrytego."
+    )
+
     st.markdown("---")
     st.subheader("🎯 Wybrane Progi SmO2 (Manualne)")
     

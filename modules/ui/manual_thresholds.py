@@ -73,9 +73,9 @@ def render_manual_thresholds_tab(target_df, training_notes, uploaded_file_name, 
 
     col_inp1, col_inp2 = st.columns(2)
     with col_inp1:
-        manual_vt1 = st.number_input("Manualny VT1 (Moc W)", min_value=0, max_value=1000, value=int(result.vt1_watts) if result.vt1_watts else 0, step=5)
+        manual_vt1 = st.number_input("Manualny VT1 (Moc W)", min_value=0, max_value=1000, value=int(result.vt1_watts) if result.vt1_watts else 0, step=5, key="manual_vt1_watts")
     with col_inp2:
-        manual_vt2 = st.number_input("Manualny VT2 (Moc W)", min_value=0, max_value=1000, value=int(result.vt2_watts) if result.vt2_watts else 0, step=5)
+        manual_vt2 = st.number_input("Manualny VT2 (Moc W)", min_value=0, max_value=1000, value=int(result.vt2_watts) if result.vt2_watts else 0, step=5, key="manual_vt2_watts")
 
     hysteresis = result.hysteresis
     sensitivity = result.sensitivity
@@ -122,6 +122,19 @@ def render_manual_thresholds_tab(target_df, training_notes, uploaded_file_name, 
         manual_vt2_hr = st.number_input("VT2 HR (bpm)", min_value=0, max_value=250, value=int(vt2_hr_est) if vt2_hr_est else 0, step=1, key="vt2_hr")
         manual_vt2_ve = st.number_input("VT2 VE (L/min)", min_value=0.0, max_value=300.0, value=float(result.vt2_ve) if result.vt2_ve else 0.0, step=1.0, key="vt2_ve")
         manual_vt2_br = st.number_input("VT2 Oddechy (BR/min)", min_value=0, max_value=120, value=int(result.vt2_br) if result.vt2_br else 0, step=1, key="vt2_br")
+
+    # VE Breakpoint - manual input for PDF report
+    st.markdown("---")
+    st.caption("📈 VE Breakpoint dla raportu PDF (punkt załamania wentylacji):")
+    ve_breakpoint_manual = st.number_input(
+        "VE Breakpoint (W)", 
+        min_value=0, 
+        max_value=600, 
+        value=0, 
+        step=5, 
+        key="ve_breakpoint_manual",
+        help="Moc przy której wentylacja zaczyna rosnąć nieliniowo. Wartość 0 = użyj automatycznie wykrytego."
+    )
 
     st.markdown("---")
     st.subheader("🎯 Wybrane Progi (Manualne)")

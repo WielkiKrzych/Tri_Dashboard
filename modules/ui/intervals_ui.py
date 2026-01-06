@@ -83,6 +83,18 @@ def render_intervals_tab(df_plot, df_plot_resampled, cp_input, rider_weight, rid
             
             c_pp2.metric("Zmiana Efektywności (Trend)", f"{total_drop:.1f}%", delta_color=drift_color)
             c_pp3.metric("Interpretacja", "Stabilna Wydolność" if total_drop > -5 else "Dryf / Zmęczenie")
+            
+            # Manual CCI Breakpoint input for PDF report
+            st.caption("📊 Manualny próg CCI dla raportu PDF:")
+            cci_breakpoint_manual = st.number_input(
+                "CCI Breakpoint (W)", 
+                min_value=0, 
+                max_value=600, 
+                value=0, 
+                step=5, 
+                key="cci_breakpoint_manual",
+                help="Moc przy której załamuje się Pulse Power. Wartość 0 = użyj automatycznie wykrytego."
+            )
 
             fig_pp = go.Figure()
             

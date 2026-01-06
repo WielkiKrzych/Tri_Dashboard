@@ -118,7 +118,8 @@ def save_ramp_test_report(
     session_type = None,
     ramp_confidence: float = 0.0,
     source_file: Optional[str] = None,
-    source_df = None
+    source_df = None,
+    manual_overrides: Optional[Dict] = None
 ) -> Dict:
     """
     Save Ramp Test result to JSON file.
@@ -143,6 +144,8 @@ def save_ramp_test_report(
         ramp_confidence: Classification confidence (must be >= threshold)
         source_file: Original CSV filename for deduplication
         source_df: Optional source DataFrame for chart generation
+        manual_overrides: Dict with manual threshold values (VT1/VT2/SmO2/CP) from session_state
+            These override auto-detected values in PDF generation
         
     Returns:
         Dict with path, session_id, or None if gated
@@ -597,7 +600,7 @@ def save_ramp_test_report(
     # 7. Auto-generate PDF if valid
     if should_generate_pdf:
         try:
-            pdf_path = _auto_generate_pdf(str(file_path.absolute()), final_json, is_conditional, source_df=source_df)
+            pdf_path = _auto_generate_pdf(str(file_path.absolute()), final_json, is_conditional, source_df=source_df, manual_overrides=manual_overrides)
         except Exception as e:
             # PDF failure does NOT affect JSON or index
             print(f"Warning: PDF generation failed for {session_id}: {e}")
@@ -617,7 +620,7 @@ def save_ramp_test_report(
     }
 
 
-def _auto_generate_pdf(json_path: str, report_data: Dict, is_conditional: bool = False, source_df = None) -> Optional[str]:
+def _auto_generate_pdf(json_path: str, report_data: Dict, is_conditional: bool = False, source_df = None, manual_overrides = None) -> Optional[str]:
     """
     Auto-generate PDF from JSON report.
     
@@ -629,6 +632,7 @@ def _auto_generate_pdf(json_path: str, report_data: Dict, is_conditional: bool =
         report_data: The report data dictionary
         is_conditional: If True, PDF will include conditional warning
         source_df: Optional DataFrame with raw data for chart generation
+        manual_overrides: Dict of manual threshold values (VT1/VT2/SmO2/CP) from session_state
         
     Returns:
         PDF path if successful, None otherwise
@@ -652,8 +656,8 @@ def _auto_generate_pdf(json_path: str, report_data: Dict, is_conditional: bool =
     # Configure PDF with conditional flag
     pdf_config = PDFConfig(is_conditional=is_conditional)
     
-    # Generate PDF
-    generate_ramp_pdf(report_data, figure_paths, str(pdf_path), pdf_config)
+    # Generate PDF with manual overrides
+    generate_ramp_pdf(report_data, figure_paths, str(pdf_path), pdf_config, manual_overrides=manual_overrides)
     
     # Generate DOCX (optional)
     try:
@@ -761,7 +765,8 @@ def update_index_pdf_path(base_dir: str, session_id: str, pdf_path: str):
 def generate_and_save_pdf(
     json_path: Union[str, Path],
     output_base_dir: str = "reports/ramp_tests",
-    is_conditional: bool = False
+    is_conditional: bool = False,
+    manual_overrides: Optional[Dict] = None
 ) -> Optional[str]:
     """
     Generate PDF from existing JSON report and save alongside it.
@@ -775,6 +780,7 @@ def generate_and_save_pdf(
         json_path: Path to the canonical JSON report
         output_base_dir: Base directory for index update
         is_conditional: Whether to include conditional warning
+        manual_overrides: Dict of manual threshold values from session_state to override saved values
         
     Returns:
         Path to generated PDF or None on failure
@@ -798,7 +804,7 @@ def generate_and_save_pdf(
     # initial save when DataFrame is available.
     temp_dir = tempfile.mkdtemp()
     fig_config = {"method_version": report_data.get("metadata", {}).get("method_version", "1.0.0")}
-    figure_paths = generate_all_ramp_figures(report_data, temp_dir, fig_config, source_df=None)
+    figure_paths = generate_all_ramp_figures(report_data, temp_dir, fig_config, source_df=None, manual_overrides=manual_overrides)
     
     # Generate PDF path (same name as JSON but .pdf)
     pdf_path = json_path.with_suffix(".pdf")
@@ -806,8 +812,8 @@ def generate_and_save_pdf(
     # Configure PDF
     pdf_config = PDFConfig(is_conditional=is_conditional)
     
-    # Generate PDF (can overwrite existing)
-    generate_ramp_pdf(report_data, figure_paths, str(pdf_path), pdf_config)
+    # Generate PDF (can overwrite existing) - with manual overrides if provided
+    generate_ramp_pdf(report_data, figure_paths, str(pdf_path), pdf_config, manual_overrides=manual_overrides)
     
     # Generate DOCX (optional)
     try:
@@ -828,16 +834,27 @@ def generate_and_save_pdf(
     return str(pdf_path.absolute())
 
 
-def generate_ramp_test_pdf(session_id: str, output_base_dir: str = "reports/ramp_tests") -> Optional[str]:
+def generate_ramp_test_pdf(
+    session_id: str, 
+    output_base_dir: str = "reports/ramp_tests",
+    manual_overrides: Optional[Dict] = None
+) -> Optional[str]:
     """
     Ręczne generowanie raportu PDF na podstawie session_id.
     
     1. Znajduje json_path w index.csv
     2. Wczytuje JSON
-    3. Generuje PDF i aktualizuje index
+    3. Generuje PDF (z opcjonalnymi wartościami manualnymi) i aktualizuje index
+    
+    Args:
+        session_id: ID sesji raportu
+        output_base_dir: Katalog bazowy raportów
+        manual_overrides: Dict z manualnymi wartościami progów (VT1/VT2/SmO2/CP) - nadpisują zapisane
     """
     import csv
     print(f"Generating PDF for session_id: {session_id}")
+    if manual_overrides:
+        print(f"  With manual overrides: {list(manual_overrides.keys())}")
     
     index_path = Path(output_base_dir) / "index.csv"
     if not index_path.exists():
@@ -856,8 +873,8 @@ def generate_ramp_test_pdf(session_id: str, output_base_dir: str = "reports/ramp
         print(f"Error: JSON path not found in index for session {session_id}")
         return None
         
-    # Re-use existing logic for generation
-    pdf_path_str = generate_and_save_pdf(json_path, output_base_dir)
+    # Re-use existing logic for generation - NOW with manual_overrides
+    pdf_path_str = generate_and_save_pdf(json_path, output_base_dir, manual_overrides=manual_overrides)
     
     if pdf_path_str:
         print(f"PDF saved to: {pdf_path_str}")

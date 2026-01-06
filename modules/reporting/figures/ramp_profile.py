@@ -104,6 +104,13 @@ def generate_ramp_profile_chart(
     vt1_watts = vt1_data.get("midpoint_watts", 0) if isinstance(vt1_data, dict) else 0
     vt2_watts = vt2_data.get("midpoint_watts", 0) if isinstance(vt2_data, dict) else 0
     
+    # MANUAL OVERRIDE: Check config for manual values (priority over saved)
+    manual_overrides = cfg.get('manual_overrides', {})
+    if manual_overrides.get('manual_vt1_watts') and manual_overrides['manual_vt1_watts'] > 0:
+        vt1_watts = float(manual_overrides['manual_vt1_watts'])
+    if manual_overrides.get('manual_vt2_watts') and manual_overrides['manual_vt2_watts'] > 0:
+        vt2_watts = float(manual_overrides['manual_vt2_watts'])
+    
     # Define VT ranges (±5% for visual band width)
     vt1_range = (vt1_watts * 0.95, vt1_watts * 1.05) if vt1_watts else None
     vt2_range = (vt2_watts * 0.95, vt2_watts * 1.05) if vt2_watts else None

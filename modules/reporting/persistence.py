@@ -195,7 +195,13 @@ def save_ramp_test_report(
             've': 've_lmin',
             'torque': 'torque_nm',
             'cadence': 'cadence_rpm',
-            'cad': 'cadence_rpm'
+            'cad': 'cadence_rpm',
+            # Thermal data for regeneration support
+            'core_temperature': 'core_temp',
+            'core_temperature_smooth': 'core_temp',
+            'hsi': 'hsi',
+            'heat_strain_index': 'hsi',
+            'heatstrainindex': 'hsi'
         }
         
         ts_data = {}

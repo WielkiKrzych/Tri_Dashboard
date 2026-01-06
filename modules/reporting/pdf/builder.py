@@ -325,6 +325,9 @@ def map_ramp_json_to_pdf_data(report_json: Dict[str, Any], manual_overrides: Opt
     if manual_overrides.get("reoxy_halftime_manual") and manual_overrides["reoxy_halftime_manual"] > 0:
         smo2_advanced_data["halftime_reoxy_sec"] = float(manual_overrides["reoxy_halftime_manual"])
         logger.info(f"PDF: Reoxy half-time overridden to {smo2_advanced_data['halftime_reoxy_sec']} s (manual)")
+    
+    # Update mapped_smo2 with overridden advanced_metrics
+    mapped_smo2["advanced_metrics"] = smo2_advanced_data
 
     return {
         "metadata": mapped_meta,

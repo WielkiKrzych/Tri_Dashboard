@@ -45,8 +45,18 @@ def generate_radar_chart(
     font_size = cfg.get('font_size', 10)
     title_size = cfg.get('title_size', 14)
     
+    # Try to build DataFrame from time_series if source_df not available
     if source_df is None or source_df.empty:
-        return create_empty_figure("Brak danych źródłowych", "Profil Metaboliczny", output_path, **cfg)
+        time_series = report_data.get("time_series", {})
+        if time_series and time_series.get("power_watts"):
+            source_df = pd.DataFrame({
+                'watts': time_series.get("power_watts", []),
+                'heartrate': time_series.get("hr_bpm", []),
+                'smo2': time_series.get("smo2_pct", []),
+                'tymeventilation': time_series.get("ve_lmin", time_series.get("ve_lpm", [])),
+            })
+        else:
+            return create_empty_figure("Brak danych źródłowych", "Profil Metaboliczny", output_path, **cfg)
 
     # Resolve columns
     df = source_df.copy()
@@ -159,15 +169,29 @@ def generate_vlamax_balance_chart(
     mmp_5min = report_data.get("metrics", {}).get("mmp_5min", 0)
     mmp_20min = report_data.get("metrics", {}).get("mmp_20min", 0)
     
-    # Fallback: if not in metrics, try to calculate from source_df
+    # Fallback 1: if not in metrics, try to calculate from source_df
     if (not mmp_5min or not mmp_20min) and source_df is not None and not source_df.empty:
         df = source_df.copy()
         pwr_col = _find_column(df, ['watts', 'power'])
         if pwr_col:
-            mmp_5min = df[pwr_col].rolling(300).mean().max()
-            mmp_20min = df[pwr_col].rolling(1200).mean().max()
+            mmp_5min = df[pwr_col].rolling(300, min_periods=60).mean().max()
+            mmp_20min = df[pwr_col].rolling(1200, min_periods=300).mean().max()
+    
+    # Fallback 2: if source_df unavailable, try time_series from report_data
+    if (not mmp_5min or not mmp_20min):
+        time_series = report_data.get("time_series", {})
+        power_watts = time_series.get("power_watts", [])
+        if power_watts and len(power_watts) > 300:
+            import pandas as pd
+            power_series = pd.Series(power_watts)
+            mmp_5min = power_series.rolling(300, min_periods=60).mean().max()
+            if len(power_watts) > 1200:
+                mmp_20min = power_series.rolling(1200, min_periods=300).mean().max()
+            elif len(power_watts) > 600:
+                # Use 10min MMP as proxy for shorter tests
+                mmp_20min = power_series.rolling(600, min_periods=300).mean().max()
             
-    if not mmp_20min or mmp_20min == 0:
+    if not mmp_20min or mmp_20min == 0 or pd.isna(mmp_20min):
         return create_empty_figure("Brak danych (MMP 20 min)", "Profil Metaboliczny", output_path, **cfg)
 
     ratio = mmp_5min / mmp_20min

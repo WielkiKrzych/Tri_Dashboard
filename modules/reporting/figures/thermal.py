@@ -45,13 +45,22 @@ def generate_thermal_chart(
     font_size = cfg.get('font_size', 10)
     title_size = cfg.get('title_size', 14)
     
+    # Try to build DataFrame from time_series if source_df not available
     if source_df is None or source_df.empty:
-        return create_empty_figure("Brak danych źródłowych", "Termoregulacja", output_path, **cfg)
+        time_series = report_data.get("time_series", {})
+        if time_series and (time_series.get("core_temp") or time_series.get("hsi")):
+            source_df = pd.DataFrame({
+                'time': time_series.get("time_sec", []),
+                'core_temperature': time_series.get("core_temp", []),
+                'hsi': time_series.get("hsi", []),
+            })
+        else:
+            return create_empty_figure("Brak danych źródłowych", "Termoregulacja", output_path, **cfg)
 
     # Resolve columns
     df = source_df.copy()
     temp_col = _find_column(df, ['core_temperature_smooth', 'core_temperature', 'core_temp', 'temp', 'temperature'])
-    hsi_col = _find_column(df, ['hsi', 'heat_strain_index'])
+    hsi_col = _find_column(df, ['hsi', 'heat_strain_index', 'HeatStrainIndex', 'heatstrainindex'])
     time_col = _find_column(df, ['time_min', 'time'])
     
     if not temp_col or not hsi_col:
@@ -116,8 +125,17 @@ def generate_efficiency_chart(
     font_size = cfg.get('font_size', 10)
     title_size = cfg.get('title_size', 14)
     
+    # Try to build DataFrame from time_series if source_df not available
     if source_df is None or source_df.empty:
-        return create_empty_figure("Brak danych źródłowych", "Spadek Efektywności", output_path, **cfg)
+        time_series = report_data.get("time_series", {})
+        if time_series and time_series.get("power_watts") and time_series.get("core_temp"):
+            source_df = pd.DataFrame({
+                'watts': time_series.get("power_watts", []),
+                'heartrate': time_series.get("hr_bpm", []),
+                'core_temperature': time_series.get("core_temp", []),
+            })
+        else:
+            return create_empty_figure("Brak danych źródłowych", "Spadek Efektywności", output_path, **cfg)
         
     df = source_df.copy()
     temp_col = _find_column(df, ['core_temperature_smooth', 'core_temperature', 'core_temp'])

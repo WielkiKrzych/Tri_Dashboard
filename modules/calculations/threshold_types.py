@@ -108,6 +108,7 @@ class StepTestResult:
     smo2_1_value: Optional[float] = None
     smo2_2_value: Optional[float] = None
     step_smo2_analysis: List[dict] = field(default_factory=list)
+    step_range: Optional['StepTestRange'] = None
 
 @dataclass
 class DetectedStep:

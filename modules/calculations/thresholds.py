@@ -3,7 +3,7 @@ Threshold Detection Facade.
 Orchestrates step detection, ventilatory, and metabolic threshold analysis.
 """
 import pandas as pd
-from typing import Optional, List, List
+from typing import Optional, List, Any
 
 from .threshold_types import (
     TransitionZone, ThresholdResult, HysteresisResult, 
@@ -48,6 +48,7 @@ def analyze_step_test(
     
     if has_power:
         step_range = detect_step_test_range(df, power_column=power_column, time_column=time_column)
+        result.step_range = step_range
         if step_range and step_range.is_valid:
             mask = (df[time_column] >= step_range.start_time) & (df[time_column] <= step_range.end_time)
             df_test = df[mask].copy()

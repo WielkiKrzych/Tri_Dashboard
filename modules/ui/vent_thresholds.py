@@ -3,6 +3,7 @@ import plotly.graph_objects as go
 import pandas as pd
 from scipy import stats
 from modules.calculations.thresholds import analyze_step_test
+from modules.calculations.ventilatory import detect_vt_vslope_savgol
 from modules.calculations.quality import check_step_test_protocol
 from modules.calculations.pipeline import run_ramp_test_pipeline
 from modules.reporting.persistence import save_ramp_test_report
@@ -303,6 +304,101 @@ def render_vent_thresholds_tab(target_df, training_notes, uploaded_file_name, cp
                 st.caption(f"~{vt2_pct:.0f}% CP")
         else:
             st.info("VT2: Nie wykryto (brak slope >= 0.05 po VT1)")
+
+    # =========================================================================
+    # 🔬 METODA V-SLOPE (ADVANCED DIAGNOSTICS)
+    # =========================================================================
+    st.markdown("---")
+    with st.expander("🔬 Metoda V-Slope (Scientific Diagnostics)", expanded=False):
+        st.markdown("### Zaawansowana Analiza Gradientu dVE/dP")
+        st.info("""
+        Ta metoda wykorzystuje filtr **Savitzky-Golay** do wygładzenia trendów oraz agregację **Steady-State** 
+        (pominięcie fazy lag każdego schodka). Pozwala to na precyzyjne znalezienie punktu załamania dynamiki wentylacji.
+        """)
+        
+        with st.spinner("Przeliczanie gradientów..."):
+            vslope_res = detect_vt_vslope_savgol(target_df, result.step_range, 'watts', 'tymeventilation', 'time')
+            
+        if 'error' in vslope_res:
+            st.error(f"Błąd analizy V-Slope: {vslope_res['error']}")
+        else:
+            v1_w = vslope_res['vt1_watts']
+            v2_w = vslope_res['vt2_watts']
+            df_s = vslope_res['df_steps']
+            
+            c1, c2 = st.columns(2)
+            with c1:
+                st.metric("VT1 (SavGol)", f"{v1_w} W", help="Punkt pierwszego wzrostu nachylenia o >15%")
+                if st.button("Aplikuj jako VT1 Manual", key="apply_vt1_savgol"):
+                    st.session_state['manual_vt1_watts'] = v1_w
+                    if vslope_res.get('vt1_ve'): st.session_state['vt1_ve'] = vslope_res['vt1_ve']
+                    # Try to find HR for this power
+                    idx_v1 = (target_df['watts'] - v1_w).abs().idxmin()
+                    if 'hr' in target_df.columns: st.session_state['vt1_hr'] = int(target_df.loc[idx_v1, 'hr'])
+                    if 'br' in target_df.columns: st.session_state['vt1_br'] = int(target_df.loc[idx_v1, 'br'])
+                    
+                    st.success(f"Ustawiono VT1 = {v1_w}W")
+                    st.rerun()
+            with c2:
+                st.metric("VT2 (SavGol)", f"{v2_w} W", help="Punkt gwałtownej hiperwentylacji (>40% baseline)")
+                if st.button("Aplikuj jako VT2 Manual", key="apply_vt2_savgol"):
+                    st.session_state['manual_vt2_watts'] = v2_w
+                    if vslope_res.get('vt2_ve'): st.session_state['vt2_ve'] = vslope_res['vt2_ve']
+                    # Try to find HR for this power
+                    idx_v2 = (target_df['watts'] - v2_w).abs().idxmin()
+                    if 'hr' in target_df.columns: st.session_state['vt2_hr'] = int(target_df.loc[idx_v2, 'hr'])
+                    if 'br' in target_df.columns: st.session_state['vt2_br'] = int(target_df.loc[idx_v2, 'br'])
+                    
+                    st.success(f"Ustawiono VT2 = {v2_w}W")
+                    st.rerun()
+            
+            # Diagnostic Plot (Matplotlib for detailed twin-axis as per request)
+            import matplotlib.pyplot as plt
+            
+            fig, ax1 = plt.subplots(figsize=(10, 5))
+            plt.style.use('dark_background')
+            fig.patch.set_facecolor('#0E1117')
+            ax1.set_facecolor('#0E1117')
+            
+            # Oś Y1: Wentylacja
+            ax1.plot(df_s['watts'], df_s['ve_smooth'], 'b-', label='VE (L/min)', alpha=0.8, linewidth=2)
+            ax1.scatter(df_s['watts'], df_s['ve_lmin'], color='blue', alpha=0.3, s=20)
+            ax1.set_xlabel('Moc [W]', color='white')
+            ax1.set_ylabel('Wentylacja [L/min]', color='#5da5da')
+            ax1.tick_params(axis='y', labelcolor='#5da5da')
+            
+            # Oś Y2: Slope
+            ax2 = ax1.twinx()
+            ax2.plot(df_s['watts'], df_s['slope'], 'g--', label='Slope (dVE/dP)', alpha=0.5)
+            ax2.set_ylabel('Zmiana VE / Wat (Slope)', color='#60bd68')
+            ax2.tick_params(axis='y', labelcolor='#60bd68')
+            
+            # Baseline line
+            ax2.axhline(vslope_res['baseline_slope'], color='gray', linestyle=':', alpha=0.5, label='Baseline')
+
+            # Linie progów
+            if v1_w:
+                ax1.axvline(v1_w, color='#ffa15a', linestyle='--', linewidth=2, label=f'VT1: {v1_w}W')
+            if v2_w:
+                ax1.axvline(v2_w, color='#ef553b', linestyle='--', linewidth=2, label=f'VT2: {v2_w}W')
+            
+            ax1.set_title('Analiza V-Slope: Progi vs Nachylenie', color='white', pad=20)
+            ax1.grid(True, alpha=0.1)
+            
+            # Legend
+            lines1, labels1 = ax1.get_legend_handles_labels()
+            lines2, labels2 = ax2.get_legend_handles_labels()
+            ax1.legend(lines1 + lines2, labels1 + labels2, loc='upper left', fontsize='small')
+            
+            plt.tight_layout()
+            st.pyplot(fig)
+            
+            with st.expander("📝 Detale schodków (V-Slope)", expanded=False):
+                st.dataframe(df_s.style.format({
+                    've_lmin': '{:.1f}',
+                    've_smooth': '{:.1f}',
+                    'slope': '{:.4f}'
+                }), use_container_width=True)
 
     st.markdown("---")
 

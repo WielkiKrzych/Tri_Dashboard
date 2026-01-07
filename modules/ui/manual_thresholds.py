@@ -3,6 +3,7 @@ import plotly.graph_objects as go
 import pandas as pd
 from scipy import stats
 from modules.calculations.thresholds import analyze_step_test
+from modules.calculations.ventilatory import detect_vt_vslope_savgol
 from modules.calculations.quality import check_step_test_protocol
 
 def render_manual_thresholds_tab(target_df, training_notes, uploaded_file_name, cp_input, max_hr_input):
@@ -138,6 +139,58 @@ def render_manual_thresholds_tab(target_df, training_notes, uploaded_file_name, 
 
     st.markdown("---")
     st.subheader("🎯 Wybrane Progi (Manualne)")
+    
+    # --- V-SLOPE DIAGNOSTICS FOR MANUAL OVERRIDE ASSISTANCE ---
+    with st.expander("🔬 Metoda V-Slope (Scientific Diagnostics)", expanded=False):
+        st.markdown("### Zaawansowana Analiza Gradientu dVE/dP")
+        st.info("""
+        Ta metoda wykorzystuje filtr **Savitzky-Golay** do wygładzenia trendów. 
+        Pomaga precyzyjnie wskazać moment, w którym wentylacja "ucieka" liniowemu wzrostowi.
+        """)
+        
+        with st.spinner("Przeliczanie gradientów..."):
+            import numpy as np
+            vslope_res = detect_vt_vslope_savgol(target_df, result.step_range, 'watts', 'tymeventilation', 'time')
+            
+        if 'error' in vslope_res:
+            st.error(f"Błąd analizy V-Slope: {vslope_res['error']}")
+        else:
+            v1_w = vslope_res['vt1_watts']
+            v2_w = vslope_res['vt2_watts']
+            df_s = vslope_res['df_steps']
+            
+            # Diagnostic Plot
+            import matplotlib.pyplot as plt
+            fig, ax1 = plt.subplots(figsize=(10, 4))
+            plt.style.use('dark_background')
+            fig.patch.set_facecolor('#0E1117')
+            ax1.set_facecolor('#0E1117')
+            
+            ax1.plot(df_s['watts'], df_s['ve_smooth'], 'b-', label='VE (L/min)', alpha=0.8)
+            ax1.set_xlabel('Moc [W]')
+            ax1.set_ylabel('VE [L/min]', color='#5da5da')
+            
+            ax2 = ax1.twinx()
+            ax2.plot(df_s['watts'], df_s['slope'], 'g--', label='Slope', alpha=0.5)
+            ax2.set_ylabel('Slope (dVE/dP)', color='#60bd68')
+            
+            if v1_w: ax1.axvline(v1_w, color='#ffa15a', linestyle='--', alpha=0.7, label=f'VT1 Sug: {v1_w}W')
+            if v2_w: ax1.axvline(v2_w, color='#ef553b', linestyle='--', alpha=0.7, label=f'VT2 Sug: {v2_w}W')
+            
+            ax1.legend(loc='upper left', fontsize='x-small')
+            plt.tight_layout()
+            st.pyplot(fig)
+            
+            st.markdown(f"💡 Sugestia V-Slope: **VT1: {v1_w}W**, **VT2: {v2_w}W**")
+            ma_c1, ma_c2 = st.columns(2)
+            with ma_c1:
+                if st.button("Aplikuj V1", key="m_apply_v1"):
+                    st.session_state['manual_vt1_watts'] = v1_w
+                    st.rerun()
+            with ma_c2:
+                if st.button("Aplikuj V2", key="m_apply_v2"):
+                    st.session_state['manual_vt2_watts'] = v2_w
+                    st.rerun()
     
     col_z1, col_z2 = st.columns(2)
     

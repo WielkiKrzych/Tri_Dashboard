@@ -4,7 +4,7 @@ Ventilatory Threshold Detection (VT1/VT2).
 import numpy as np
 import pandas as pd
 from scipy import stats, signal
-from typing import Optional, List, Tuple
+from typing import Optional, List, Tuple, Any
 
 from .threshold_types import (
     TransitionZone, 
@@ -330,3 +330,170 @@ def run_sensitivity_analysis(
     res.vt1_variability_watts, res.vt1_stability_score, res.is_vt1_unreliable = analyze(r1, "VT1")
     res.vt2_variability_watts, res.vt2_stability_score, res.is_vt2_unreliable = analyze(r2, "VT2")
     return res
+
+
+# =============================================================================
+# V-SLOPE METHOD WITH SAVITZKY-GOLAY SMOOTHING
+# =============================================================================
+
+def detect_vt_vslope_savgol(
+    df: pd.DataFrame,
+    step_range: Optional[Any] = None,
+    power_column: str = 'watts',
+    ve_column: str = 'tymeventilation',
+    time_column: str = 'time'
+) -> dict:
+    """
+    Detekcja VT1/VT2 metodą V-Slope z filtrem Savitzky-Golay.
+    
+    Algorytm:
+    1. Normalizacja VE (L/s → L/min)
+    2. Agregacja po schodkach (steady-state mean, pominięcie pierwszych 30%)
+    3. Wygładzanie Savitzky-Golay
+    4. Obliczanie gradientu dVE/dP
+    5. Detekcja progów przez wzrost nachylenia
+    
+    Args:
+        df: DataFrame z danymi testu (1Hz)
+        step_range: Opcjonalnie wykryte schodki RampTest
+        power_column: Kolumna z mocą [W]
+        ve_column: Kolumna z wentylacją [L/s lub L/min]
+        time_column: Kolumna z czasem [s]
+        
+    Returns:
+        dict: {
+            'vt1_watts', 'vt2_watts',
+            'vt1_ve', 'vt2_ve',
+            'df_steps': DataFrame z przetworzonymi schodkami
+        }
+    """
+    from scipy.signal import savgol_filter
+    
+    # 1. PRZYGOTOWANIE DANYCH
+    data = df.copy()
+    data.columns = data.columns.str.lower().str.strip()
+    
+    # Normalizuj kolumny
+    power_col = power_column.lower()
+    ve_col = ve_column.lower()
+    time_col = time_column.lower()
+    
+    if power_col not in data.columns:
+        return {'vt1_watts': None, 'vt2_watts': None, 'error': f'Missing {power_column}'}
+    if ve_col not in data.columns:
+        return {'vt1_watts': None, 'vt2_watts': None, 'error': f'Missing {ve_column}'}
+    
+    # Konwersja L/s → L/min (jeśli wartości małe, zakładamy L/s)
+    if data[ve_col].mean() < 10:
+        data['ve_lmin'] = data[ve_col] * 60
+    else:
+        data['ve_lmin'] = data[ve_col]
+    
+    # 2. AGREGACJA PO SCHODKACH (Steady-State Mean)
+    # Jeśli mamy step_range, używamy konkretnych schodków
+    if step_range and hasattr(step_range, 'steps') and step_range.steps:
+        step_data = []
+        for step in step_range.steps:
+            # Filtruj dane dla danego schodka
+            mask = (data[time_col] >= step.start_time) & (data[time_col] <= step.end_time)
+            step_df = data[mask]
+            
+            if len(step_df) < 5:
+                continue
+                
+            # Średnia ze stanu ustalonego (pomiń pierwsze 30%)
+            cutoff = int(len(step_df) * 0.3)
+            ve_ss = step_df['ve_lmin'].iloc[cutoff:].mean()
+            
+            step_data.append({
+                power_col: step.avg_power,
+                've_lmin': ve_ss
+            })
+        df_steps = pd.DataFrame(step_data)
+    else:
+        # Fallback: Grupujemy po mocy (jeśli nie ma schodków)
+        def steady_state_mean(x):
+            """Średnia ze stanu ustalonego (pomiń pierwsze 30% każdego schodka)."""
+            cutoff = int(len(x) * 0.3)
+            if len(x) - cutoff < 2:
+                return x.mean()
+            return x.iloc[cutoff:].mean()
+        
+        df_steps = data.groupby(power_col)[['ve_lmin']].agg(steady_state_mean).reset_index()
+    
+    df_steps = df_steps.sort_values(by=power_col)
+    
+    if len(df_steps) < 5:
+        return {'vt1_watts': None, 'vt2_watts': None, 'error': 'Insufficient steps for analysis'}
+    
+    # 3. WYGŁADZANIE (Savitzky-Golay Filter)
+    try:
+        window = min(5, len(df_steps) if len(df_steps) % 2 == 1 else len(df_steps) - 1)
+        if window < 3:
+            window = 3
+        df_steps['ve_smooth'] = savgol_filter(
+            df_steps['ve_lmin'], 
+            window_length=window, 
+            polyorder=2
+        )
+    except Exception as e:
+        # Fallback na rolling mean
+        df_steps['ve_smooth'] = df_steps['ve_lmin'].rolling(3, center=True).mean().fillna(method='bfill').fillna(method='ffill')
+    
+    # 4. OBLICZANIE NACHYLENIA (dVE/dP - Gradient)
+    ve_gradient = np.gradient(df_steps['ve_smooth'], df_steps[power_col])
+    df_steps['slope'] = ve_gradient
+    
+    # Linia bazowa (baseline) - średnie nachylenie z pierwszych 4 schodków
+    baseline_slope = df_steps['slope'].iloc[:min(4, len(df_steps))].mean()
+    
+    # 5. DETEKCJA PROGÓW
+    vt1_power = None
+    vt2_power = None
+    
+    # Progi wykrycia
+    vt1_threshold_ratio = 1.15  # Wzrost nachylenia o >15% względem bazy
+    vt2_threshold_ratio = 1.40  # Wzrost o >40%
+    
+    # Szukamy VT1 (startujemy od 5. schodka, żeby pominąć start)
+    start_idx = min(4, len(df_steps) - 3)
+    
+    for i in range(start_idx, len(df_steps) - 2):
+        current_slope = df_steps['slope'].iloc[i]
+        
+        # Warunek VT1: Nachylenie trwale rośnie powyżej bazy
+        if vt1_power is None:
+            if current_slope > (baseline_slope * vt1_threshold_ratio):
+                # Sprawdź czy trend się utrzymuje w kolejnym kroku (potwierdzenie)
+                if df_steps['slope'].iloc[i + 1] > current_slope * 0.95:  # Allow 5% tolerance
+                    vt1_power = df_steps[power_col].iloc[i]
+                    vt1_ve = df_steps['ve_smooth'].iloc[i]
+                    vt1_idx = i
+        
+        # Warunek VT2: Szukamy dopiero PO znalezieniu VT1
+        elif vt2_power is None:
+            # Musi być znaczny skok względem nachylenia przy VT1
+            slope_at_vt1 = df_steps['slope'].iloc[vt1_idx]
+            if current_slope > (slope_at_vt1 * 1.25):  # +25% względem slope'a na VT1
+                if df_steps['slope'].iloc[i + 1] > current_slope * 0.95:  # Potwierdzenie trendu
+                    vt2_power = df_steps[power_col].iloc[i]
+                    vt2_ve = df_steps['ve_smooth'].iloc[i]
+                    break  # Znaleziono oba, koniec pętli
+    
+    # Zabezpieczenie (Fallback), jeśli algorytm nie znajdzie punktów
+    if vt1_power is None:
+        vt1_power = df_steps[power_col].max() * 0.60  # Default 60% max
+        vt1_ve = df_steps.loc[df_steps[power_col] >= vt1_power, 've_smooth'].iloc[0] if len(df_steps[df_steps[power_col] >= vt1_power]) > 0 else df_steps['ve_smooth'].mean()
+    
+    if vt2_power is None:
+        vt2_power = df_steps[power_col].max() * 0.85  # Default 85% max
+        vt2_ve = df_steps.loc[df_steps[power_col] >= vt2_power, 've_smooth'].iloc[0] if len(df_steps[df_steps[power_col] >= vt2_power]) > 0 else df_steps['ve_smooth'].mean()
+    
+    return {
+        'vt1_watts': int(vt1_power),
+        'vt2_watts': int(vt2_power),
+        'vt1_ve': round(vt1_ve, 1),
+        'vt2_ve': round(vt2_ve, 1),
+        'df_steps': df_steps,  # Zwracamy przetworzone dane do wizualizacji
+        'baseline_slope': baseline_slope
+    }

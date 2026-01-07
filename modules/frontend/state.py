@@ -33,6 +33,9 @@ class StateManager:
         for ui_key, json_key in self._keys_map.items():
             if ui_key not in st.session_state:
                 st.session_state[ui_key] = saved_settings.get(json_key)
+        
+        if 'report_generation_requested' not in st.session_state:
+            st.session_state['report_generation_requested'] = False
 
     def save_settings_callback(self) -> None:
         """Callback to save current UI values to persistence."""

@@ -12,12 +12,12 @@ class SettingsManager:
             "rider_height": 180,
             "rider_age": 30,
             "is_male": True,
-            "cp": 410,
+            "cp": 415,
             "w_prime": 31000,
-            "vt1_watts": 280,
-            "vt2_watts": 400,
-            "vt1_vent": 79.0,
-            "vt2_vent": 136.0,
+            "vt1_watts": 300,
+            "vt2_watts": 405,
+            "vt1_vent": 71.0,
+            "vt2_vent": 109.0,
             "crank_length": 160.0
         }
 

@@ -127,10 +127,11 @@ def generate_ramp_profile_chart(
     ax.fill_between(time_min, power_data, alpha=0.15, 
                     color=get_color("power"), zorder=2)
     
-    # HR trace (Axis 2)
+    # HR trace (Axis 2) - THICKER AND ON TOP for visibility over power fill
     if hr_data:
         ax2 = ax.twinx()
-        l2, = ax2.plot(time_min, hr_data, color=get_color("hr"), linestyle=":", label="HR", alpha=0.6, linewidth=1)
+        l2, = ax2.plot(time_min, hr_data, color=get_color("hr"), linestyle="-", 
+                       label="HR", alpha=0.9, linewidth=2.5, zorder=10)  # Thicker, solid, on top
         ax2.set_ylabel("HR [bpm]", color=get_color("hr"), fontsize=font_size)
         ax2.tick_params(axis='y', labelcolor=get_color("hr"))
         ax2.spines['right'].set_color(get_color("hr"))

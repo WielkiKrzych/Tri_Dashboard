@@ -16,7 +16,10 @@ def generate_docx_report(metrics, df_plot, df_plot_resampled, uploaded_file, cp_
     """
     Generuje raport .docx z rozszerzonymi KPI, W', VO2max i czystymi notatkami.
     """
-    
+    import streamlit as st
+    if not st.session_state.get('report_generation_requested', False):
+        return None
+        
     doc = Document()
     
     # --- OBLICZENIA POBIERANE Z METRICS (Code Centralization) ---
@@ -203,6 +206,10 @@ def export_all_charts_as_png(df_plot, df_plot_resampled, cp_input, vt1_watts, vt
     SOLID (OCP): Używa wzorca Registry - nowe wykresy można dodawać
     jako klasy w chart_exporters.py bez modyfikacji tej funkcji.
     """
+    import streamlit as st
+    if not st.session_state.get('report_generation_requested', False):
+        return None
+        
     from .chart_exporters import CHART_REGISTRY, ChartContext
     
     zip_buffer = BytesIO()

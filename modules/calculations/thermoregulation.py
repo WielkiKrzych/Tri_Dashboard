@@ -53,10 +53,15 @@ def analyze_thermoregulation(
     time_seconds: np.ndarray,
     hr: Optional[np.ndarray] = None,
     power: Optional[np.ndarray] = None,
-    hsi: Optional[np.ndarray] = None
+    hsi: Optional[np.ndarray] = None,
+    cardiac_drift_pct: Optional[float] = None,
+    ef_drop_pct: Optional[float] = None
 ) -> ThermoProfile:
     """
     Analyze thermoregulation from core temperature data.
+    
+    ENHANCED: Now considers physiological cost (cardiac drift, EF drop) in addition
+    to temperature rise rate. A slow temp rise but high EF drop = POOR tolerance.
     
     Args:
         core_temp: Core temperature values [°C]
@@ -64,6 +69,8 @@ def analyze_thermoregulation(
         hr: Optional heart rate data [bpm]
         power: Optional power data [W]
         hsi: Optional pre-calculated HSI
+        cardiac_drift_pct: Cardiac drift percentage (decoupling)
+        ef_drop_pct: Efficiency Factor drop percentage (EF first half vs last half)
         
     Returns:
         ThermoProfile with analysis results
@@ -111,21 +118,70 @@ def analyze_thermoregulation(
             profile.peak_hsi = float(np.max(hsi_valid))
             profile.mean_hsi = float(np.mean(hsi_valid))
     
-    # === CLASSIFICATION ===
-    # Based on temperature rise rate
-    if profile.delta_per_10min < 0.3:
-        profile.heat_tolerance = "good"
-        profile.classification_color = "#27AE60"  # Green
-    elif profile.delta_per_10min < 0.5:
+    # ==========================================================================
+    # ENHANCED CLASSIFICATION (Multi-Factor) 
+    # Considers: temp rise rate, HSI, cardiac drift, EF drop
+    # ==========================================================================
+    
+    # Initialize scores (0 = good, higher = worse)
+    tolerance_score = 0
+    
+    # Factor 1: Temperature rise rate (legacy)
+    if profile.delta_per_10min >= 0.5:
+        tolerance_score += 2
+    elif profile.delta_per_10min >= 0.3:
+        tolerance_score += 1
+    
+    # Factor 2: Peak HSI
+    if profile.peak_hsi >= 8:
+        tolerance_score += 2  # Critical HSI
+    elif profile.peak_hsi >= 6:
+        tolerance_score += 1  # Elevated HSI
+    
+    # Factor 3: Cardiac Drift (CRITICAL - reflects actual physiological cost)
+    if cardiac_drift_pct is not None:
+        abs_drift = abs(cardiac_drift_pct)
+        if abs_drift >= 15:
+            tolerance_score += 3  # Extreme drift - major physiological strain
+            logger.info(f"Thermal: Cardiac drift {abs_drift:.1f}% → +3 to poor tolerance")
+        elif abs_drift >= 10:
+            tolerance_score += 2
+        elif abs_drift >= 6:
+            tolerance_score += 1
+    
+    # Factor 4: EF Drop (CRITICAL - efficiency cost due to heat)
+    if ef_drop_pct is not None:
+        abs_ef_drop = abs(ef_drop_pct)
+        if abs_ef_drop >= 20:
+            tolerance_score += 3  # Brutal EF drop - efficiency destroyed by heat
+            logger.info(f"Thermal: EF drop {abs_ef_drop:.1f}% → +3 to poor tolerance")
+        elif abs_ef_drop >= 12:
+            tolerance_score += 2
+        elif abs_ef_drop >= 6:
+            tolerance_score += 1
+    
+    # === FINAL CLASSIFICATION ===
+    # Score >= 4: POOR (even if temp rise is slow, physiological cost is high)
+    # Score 2-3: MODERATE
+    # Score 0-1: GOOD
+    
+    if tolerance_score >= 4:
+        profile.heat_tolerance = "poor"
+        profile.classification_color = "#E74C3C"  # Red
+    elif tolerance_score >= 2:
         profile.heat_tolerance = "moderate"
         profile.classification_color = "#F39C12"  # Orange
     else:
-        profile.heat_tolerance = "poor"
-        profile.classification_color = "#E74C3C"  # Red
+        profile.heat_tolerance = "good"
+        profile.classification_color = "#27AE60"  # Green
+    
+    logger.info(f"Thermal tolerance: {profile.heat_tolerance} (score={tolerance_score}, "
+                f"delta={profile.delta_per_10min:.2f}, HSI={profile.peak_hsi:.1f}, "
+                f"drift={cardiac_drift_pct}, ef_drop={ef_drop_pct})")
     
     # === INTERPRETATION ===
-    profile.mechanism_description = _generate_thermo_mechanism(profile)
-    profile.hr_ef_connection = _generate_hr_ef_connection(profile, hr, power)
+    profile.mechanism_description = _generate_thermo_mechanism(profile, cardiac_drift_pct, ef_drop_pct)
+    profile.hr_ef_connection = _generate_hr_ef_connection(profile, hr, power, cardiac_drift_pct, ef_drop_pct)
     profile.recommendations = _generate_thermo_recommendations(profile)
     
     # Confidence
@@ -134,42 +190,53 @@ def analyze_thermoregulation(
     return profile
 
 
-def _generate_thermo_mechanism(profile: ThermoProfile) -> str:
+def _generate_thermo_mechanism(
+    profile: ThermoProfile,
+    cardiac_drift_pct: Optional[float] = None,
+    ef_drop_pct: Optional[float] = None
+) -> str:
     """Generate thermoregulation mechanism description."""
+    drift_text = f"Dryf HR: {abs(cardiac_drift_pct):.1f}%. " if cardiac_drift_pct and abs(cardiac_drift_pct) > 5 else ""
+    ef_text = f"Spadek EF: {abs(ef_drop_pct):.1f}%. " if ef_drop_pct and abs(ef_drop_pct) > 5 else ""
+    
     if profile.heat_tolerance == "poor":
         return (
-            "Slaba tolerancja cieplna. Tempo narastania temperatury ({:.2f} C/10min) "
-            "przekracza prog bezpieczny. Mechanizm: redystrybucja krwi do skory w celu "
-            "chlodzenia konkuruje z dostawa O2 do miesni. Gdy temperatura przekracza 38.5 C, "
-            "efektywnosc spadla drastycznie, a ryzyko przegrzania rosnie wykladniczo. "
-            "Obserwujemy konflikt miedzy termoregulacja a wydolnoscia aerobowa."
-        ).format(profile.delta_per_10min)
+            f"SLABA tolerancja cieplna. {drift_text}{ef_text}"
+            f"Tempo narastania temperatury ({profile.delta_per_10min:.2f} C/10min) "
+            "lub koszt fizjologiczny przekracza prog bezpieczny. Mechanizm: redystrybucja krwi do skory "
+            "konkuruje z dostawa O2 do miesni. Efektywnosc spadla drastycznie, "
+            "ryzyko przegrzania wysokie. Dlugie jednostki (>90 min) nie sa bezpieczne bez chlodzenia."
+        )
     elif profile.heat_tolerance == "moderate":
         return (
-            "Umiarkowana tolerancja cieplna. Temperatura rosla w tempie {:.2f} C/10min. "
+            f"Umiarkowana tolerancja cieplna. {drift_text}{ef_text}"
+            f"Temperatura rosla w tempie {profile.delta_per_10min:.2f} C/10min. "
             "Uklad chlodzenia radzi sobie, ale istnieje margines do poprawy. "
             "Adaptacja cieplna nie jest pelna - rozważ trening w cieple."
-        ).format(profile.delta_per_10min)
+        )
     else:
         return (
-            "Dobra tolerancja cieplna. Tempo narastania temperatury ({:.2f} C/10min) "
-            "miesci sie w normie dla zawodnikow zaadaptowanych do ciepla. "
-            "Uklad termoregulacji skutecznie balansuje miedzy chlodzeniem a perfuzja miesniowa."
-        ).format(profile.delta_per_10min)
+            f"Dobra tolerancja cieplna. Tempo narastania temperatury ({profile.delta_per_10min:.2f} C/10min) "
+            "miesci sie w normie. Uklad termoregulacji skutecznie balansuje miedzy chlodzeniem a perfuzja."
+        )
 
 
 def _generate_hr_ef_connection(
     profile: ThermoProfile,
     hr: Optional[np.ndarray],
-    power: Optional[np.ndarray]
+    power: Optional[np.ndarray],
+    cardiac_drift_pct: Optional[float] = None,
+    ef_drop_pct: Optional[float] = None
 ) -> str:
     """Generate connection between thermoregulation and HR/EF."""
     if profile.heat_tolerance == "poor":
+        actual_drift = f" (rzeczywisty dryf: {abs(cardiac_drift_pct):.1f}%)" if cardiac_drift_pct else ""
+        actual_ef = f" Spadek EF: {abs(ef_drop_pct):.1f}%." if ef_drop_pct else ""
         return (
-            "Polaczenie z dryfem HR: Wysoka temperatura wymusza redystrybucje krwi do skory. "
-            "Serce musi pompowac wieksza objetosc krwi, by utrzymac zarowno chlodzenie, "
-            "jak i dostaw O2 do miesni. Efekt: wzrost HR przy stalej mocy (dryf), "
-            "spadek Efficiency Factor (EF). To jest kardynalny syndrom przegrzania."
+            f"KRYTYCZNE polaczenie z dryfem HR{actual_drift}:{actual_ef} "
+            "Wysoka temperatura wymusza redystrybucje krwi do skory. "
+            "Serce musi pompowac wieksza objetosc krwi. "
+            "To jest kardynalny syndrom przegrzania - ryzyko metabolicznego 'ugotowania' po 90 min."
         )
     elif profile.heat_tolerance == "moderate":
         return (

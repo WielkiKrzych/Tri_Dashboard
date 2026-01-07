@@ -6,6 +6,7 @@ from modules.calculations.thresholds import analyze_step_test
 from modules.calculations.quality import check_step_test_protocol
 from modules.calculations.pipeline import run_ramp_test_pipeline
 from modules.reporting.persistence import save_ramp_test_report
+from modules.manual_overrides import get_manual_overrides, to_dict
 from models.results import ValidityLevel
 
 def render_vent_thresholds_tab(target_df, training_notes, uploaded_file_name, cp_input, w_prime_input=20000, rider_weight=75.0, max_hr=190.0):
@@ -70,8 +71,8 @@ def render_vent_thresholds_tab(target_df, training_notes, uploaded_file_name, cp
             time_column='time'
         )
 
-        # 3. NOWA METODOLOGIA: Uruchom pełny pipeline i zapisz raport
-        # (Działa w tle, wynik zapisywany do JSON)
+        # 3. NOWA METODOLOGIA: Uruchom pełny pipeline (BEZ automatycznego zapisu)
+        # Pipeline result jest przechowywany w session_state - zapis tylko po kliknięciu przycisku
         try:
             pipeline_result = run_ramp_test_pipeline(
                 target_df,
@@ -90,84 +91,110 @@ def render_vent_thresholds_tab(target_df, training_notes, uploaded_file_name, cp
                 max_hr=float(max_hr)
             )
             
-            # Automatyczny zapis jeśli test jest ważny
+            # Store pipeline result for manual report generation
+            st.session_state['pending_pipeline_result'] = pipeline_result
+            st.session_state['pending_source_df'] = target_df
+            st.session_state['pending_uploaded_file_name'] = uploaded_file_name
+            st.session_state['pending_cp_input'] = cp_input
+            
+            # Show validity status
             if pipeline_result.validity.validity in [ValidityLevel.VALID, ValidityLevel.CONDITIONAL]:
-                # Pobierz typ sesji i pewność z session_state dla metadanych
-                session_type = st.session_state.get('session_type')
-                ramp_classification = st.session_state.get('ramp_classification')
-                ramp_confidence = ramp_classification.confidence if ramp_classification else 0.0
-                
-                # Check if confidence is low and offer manual save option
-                force_save = False
-                if ramp_confidence > 0 and ramp_confidence < 0.5:
-                    st.warning(f"⚠️ Pewność klasyfikacji Ramp Test: **{ramp_confidence:.0%}** (minimum: 50%)")
-                    st.caption("Raport nie zostanie automatycznie zapisany z powodu niskiej pewności.")
-                    force_save = st.checkbox(
-                        "💾 Wymuś zapis raportu mimo niskiej pewności klasyfikacji",
-                        key="force_save_ramp",
-                        help="Zaznacz, aby ręcznie zatwierdzić zapis raportu. Wyniki mogą być mniej wiarygodne."
-                    )
-                    if force_save:
-                        # Override confidence to bypass gating
-                        ramp_confidence = 1.0  # Force pass
-                        st.success("✅ Wymuszone zapisanie raportu zaakceptowane.")
-                
-                # Build manual overrides from session_state
-                manual_overrides = {
-                    # VT1/VT2 from Manual Thresholds tab
-                    "manual_vt1_watts": st.session_state.get("manual_vt1_watts", 0),
-                    "manual_vt2_watts": st.session_state.get("manual_vt2_watts", 0),
-                    "vt1_hr": st.session_state.get("vt1_hr", 0),
-                    "vt2_hr": st.session_state.get("vt2_hr", 0),
-                    "vt1_ve": st.session_state.get("vt1_ve", 0),
-                    "vt2_ve": st.session_state.get("vt2_ve", 0),
-                    "vt1_br": st.session_state.get("vt1_br", 0),
-                    "vt2_br": st.session_state.get("vt2_br", 0),
-                    # SmO2 from Manual SmO2 tab
-                    "smo2_lt1_m": st.session_state.get("smo2_lt1_m", 0),
-                    "smo2_lt2_m": st.session_state.get("smo2_lt2_m", 0),
-                    # CP from Sidebar
-                    "cp_input": float(cp_input) if cp_input else 0,
-                    # CCI Breakpoint from Intervals tab
-                    "cci_breakpoint_manual": st.session_state.get("cci_breakpoint_manual", 0),
-                    # VE Breakpoint from Manual Thresholds tab
-                    "ve_breakpoint_manual": st.session_state.get("ve_breakpoint_manual", 0),
-                    # Reoxy Half-Time from SmO2 Manual tab
-                    "reoxy_halftime_manual": st.session_state.get("reoxy_halftime_manual", 0),
-                }
-                
-                save_result = save_ramp_test_report(
-                    pipeline_result,
-                    notes=f"{'[FORCE SAVE] ' if force_save else ''}Auto-save from UI. File: {uploaded_file_name}",
-                    session_type=session_type,
-                    ramp_confidence=ramp_confidence,
-                    source_file=uploaded_file_name,
-                    source_df=target_df,
-                    manual_overrides=manual_overrides
-                )
-                session_id = save_result.get('session_id', 'unknown')
-                saved_path = save_result.get('path', '')
-                
-                # Check if gated (not saved)
-                if save_result.get('gated'):
-                    reason = save_result.get('reason', 'unknown')
-                    print(f"[Gated] Report NOT saved: {reason}")
-                    st.toast(f"ℹ️ Raport nie zapisany: {reason}", icon="🚫")
-                # Check if deduplicated
-                elif save_result.get('deduplicated'):
-                    print(f"[Dedup] Report already exists for {uploaded_file_name}")
-                elif saved_path:
-                    st.toast(f"✅ Ramp Test report saved: {session_id[:8]}", icon="💾")
-                    print(f"Ramp Test report saved: {session_id} -> {saved_path}")
-                else:
-                    print(f"[Warning] Save returned but no path: {save_result}")
+                st.success(f"✅ Test poprawny - gotowy do wygenerowania raportu")
             else:
-                st.toast("⚠️ Raport NIE zapisany (Test Invalid)", icon="⛔")
+                st.warning(f"⚠️ Test niepoprawny - raport może być niewiarygodny")
                 
         except Exception as e:
-            st.error(f"Błąd zapisu raportu: {e}")
-            print(f"Report save failed: {e}")
+            st.error(f"Błąd analizy pipeline: {e}")
+            print(f"Pipeline failed: {e}")
     
+    # ========== GENERUJ RAPORT BUTTON ==========
+    st.markdown("---")
+    st.subheader("📄 Generowanie Raportu")
+    st.info("💡 Raport NIE generuje się automatycznie. Kliknij przycisk poniżej, aby wygenerować i zapisać raport.")
+    
+    # Check if we have pending pipeline result
+    pending_result = st.session_state.get('pending_pipeline_result')
+    
+    if pending_result is not None:
+        # ========== VALIDATION: Check for manual overrides ==========
+        manual_overrides = to_dict(get_manual_overrides())
+        
+        # Count how many manual values are set
+        manual_keys = ["manual_vt1_watts", "manual_vt2_watts", "smo2_lt1_m", "smo2_lt2_m", "cp_input"]
+        manual_values_set = sum(1 for k in manual_keys if manual_overrides.get(k) and manual_overrides[k] > 0)
+        
+        # Show warning if no manual values
+        can_generate = True
+        if manual_values_set == 0:
+            st.warning("⚠️ **Brak wartości manualnych!** Raport zostanie wygenerowany wyłącznie z wartościami automatycznymi (algorytm).")
+            bypass_warning = st.checkbox(
+                "✅ Generuj raport mimo braku wartości manualnych",
+                key="bypass_manual_warning",
+                help="Zaznacz, aby wygenerować raport z wartościami automatycznymi. Wartości manualne mają wyższy poziom zaufania."
+            )
+            if not bypass_warning:
+                can_generate = False
+                st.caption("Aby dodać wartości manualne, przejdź do zakładki **Vent - Progi Manuals** lub **SmO2 - Progi Manuals**.")
+        else:
+            st.success(f"✅ Wykryto {manual_values_set} wartości manualnych - zostaną użyte w raporcie")
+        
+        # Show button only if validation passed
+        if can_generate and st.button("📄 GENERUJ RAPORT", type="primary", use_container_width=True):
+            st.session_state['report_generation_requested'] = True
+            with st.spinner("Generowanie raportu..."):
+                try:
+                    # Get data from session state
+                    source_df = st.session_state.get('pending_source_df')
+                    file_name = st.session_state.get('pending_uploaded_file_name', 'unknown')
+                    cp = st.session_state.get('pending_cp_input', 0)
+                    
+                    # Get session type and confidence
+                    session_type = st.session_state.get('session_type')
+                    ramp_classification = st.session_state.get('ramp_classification')
+                    ramp_confidence = ramp_classification.confidence if ramp_classification else 1.0
+                    
+                    # Get manual overrides from SINGLE SOURCE OF TRUTH
+                    manual_overrides = to_dict(get_manual_overrides())
+                    
+                    # Call save with explicit user trigger
+                    save_result = save_ramp_test_report(
+                        pending_result,
+                        notes=f"User-triggered save from UI. File: {file_name}",
+                        session_type=session_type,
+                        ramp_confidence=ramp_confidence,
+                        source_file=file_name,
+                        source_df=source_df,
+                        manual_overrides=manual_overrides
+                    )
+                    
+                    session_id = save_result.get('session_id', 'unknown')
+                    saved_path = save_result.get('path', '')
+                    pdf_path = save_result.get('pdf_path', '')
+                    
+                    if save_result.get('gated'):
+                        reason = save_result.get('reason', 'unknown')
+                        st.error(f"❌ Raport NIE zapisany: {reason}")
+                    elif save_result.get('deduplicated'):
+                        st.warning(f"⚠️ Raport dla tego pliku już istnieje")
+                    elif saved_path:
+                        st.success(f"✅ Raport wygenerowany pomyślnie!")
+                        st.info(f"📁 JSON: `{saved_path}`")
+                        if pdf_path:
+                            st.info(f"📄 PDF: `{pdf_path}`")
+                        st.balloons()
+                        
+                        # Clear pending state
+                        st.session_state.pop('pending_pipeline_result', None)
+                    else:
+                        st.error(f"❌ Nieznany błąd zapisu")
+                        
+                except Exception as e:
+                    st.error(f"❌ Błąd generowania raportu: {e}")
+                    print(f"Report generation failed: {e}")
+    else:
+        st.warning("⚠️ Brak danych do wygenerowania raportu. Najpierw wgraj plik i poczekaj na analizę.")
+    
+    st.markdown("---")
     vt1_zone = result.vt1_zone
     vt2_zone = result.vt2_zone
     hysteresis = result.hysteresis

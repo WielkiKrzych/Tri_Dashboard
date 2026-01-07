@@ -153,6 +153,11 @@ def save_ramp_test_report(
     Raises:
         ValueError: If called without RAMP_TEST session type
     """
+    # --- HARD TRIGGER CHECK ---
+    if not st.session_state.get('report_generation_requested', False):
+        print("[GATING] Report generation NOT requested (Hard Trigger). Skipping save.")
+        return {"gated": True, "reason": "Report generation NOT requested by user"}
+
     # --- DEDUPLICATION: Check if source_file already exists in index ---
     if source_file:
         if _check_source_file_exists(output_base_dir, source_file):
@@ -562,6 +567,35 @@ def save_ramp_test_report(
         **data
     }
     
+    # 3.1 Add data_policy for provenance tracking
+    if manual_overrides:
+        from modules.canonical_values import resolve_all_thresholds, build_data_policy
+        
+        # Extract auto values from result data
+        auto_values = {}
+        thresholds = data.get("thresholds", {})
+        if thresholds:
+            vt1 = thresholds.get("vt1", {})
+            vt2 = thresholds.get("vt2", {})
+            auto_values["vt1"] = vt1.get("midpoint_watts") if isinstance(vt1, dict) else None
+            auto_values["vt2"] = vt2.get("midpoint_watts") if isinstance(vt2, dict) else None
+        
+        smo2 = data.get("smo2_thresholds", {})
+        if smo2:
+            auto_values["smo2_lt1"] = smo2.get("lt1_watts")
+            auto_values["smo2_lt2"] = smo2.get("lt2_watts")
+        
+        # Resolve all thresholds through global priority policy
+        resolved = resolve_all_thresholds(manual_overrides, auto_values)
+        
+        # Build and add data_policy
+        final_json["data_policy"] = build_data_policy(resolved)
+        
+        # Log resolution for debugging
+        from modules.canonical_values import log_resolution
+        for line in log_resolution(resolved):
+            print(f"[DataPolicy] {line}")
+    
     # 4. Generate path
     year_str = test_date.strftime("%Y")
     month_str = test_date.strftime("%m")
@@ -643,6 +677,11 @@ def _auto_generate_pdf(json_path: str, report_data: Dict, is_conditional: bool =
     Returns:
         PDF path if successful, None otherwise
     """
+    # --- HARD TRIGGER CHECK ---
+    if not st.session_state.get('report_generation_requested', False):
+        print("[PDF GATING] PDF generation NOT requested (Hard Trigger). Aborting.")
+        return None
+        
     from .pdf import generate_ramp_pdf, PDFConfig
     from .figures import generate_all_ramp_figures
     import tempfile
@@ -675,6 +714,9 @@ def _auto_generate_pdf(json_path: str, report_data: Dict, is_conditional: bool =
         print(f"DOCX generation failed: {e}")
     
     print(f"Ramp Test PDF generated: {pdf_path}")
+    
+    # --- RESET HARD TRIGGER ---
+    st.session_state['report_generation_requested'] = False
     
     return str(pdf_path.absolute())
 

@@ -122,23 +122,58 @@ def analyze_step_test(
     return result
 
 def calculate_training_zones_from_thresholds(vt1_watts: int, vt2_watts: int, cp=None, max_hr: int = 185) -> dict:
-    """Calculate training zones based on thresholds."""
+    """Calculate training zones based on thresholds.
+    
+    ENHANCED: Z3 is now split into Z3a_LowTempo and Z3b_SweetSpot to avoid
+    putting metabolically different intensities into one bucket.
+    
+    Zone model:
+    - Z1: Recovery (< 75% VT1)
+    - Z2: Endurance (75% VT1 → VT1)
+    - Z3a: Low Tempo (VT1 → VT1 + 35% gap)  ← NEW
+    - Z3b: Sweet Spot (VT1 + 35% gap → midpoint)  ← NEW  
+    - Z4: Threshold (midpoint → VT2)
+    - Z5: VO2max (VT2 → 120% CP)
+    - Z6: Anaerobic (120% CP → 150% CP)
+    """
     if cp is None: cp = vt2_watts
     v1 = vt1_watts if vt1_watts else 0
     v2 = vt2_watts if vt2_watts else 0
+    
+    # Calculate zone boundaries
+    gap = v2 - v1  # Gap between VT1 and VT2
+    midpoint = int((v1 + v2) / 2)
+    
+    # Split point for Z3a/Z3b: 35% of the gap above VT1
+    # This puts Low Tempo as the "comfortable tempo" zone
+    # and Sweet Spot as the "hard tempo" zone closer to threshold
+    z3_split = int(v1 + gap * 0.35)
+    
     return {
         "power_zones": {
-            "Z1_Recovery": (0, int(v1 * 0.75)), "Z2_Endurance": (int(v1 * 0.75), int(v1)),
-            "Z3_Tempo": (int(v1), int((v1 + v2) / 2)), "Z4_Threshold": (int((v1 + v2) / 2), int(v2)),
-            "Z5_VO2max": (int(v2), int(cp * 1.2)), "Z6_Anaerobic": (int(cp * 1.2), int(cp * 1.5))
+            "Z1_Recovery": (0, int(v1 * 0.75)),
+            "Z2_Endurance": (int(v1 * 0.75), int(v1)),
+            "Z3a_LowTempo": (int(v1), z3_split),
+            "Z3b_SweetSpot": (z3_split, midpoint),
+            "Z4_Threshold": (midpoint, int(v2)),
+            "Z5_VO2max": (int(v2), int(cp * 1.2)),
+            "Z6_Anaerobic": (int(cp * 1.2), int(cp * 1.5))
         },
         "hr_zones": {
-            "Z1_Recovery": (0, int(max_hr * 0.6)), "Z2_Endurance": (int(max_hr * 0.6), int(max_hr * 0.7)),
-            "Z3_Tempo": (int(max_hr * 0.7), int(max_hr * 0.8)), "Z4_Threshold": (int(max_hr * 0.8), int(max_hr * 0.9)),
+            "Z1_Recovery": (0, int(max_hr * 0.6)),
+            "Z2_Endurance": (int(max_hr * 0.6), int(max_hr * 0.7)),
+            "Z3a_LowTempo": (int(max_hr * 0.7), int(max_hr * 0.75)),
+            "Z3b_SweetSpot": (int(max_hr * 0.75), int(max_hr * 0.8)),
+            "Z4_Threshold": (int(max_hr * 0.8), int(max_hr * 0.9)),
             "Z5_VO2max": (int(max_hr * 0.9), max_hr)
         },
         "zone_descriptions": {
-            "Z1_Recovery": "Regeneracja", "Z2_Endurance": "Baza tlenowa", "Z3_Tempo": "Sweet spot",
-            "Z4_Threshold": "Próg FTP", "Z5_VO2max": "VO2max", "Z6_Anaerobic": "Beztlenowa"
+            "Z1_Recovery": "Regeneracja",
+            "Z2_Endurance": "Baza tlenowa",
+            "Z3a_LowTempo": "Tempo niskie (komfortowe)",
+            "Z3b_SweetSpot": "Sweet Spot (twarde tempo)",
+            "Z4_Threshold": "Próg FTP",
+            "Z5_VO2max": "VO2max",
+            "Z6_Anaerobic": "Beztlenowa"
         }
     }

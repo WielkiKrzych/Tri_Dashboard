@@ -69,7 +69,7 @@ def build_page_executive_summary(
     
     # Title row
     elements.append(Paragraph(
-        f"<font size='22'><b>EXECUTIVE PHYSIO SUMMARY</b></font>",
+        f"<font size='22'><b>PODSUMOWANIE FIZJOLOGICZNE</b></font>",
         styles["title"]
     ))
     
@@ -99,7 +99,7 @@ def build_page_executive_summary(
     
     # Card content
     verdict_content = [
-        Paragraph(f"<font size='14'><b>{limiter_icon} PRIMARY LIMITER: {limiter_name}</b></font>", styles["heading"]),
+        Paragraph(f"<font size='14'><b>{limiter_icon} DOMINUJĄCY LIMITER: {limiter_name}</b></font>", styles["heading"]),
         Paragraph(f"<font size='10' color='#7F8C8D'>{subtitle}</font>", styles["body"]),
         Spacer(1, 2 * mm),
         Paragraph(f"<b>{verdict}</b>", styles["body"]),
@@ -125,7 +125,7 @@ def build_page_executive_summary(
     # 3. SIGNAL AGREEMENT MATRIX
     # ==========================================================================
     
-    elements.append(Paragraph("<b>SIGNAL AGREEMENT MATRIX</b>", styles["subheading"]))
+    elements.append(Paragraph("<b>MACIERZ SYGNAŁÓW</b>", styles["subheading"]))
     elements.append(Spacer(1, 2 * mm))
     
     signals = signal_matrix.get("signals", [])
@@ -171,7 +171,7 @@ def build_page_executive_summary(
     idx_color = HexColor("#D5F5E3") if agreement_idx >= 0.8 else (HexColor("#FCF3CF") if agreement_idx >= 0.5 else HexColor("#FADBD8"))
     idx_content = [
         Paragraph(f"<font size='14'><b>{agreement_idx:.2f}</b></font>", styles["center"]),
-        Paragraph("<font size='8'>Agreement Index</font>", styles["center"]),
+        Paragraph("<font size='8'>Indeks zgodności</font>", styles["center"]),
         Paragraph(f"<font size='9'>{agreement_label}</font>", styles["center"]),
     ]
     idx_table = Table([[idx_content]], colWidths=[52 * mm])
@@ -200,7 +200,7 @@ def build_page_executive_summary(
     # 4. TEST CONFIDENCE PANEL
     # ==========================================================================
     
-    elements.append(Paragraph("<b>TEST CONFIDENCE</b>", styles["subheading"]))
+    elements.append(Paragraph("<b>PEWNOŚĆ TESTU</b>", styles["subheading"]))
     elements.append(Spacer(1, 2 * mm))
     
     overall_score = confidence_panel.get("overall_score", 0)
@@ -245,7 +245,7 @@ def build_page_executive_summary(
     # 5. TRAINING DECISION CARDS
     # ==========================================================================
     
-    elements.append(Paragraph("<b>TRAINING DECISIONS</b>", styles["subheading"]))
+    elements.append(Paragraph("<b>DECYZJE TRENINGOWE</b>", styles["subheading"]))
     elements.append(Spacer(1, 3 * mm))
     
     for i, card in enumerate(training_cards[:3], 1):
@@ -255,6 +255,7 @@ def build_page_executive_summary(
         goal = card.get("adaptation_goal", "---")
         response = card.get("expected_response", "---")
         risk = card.get("risk_level", "low")
+        constraint = card.get("constraint", "")  # OCCLUSION CONSTRAINT
         
         risk_color = "#2ECC71" if risk == "low" else ("#F39C12" if risk == "medium" else "#E74C3C")
         risk_label = "NISKIE" if risk == "low" else ("ŚREDNIE" if risk == "medium" else "WYSOKIE")
@@ -263,9 +264,16 @@ def build_page_executive_summary(
             Paragraph(f"<font size='11'><b>{i}. {strategy}</b></font>", styles["heading"]),
             Paragraph(f"<b>Moc:</b> {power} | <b>Objętość:</b> {volume}", styles["body"]),
             Paragraph(f"<b>Cel:</b> {goal}", styles["body"]),
-            Paragraph(f"<font size='9' color='#7F8C8D'>Expected: {response}</font>", styles["body"]),
+            Paragraph(f"<font size='9' color='#7F8C8D'>Spodziewany efekt: {response}</font>", styles["body"]),
             Paragraph(f"<font size='8' color='{risk_color}'>Ryzyko: {risk_label}</font>", styles["body"]),
         ]
+        
+        # Add occlusion constraint if present (CRITICAL for athlete safety)
+        if constraint:
+            card_content.append(Paragraph(
+                f"<font size='8' color='#E67E22'><b>{constraint}</b></font>",
+                styles["body"]
+            ))
         
         card_table = Table([[card_content]], colWidths=[170 * mm])
         card_table.setStyle(TableStyle([
@@ -404,7 +412,7 @@ def build_page_executive_verdict(
     # A. HERO BOX - MAIN VERDICT
     # ==========================================================================
     
-    elements.append(Paragraph("EXECUTIVE VERDICT", styles["title"]))
+    elements.append(Paragraph("WERDYKT FIZJOLOGICZNY", styles["title"]))
     elements.append(Paragraph(
         "<font size='10' color='#7F8C8D'>Decyzyjne podsumowanie całego raportu fizjologicznego</font>",
         styles["center"]
@@ -450,7 +458,7 @@ def build_page_executive_verdict(
     # A2. DECISION MATRIX (WHY / WHAT / HOW)
     # ==========================================================================
     
-    elements.append(Paragraph("<b>DECISION MATRIX (WHY / WHAT / HOW)</b>", styles["subheading"]))
+    elements.append(Paragraph("<b>MATRYCA DECYZJI (DLACZEGO / CO / JAK)</b>", styles["subheading"]))
     elements.append(Spacer(1, 2 * mm))
     
     # Determine PRIMARY BOTTLENECK based on logic
@@ -1123,7 +1131,7 @@ def build_page_smo2(smo2_data, smo2_manual, figure_paths, styles):
         for i, rec in enumerate(recommendations[:3]):
             exp_resp = exp_list[i] if i < len(exp_list) else "Poprawa wydolności"
             card_content = [Paragraph(f"<font size='10'><b>{i+1}. {rec}</b></font>", styles["body"]),
-                           Paragraph(f"<font size='8' color='#27AE60'>Expected: {exp_resp}</font>", styles["body"])]
+                           Paragraph(f"<font size='8' color='#27AE60'>Spodziewany efekt: {exp_resp}</font>", styles["body"])]
             card_table = Table([[card_content]], colWidths=[170 * mm])
             card_table.setStyle(TableStyle([('BACKGROUND', (0, 0), (-1, -1), COLORS["background"]), ('BOX', (0, 0), (-1, -1), 0.5, COLORS["border"]), ('LEFTPADDING', (0, 0), (-1, -1), 8), ('TOPPADDING', (0, 0), (-1, -1), 6), ('BOTTOMPADDING', (0, 0), (-1, -1), 6)]))
             elements.append(card_table)
@@ -1685,7 +1693,7 @@ def build_page_cardiovascular(cardio_data: Dict[str, Any], styles: Dict) -> List
             
             card_content = [
                 Paragraph(f"<font size='9' color='{type_color}'><b>[{rec_type}]</b></font> {action}", styles["body"]),
-                Paragraph(f"<font size='8' color='#27AE60'>Expected: {expected}</font> | <font size='8' color='{risk_color}'>Ryzyko: {risk_label}</font>", styles["body"]),
+                Paragraph(f"<font size='8' color='#27AE60'>Spodziewany efekt: {expected}</font> | <font size='8' color='{risk_color}'>Ryzyko: {risk_label}</font>", styles["body"]),
             ]
             card_table = Table([[card_content]], colWidths=[170 * mm])
             card_table.setStyle(TableStyle([
@@ -1867,7 +1875,7 @@ def build_page_ventilation(vent_data: Dict[str, Any], styles: Dict) -> List:
             
             card_content = [
                 Paragraph(f"<font size='9' color='{type_color}'><b>[{rec_type}]</b></font> {action}", styles["body"]),
-                Paragraph(f"<font size='8' color='#27AE60'>Expected: {expected}</font> | <font size='8' color='{risk_color}'>Ryzyko: {risk_label}</font>", styles["body"]),
+                Paragraph(f"<font size='8' color='#27AE60'>Spodziewany efekt: {expected}</font> | <font size='8' color='{risk_color}'>Ryzyko: {risk_label}</font>", styles["body"]),
             ]
             card_table = Table([[card_content]], colWidths=[170 * mm])
             card_table.setStyle(TableStyle([
@@ -2072,8 +2080,8 @@ def build_page_metabolic_engine(metabolic_data: Dict[str, Any], styles: Dict) ->
             Paragraph(f"<font size='10'><b>{i+1}. {name}</b></font> <font size='9' color='#7F8C8D'>({freq})</font>", styles["body"]),
             Paragraph(f"<font size='9'><b>Moc:</b> {power} | <b>Czas:</b> {duration}</font>", styles["body"]),
             Paragraph(f"<font size='8'><b>Cel:</b> {goal}</font>", styles["body"]),
-            Paragraph(f"<font size='8' color='#27AE60'>Expected: SmO₂ {exp_smo2}, HR {exp_hr}</font>", styles["body"]),
-            Paragraph(f"<font size='8' color='#E74C3C'>⚠ Failure: {failure}</font>", styles["body"]),
+            Paragraph(f"<font size='8' color='#27AE60'>Spodziewany efekt: SmO₂ {exp_smo2}, HR {exp_hr}</font>", styles["body"]),
+            Paragraph(f"<font size='8' color='#E74C3C'>⚠ Sygnał ostrz.: {failure}</font>", styles["body"]),
         ]
         
         session_table = Table([[session_content]], colWidths=[170 * mm])
@@ -2679,7 +2687,7 @@ def build_page_thermal(
     tolerance_color = classification.get("color", "#808080") if has_thermo_data else "#808080"
     tolerance_label = {"good": "DOBRA", "moderate": "SREDNIA", "poor": "SLABA"}.get(tolerance, "BRAK DANYCH")
     
-    elements.append(Paragraph("KEY NUMBERS", styles["heading"]))
+    elements.append(Paragraph("KLUCZOWE LICZBY", styles["heading"]))
     elements.append(Spacer(1, 2 * mm))
     
     key_data = [
@@ -3099,7 +3107,7 @@ def build_page_biomech(
         classification = biomech_data.get("classification", {})
         
         elements.append(PageBreak())
-        elements.append(Paragraph("KEY NUMBERS", styles["heading"]))
+        elements.append(Paragraph("KLUCZOWE LICZBY", styles["heading"]))
         elements.append(Spacer(1, 2 * mm))
         
         # Determine colors based on classification

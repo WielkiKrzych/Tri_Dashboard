@@ -350,7 +350,13 @@ def map_ramp_json_to_pdf_data(report_json: Dict[str, Any], manual_overrides: Opt
             smo2_manual=mapped_smo2_manual,
             cp_model=mapped_cp,
             kpi=mapped_kpi,
-            confidence=mapped_confidence
+            confidence=mapped_confidence,
+            # Pass advanced data for consistent limiter detection (aligns Summary with Verdict)
+            smo2_advanced=smo2_advanced_data,
+            cardio_advanced=cardio_advanced_data,
+            canonical_physiology=report_json.get("canonical_physiology", {}),
+            # Pass biomech_occlusion for cadence constraints in training cards
+            biomech_occlusion=report_json.get("biomech_occlusion", {})
         )
     }
 
@@ -360,7 +366,8 @@ def build_ramp_pdf(
     figure_paths: Optional[Dict[str, str]] = None,
     output_path: Optional[str] = None,
     config: Optional[PDFConfig] = None,
-    manual_overrides: Optional[Dict[str, Any]] = None
+    manual_overrides: Optional[Dict[str, Any]] = None,
+    compact_mode: bool = False
 ) -> bytes:
     """Build complete Ramp Test PDF report (6 pages).
     
@@ -374,6 +381,7 @@ def build_ramp_pdf(
         config: PDF configuration
         manual_overrides: Dict of manual threshold values from session_state
             (VT1/VT2, SmO2 LT1/LT2, CP from sidebar) - these override auto-detected
+        compact_mode: If True, skips educational/theory pages for pro users
         
     Returns:
         PDF bytes
@@ -569,9 +577,10 @@ def build_ramp_pdf(
     ))
     story.append(PageBreak())
     
-    # === PAGE 5: Teoria Fizjologiczna ===
-    story.extend(build_page_theory(styles=styles))
-    story.append(PageBreak())
+    # === PAGE 5: Teoria Fizjologiczna (skipped in compact mode) ===
+    if not compact_mode:
+        story.extend(build_page_theory(styles=styles))
+        story.append(PageBreak())
     
     # === PAGE 6: Analiza Termoregulacji ===
     story.extend(build_page_thermal(
@@ -581,10 +590,11 @@ def build_ramp_pdf(
     ))
     story.append(PageBreak())
     
-    # === NEW PAGE: Protokół i Hierarchia (Page 20 simulation) ===
-    from .layout import build_page_protocol
-    story.extend(build_page_protocol(styles=styles))
-    story.append(PageBreak())
+    # === NEW PAGE: Protokół i Hierarchia (skipped in compact mode) ===
+    if not compact_mode:
+        from .layout import build_page_protocol
+        story.extend(build_page_protocol(styles=styles))
+        story.append(PageBreak())
     
     # === PAGE 7: Strefy Treningowe ===
     story.extend(build_page_zones(

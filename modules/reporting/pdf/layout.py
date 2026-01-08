@@ -28,6 +28,272 @@ from .styles import (
 # Setup logger
 logger = logging.getLogger("Tri_Dashboard.PDFLayout")
 
+# Premium color constants
+PREMIUM_COLORS = {
+    "navy": HexColor("#1A5276"),      # Recommendations/training
+    "dark_glass": HexColor("#17252A"), # Title page background
+    "red": HexColor("#C0392B"),        # Warnings/limitations
+    "green": HexColor("#27AE60"),      # Positives/strengths
+    "white": HexColor("#FFFFFF"),
+    "light_gray": HexColor("#BDC3C7"),
+}
+
+
+# ============================================================================
+# PREMIUM HELPER FUNCTIONS
+# ============================================================================
+
+def build_colored_box(text: str, styles: Dict, bg_color: str = "navy") -> List:
+    """Create a colored box with text for recommendations/warnings/positives.
+    
+    Args:
+        text: Text content
+        styles: PDF styles dict
+        bg_color: "navy", "red", or "green"
+        
+    Returns:
+        List of flowables
+    """
+    color_map = {
+        "navy": PREMIUM_COLORS["navy"],
+        "red": PREMIUM_COLORS["red"],
+        "green": PREMIUM_COLORS["green"],
+    }
+    bg = color_map.get(bg_color, PREMIUM_COLORS["navy"])
+    
+    table_data = [[Paragraph(
+        f"<font color='white'><b>{text}</b></font>",
+        styles["center"]
+    )]]
+    
+    box_table = Table(table_data, colWidths=[170 * mm])
+    box_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), bg),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('TOPPADDING', (0, 0), (-1, -1), 10),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 10),
+        ('LEFTPADDING', (0, 0), (-1, -1), 15),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 15),
+    ]))
+    
+    return [box_table, Spacer(1, 4 * mm)]
+
+
+def build_section_description(text: str, styles: Dict) -> List:
+    """Add 10pt italic description under section header.
+    
+    Args:
+        text: Description text (1-2 sentences)
+        styles: PDF styles dict
+        
+    Returns:
+        List of flowables
+    """
+    desc_style = ParagraphStyle(
+        "SectionDescription",
+        fontName="DejaVuSans-Oblique" if "DejaVuSans" in str(styles.get("body", {})) else "Helvetica-Oblique",
+        fontSize=10,
+        textColor=HexColor("#7F8C8D"),
+        leading=12,
+        spaceAfter=4 * mm,
+    )
+    return [Paragraph(text, desc_style)]
+
+
+def build_title_page(metadata: Dict[str, Any], styles: Dict) -> List:
+    """Build premium title page with background image.
+    
+    Layout similar to KNF CSIRT document:
+    - Background image banner with title overlay
+    - Document metadata at bottom
+    
+    Args:
+        metadata: Report metadata (test_date, session_id, etc.)
+        styles: PDF styles dict
+        
+    Returns:
+        List of flowables for title page
+    """
+    from datetime import datetime
+    import os
+    
+    elements = []
+    
+    # Get path to background image
+    # Try multiple locations for the background image
+    bg_paths = [
+        "assets/title_background.jpg",
+        os.path.join(os.path.dirname(__file__), "..", "..", "..", "assets", "title_background.jpg"),
+    ]
+    
+    bg_image_path = None
+    for path in bg_paths:
+        if os.path.exists(path):
+            bg_image_path = path
+            break
+    
+    # Title banner with background image
+    if bg_image_path and os.path.exists(bg_image_path):
+        # Use image as banner
+        try:
+            from reportlab.platypus import Image as RLImage
+            
+            # Add banner image (full width)
+            banner = RLImage(bg_image_path, width=180 * mm, height=100 * mm)
+            elements.append(banner)
+            
+            # Overlay title - use negative spacer to position on image
+            elements.append(Spacer(1, -70 * mm))  # Move up into image area
+            
+            # Title with proper spacing between lines
+            title_content = [
+                [Paragraph(
+                    "<font color='white' size='28'><b>BADANIA WYDOLNOŚCIOWE</b></font>",
+                    styles["center"]
+                )],
+                [Spacer(1, 8 * mm)],  # Space between title and subtitle
+                [Paragraph(
+                    "<font color='#E0E0E0' size='12'>w oparciu o Wentylację Minutową (VE)</font>",
+                    styles["center"]
+                )],
+                [Paragraph(
+                    "<font color='#E0E0E0' size='12'>i Natlenienie Mięśniowe (SmO₂)</font>",
+                    styles["center"]
+                )],
+            ]
+            
+            title_table = Table(title_content, colWidths=[170 * mm])
+            title_table.setStyle(TableStyle([
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                ('TOPPADDING', (0, 0), (-1, -1), 4),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+            ]))
+            elements.append(title_table)
+            
+            elements.append(Spacer(1, 50 * mm))  # Move back down
+            
+        except Exception as e:
+            logger.warning(f"Could not load background image: {e}")
+            # Fallback to solid color
+            elements.append(Spacer(1, 30 * mm))
+            _add_fallback_title(elements, styles)
+    else:
+        # Fallback: solid color background
+        elements.append(Spacer(1, 30 * mm))
+        _add_fallback_title(elements, styles)
+    
+    # Spacer before metadata
+    elements.append(Spacer(1, 25 * mm))
+    
+    # === METRYKA DOKUMENTU (CENTERED) ===
+    elements.append(Paragraph(
+        "<font size='14'><b>Metryka dokumentu:</b></font>",
+        styles["center"]
+    ))
+    elements.append(Spacer(1, 6 * mm))
+    
+    # Test info
+    test_date = metadata.get('test_date', '---')
+    session_id = metadata.get('session_id', '')[:8] if metadata.get('session_id') else ''
+    method_version = metadata.get('method_version', '1.0.0')
+    gen_date = datetime.now().strftime("%d.%m.%Y, %H:%M")
+    
+    meta_data = [
+        [Paragraph("<b>Data testu:</b>", styles["center"]), 
+         Paragraph(str(test_date), styles["center"])],
+        [Paragraph("<b>ID sesji:</b>", styles["center"]), 
+         Paragraph(session_id, styles["center"])],
+        [Paragraph("<b>Wersja metody:</b>", styles["center"]), 
+         Paragraph(method_version, styles["center"])],
+        [Paragraph("<b>Data generowania:</b>", styles["center"]), 
+         Paragraph(gen_date, styles["center"])],
+    ]
+    
+    meta_table = Table(meta_data, colWidths=[60 * mm, 80 * mm])
+    meta_table.setStyle(TableStyle([
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('TOPPADDING', (0, 0), (-1, -1), 4),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+    ]))
+    elements.append(meta_table)
+    
+    # Large spacer to push author to bottom
+    elements.append(Spacer(1, 50 * mm))
+    
+    # Author info at bottom - LARGER and BOLD
+    elements.append(Paragraph(
+        "<font size='16'><b>Opracowanie: Krzysztof Kubicz</b></font>",
+        styles["center"]
+    ))
+    
+    return elements
+
+
+def _add_fallback_title(elements: List, styles: Dict):
+    """Add title block with solid color background (fallback when no image)."""
+    title_content = [
+        [Paragraph(
+            "<font color='white' size='24'><b>BADANIA WYDOLNOŚCIOWE</b></font>",
+            styles["center"]
+        )],
+        [Paragraph(
+            "<font color='#BDC3C7' size='14'>w oparciu o Wentylację Minutową (VE)</font>",
+            styles["center"]
+        )],
+        [Paragraph(
+            "<font color='#BDC3C7' size='14'>i Natlenienie Mięśniowe (SmO₂)</font>",
+            styles["center"]
+        )],
+    ]
+    
+    title_table = Table(title_content, colWidths=[170 * mm])
+    title_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), PREMIUM_COLORS["dark_glass"]),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('TOPPADDING', (0, 0), (0, 0), 25),
+        ('BOTTOMPADDING', (-1, -1), (-1, -1), 25),
+        ('TOPPADDING', (0, 1), (-1, -1), 5),
+        ('BOTTOMPADDING', (0, 0), (-1, -2), 5),
+    ]))
+    elements.append(title_table)
+
+
+def build_contact_footer(styles: Dict) -> List:
+    """Build contact info footer for last page.
+    
+    Args:
+        styles: PDF styles dict
+        
+    Returns:
+        List of flowables
+    """
+    elements = []
+    
+    # Separator
+    elements.append(Spacer(1, 10 * mm))
+    sep_table = Table([[""]], colWidths=[170 * mm])
+    sep_table.setStyle(TableStyle([
+        ('LINEABOVE', (0, 0), (-1, -1), 1, HexColor("#DEE2E6")),
+    ]))
+    elements.append(sep_table)
+    elements.append(Spacer(1, 5 * mm))
+    
+    # Contact info
+    elements.append(Paragraph(
+        "<font size='12'><b>Krzysztof Kubicz</b></font>",
+        styles["center"]
+    ))
+    elements.append(Paragraph(
+        "<font size='11' color='#1A5276'>kubiczk@icloud.com</font>",
+        styles["center"]
+    ))
+    
+    return elements
+
 
 # ============================================================================
 # TABLE OF CONTENTS (SPIS TREŚCI)
@@ -54,13 +320,12 @@ def build_table_of_contents(styles: Dict, section_titles: List[Dict[str, Any]]) 
     ))
     elements.append(Spacer(1, 10 * mm))
     
-    # Table of Contents entries (bez hiperłączy - proste wyświetlanie)
+    # Table of Contents entries
     toc_data = []
     for section in section_titles:
         title = section.get("title", "---")
         page = section.get("page", "---")
         
-        # Prosty tekst bez hiperłączy
         title_para = Paragraph(
             f"<font color='#333333'>{title}</font>",
             styles["body"]
@@ -134,7 +399,7 @@ def build_page_executive_summary(
     
     # Title row
     elements.append(Paragraph(
-        f"<font size='22'><b>PODSUMOWANIE FIZJOLOGICZNE</b></font>",
+        f"<font size='22'><b>15. PODSUMOWANIE FIZJOLOGICZNE</b></font>",
         styles["title"]
     ))
     
@@ -886,7 +1151,7 @@ def build_page_cover(
     session_id = metadata.get("session_id", "")[:8]
     method_version = metadata.get("method_version", "1.0.0")
     
-    elements.append(Paragraph("Badania Wydolnościowe - Raport Potestowy", styles["title"]))
+    elements.append(Paragraph("1. BADANIA WYDOLNOŚCIOWE - RAPORT POTESTOWY", styles["title"]))
     
     meta_text = f"Data: <b>{test_date}</b> | ID: {session_id} | v{method_version}"
     elements.append(Paragraph(meta_text, styles["center"]))
@@ -972,7 +1237,7 @@ def build_page_thresholds(
     """
     elements = []
     
-    elements.append(Paragraph("Szczegóły Progów VT1 / VT2", styles["title"]))
+    elements.append(Paragraph("3. SZCZEGÓŁY PROGÓW VT1 / VT2", styles["title"]))
     elements.append(Spacer(1, 6 * mm))
     
     # === EXPLANATION ===
@@ -1054,7 +1319,7 @@ def build_page_smo2(smo2_data, smo2_manual, figure_paths, styles):
     # HEADER
     # ==========================================================================
     elements.append(Paragraph(
-        "<font size='18'><b>DIAGNOSTYKA OKSYGENACJI MIĘŚNIOWEJ</b></font>",
+        "<font size='18'><b>8. DIAGNOSTYKA OKSYGENACJI MIĘŚNIOWEJ</b></font>",
         styles['title']
     ))
     elements.append(Paragraph(
@@ -1241,7 +1506,7 @@ def build_page_smo2(smo2_data, smo2_manual, figure_paths, styles):
     
     bench_table = Table(bench_data, colWidths=[40 * mm, 40 * mm, 85 * mm])
     bench_table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), HexColor("#1a1a2e")),
+        ('BACKGROUND', (0, 0), (-1, 0), HexColor("#1F77B4")),
         ('TEXTCOLOR', (0, 0), (-1, 0), HexColor("#FFFFFF")),
         ('FONTNAME', (0, 0), (-1, -1), 'DejaVuSans'),
         ('FONTNAME', (0, 0), (-1, 0), 'DejaVuSans-Bold'),
@@ -1323,7 +1588,7 @@ def build_page_pdc(
     """
     elements = []
     
-    elements.append(Paragraph("Krzywa Mocy i Critical Power", styles["title"]))
+    elements.append(Paragraph("7. KRZYWA MOCY I CRITICAL POWER", styles["title"]))
     elements.append(Spacer(1, 6 * mm))
     
     # === EXPLANATION ===
@@ -1430,7 +1695,7 @@ def build_page_interpretation(
     """
     elements = []
     
-    elements.append(Paragraph("Co oznaczają te wyniki?", styles["title"]))
+    elements.append(Paragraph("4. CO OZNACZAJĄ TE WYNIKI?", styles["title"]))
     elements.append(Spacer(1, 6 * mm))
     
     vt1_watts_raw = thresholds.get("vt1_watts", "brak danych")
@@ -1577,7 +1842,7 @@ def build_page_cardiovascular(cardio_data: Dict[str, Any], styles: Dict) -> List
     # HEADER
     # ==========================================================================
     elements.append(Paragraph(
-        "<font size='18'><b>DIAGNOSTYKA KOSZTU SERCOWO-NACZYNIOWEGO</b></font>",
+        "<font size='18'><b>9. DIAGNOSTYKA KOSZTU SERCOWO-NACZYNIOWEGO</b></font>",
         styles['title']
     ))
     elements.append(Paragraph(
@@ -1752,7 +2017,7 @@ def build_page_ventilation(vent_data: Dict[str, Any], styles: Dict) -> List:
     # HEADER
     # ==========================================================================
     elements.append(Paragraph(
-        "<font size='18'><b>KONTROLA ODDYCHANIA I METABOLIZMU</b></font>",
+        "<font size='18'><b>5. KONTROLA ODDYCHANIA I METABOLIZMU</b></font>",
         styles['title']
     ))
     elements.append(Paragraph(
@@ -1937,7 +2202,7 @@ def build_page_metabolic_engine(metabolic_data: Dict[str, Any], styles: Dict) ->
     # HEADER
     # ==========================================================================
     elements.append(Paragraph(
-        "<font size='18'><b>SILNIK METABOLICZNY I STRATEGIA TRENINGOWA</b></font>",
+        "<font size='18'><b>6. SILNIK METABOLICZNY I STRATEGIA TRENINGOWA</b></font>",
         styles['title']
     ))
     elements.append(Paragraph(
@@ -2172,7 +2437,7 @@ def build_page_limiter_radar(
     elements = []
     
     # Title
-    elements.append(Paragraph("Radar Obciążenia Systemów", styles["title"]))
+    elements.append(Paragraph("10. RADAR OBCIĄŻENIA SYSTEMÓW", styles["title"]))
     elements.append(Paragraph(
         "<font size='10' color='#7F8C8D'>Analiza limiterów fizjologicznych dla 20 min (FTP)</font>",
         styles["center"]
@@ -2306,7 +2571,7 @@ def build_page_zones(
     """
     elements = []
     
-    elements.append(Paragraph("Rekomendowane Strefy Treningowe", styles["title"]))
+    elements.append(Paragraph("2. REKOMENDOWANE STREFY TRENINGOWE", styles["title"]))
     elements.append(Spacer(1, 6 * mm))
     
     vt1_raw = thresholds.get("vt1_watts", "brak danych")
@@ -2380,7 +2645,7 @@ def build_page_limitations(
     """
     elements = []
     
-    elements.append(Paragraph("⚠️ Ograniczenia interpretacji", styles["title"]))
+    elements.append(Paragraph("16. OGRANICZENIA INTERPRETACJI", styles["title"]))
     elements.append(Spacer(1, 6 * mm))
     
     limitations = [
@@ -2584,7 +2849,7 @@ def build_page_theory(styles: Dict) -> List:
     t = Table(data, colWidths=[30*mm, 30*mm, 30*mm, 80*mm])
     # Table should use DejaVuSans for Polish chars if needed, though ASCII used above
     t.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), HexColor("#1a1a2e")),
+        ('BACKGROUND', (0, 0), (-1, 0), HexColor("#1F77B4")),
         ('TEXTCOLOR', (0, 0), (-1, 0), HexColor("#FFFFFF")),
         ('FONTNAME', (0, 0), (-1, -1), 'DejaVuSans'),
         ('FONTNAME', (0, 0), (-1, 0), 'DejaVuSans-Bold'),
@@ -2610,7 +2875,7 @@ def build_page_protocol(
     elements = []
     
     elements.append(Spacer(1, 20 * mm)) # Move down for better placement
-    elements.append(Paragraph("3. Hierarchia Sygnałów i Protokół", styles["title"]))
+    elements.append(Paragraph("HIERARCHIA SYGNAŁÓW I PROTOKÓŁ", styles["title"]))
     elements.append(Spacer(1, 8 * mm))
     
     # Extensive Theory Section
@@ -2669,7 +2934,7 @@ def build_page_thermal(
     
     elements = []
     
-    elements.append(Paragraph("Analiza Termoregulacji", styles["title"]))
+    elements.append(Paragraph("14. ANALIZA TERMOREGULACJI", styles["title"]))
     elements.append(Paragraph("<font size='10' color='#7F8C8D'>Dynamika temperatury, tolerancja cieplna, rekomendacje</font>", styles["body"]))
     elements.append(Spacer(1, 6 * mm))
     
@@ -2730,7 +2995,7 @@ def build_page_thermal(
     
     table = Table(key_data, colWidths=[45 * mm, 35 * mm, 85 * mm])
     table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), HexColor("#1a1a2e")),
+        ('BACKGROUND', (0, 0), (-1, 0), HexColor("#1F77B4")),
         ('TEXTCOLOR', (0, 0), (-1, 0), HexColor("#FFFFFF")),
         ('FONTNAME', (0, 0), (-1, -1), 'DejaVuSans'),
         ('FONTNAME', (0, 0), (-1, 0), 'DejaVuSans-Bold'),
@@ -3118,7 +3383,7 @@ def build_page_biomech(
     
     elements = []
     
-    elements.append(Paragraph("Analiza Biomechaniczna (Transfer Mocy)", styles["title"]))
+    elements.append(Paragraph("11. ANALIZA BIOMECHANICZNA", styles["title"]))
     elements.append(Paragraph("<font size='10' color='#7F8C8D'>Fizjologia okluzji i relacja siła–tlen</font>", styles["body"]))
     elements.append(Spacer(1, 6 * mm))
     
@@ -3348,7 +3613,7 @@ def build_page_drift(
     """Build Physiological Drift page (heatmaps only, no KPI table)."""
     elements = []
     
-    elements.append(Paragraph("Dryf Fizjologiczny", styles["title"]))
+    elements.append(Paragraph("12. DRYF FIZJOLOGICZNY", styles["title"]))
     elements.append(Spacer(1, 6 * mm))
     
     # Heatmaps
@@ -3415,7 +3680,7 @@ def build_page_kpi_dashboard(
     
     elements = []
     
-    elements.append(Paragraph("Kluczowe Wskaźniki Wydajności (KPI)", styles["title"]))
+    elements.append(Paragraph("13. KLUCZOWE WSKAŹNIKI WYDAJNOŚCI (KPI)", styles["title"]))
     elements.append(Paragraph("<font size='10' color='#7F8C8D'>Dashboard stabilności układu krążenia i kosztu energetycznego</font>", styles["body"]))
     elements.append(Spacer(1, 8 * mm))
     

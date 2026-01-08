@@ -42,6 +42,8 @@ from .layout import (
     build_page_metabolic_engine,
     build_page_limiter_radar,
     build_table_of_contents,
+    build_title_page,
+    build_contact_footer,
 )
 from ...calculations.executive_summary import generate_executive_summary
 
@@ -435,25 +437,32 @@ def build_ramp_pdf(
     story = []
     
     # ===========================================================================
+    # STRONA TYTUŁOWA (TITLE PAGE) - DarkGlass Premium
+    # ===========================================================================
+    story.extend(build_title_page(metadata=metadata, styles=styles))
+    story.append(PageBreak())
+    
+    # ===========================================================================
     # SPIS TREŚCI (TABLE OF CONTENTS)
     # ===========================================================================
     
     section_titles = [
-        {"title": "1. Badania Wydolnościowe - Raport Potestowy", "page": "2", "anchor": "cover"},
-        {"title": "2. Rekomendowane Strefy Treningowe", "page": "3", "anchor": "zones"},
-        {"title": "3. Szczegóły Progów VT1/VT2", "page": "4", "anchor": "thresholds"},
-        {"title": "4. Co oznaczają te wyniki?", "page": "5", "anchor": "interpretation"},
-        {"title": "5. Kontrola Oddychania i Metabolizmu", "page": "7", "anchor": "ventilation"},
-        {"title": "6. Silnik Metaboliczny i Strategia", "page": "9", "anchor": "metabolic"},
-        {"title": "7. Krzywa Mocy (PDC)", "page": "11", "anchor": "pdc"},
-        {"title": "8. Diagnostyka Oksygenacji Mięśniowej", "page": "13", "anchor": "smo2"},
-        {"title": "9. Radar Obciążenia Systemów", "page": "16", "anchor": "radar"},
-        {"title": "10. Analiza Biomechaniczna", "page": "17", "anchor": "biomech"},
-        {"title": "11. Dryf Fizjologiczny", "page": "19", "anchor": "drift"},
-        {"title": "12. Kluczowe Wskaźniki Wydajności", "page": "20", "anchor": "kpi"},
-        {"title": "13. Analiza Termoregulacji", "page": "21", "anchor": "thermal"},
-        {"title": "14. Podsumowanie Fizjologiczne", "page": "23", "anchor": "summary"},
-        {"title": "15. Ograniczenia Interpretacji", "page": "25", "anchor": "limitations"},
+        {"title": "1. BADANIA WYDOLNOŚCIOWE - RAPORT POTESTOWY", "page": "3"},
+        {"title": "2. REKOMENDOWANE STREFY TRENINGOWE", "page": "4"},
+        {"title": "3. SZCZEGÓŁY PROGÓW VT1 / VT2", "page": "5"},
+        {"title": "4. CO OZNACZAJĄ TE WYNIKI?", "page": "6"},
+        {"title": "5. KONTROLA ODDYCHANIA I METABOLIZMU", "page": "8"},
+        {"title": "6. SILNIK METABOLICZNY I STRATEGIA", "page": "10"},
+        {"title": "7. KRZYWA MOCY (PDC)", "page": "12"},
+        {"title": "8. DIAGNOSTYKA OKSYGENACJI MIĘŚNIOWEJ", "page": "14"},
+        {"title": "9. DIAGNOSTYKA SERCOWO-NACZYNIOWA", "page": "16"},
+        {"title": "10. RADAR OBCIĄŻENIA SYSTEMÓW", "page": "17"},
+        {"title": "11. ANALIZA BIOMECHANICZNA", "page": "18"},
+        {"title": "12. DRYF FIZJOLOGICZNY", "page": "20"},
+        {"title": "13. KLUCZOWE WSKAŹNIKI WYDAJNOŚCI (KPI)", "page": "21"},
+        {"title": "14. ANALIZA TERMOREGULACJI", "page": "22"},
+        {"title": "15. PODSUMOWANIE FIZJOLOGICZNE", "page": "24"},
+        {"title": "16. OGRANICZENIA INTERPRETACJI", "page": "26"},
     ]
     
     story.extend(build_table_of_contents(styles=styles, section_titles=section_titles))
@@ -626,6 +635,9 @@ def build_ramp_pdf(
         styles=styles,
         is_conditional=config.is_conditional
     ))
+    
+    # === DANE KONTAKTOWE NA KOŃCU ===
+    story.extend(build_contact_footer(styles=styles))
     
     # Build PDF with footer on each page
     doc.build(story, onFirstPage=add_page_footer, onLaterPages=add_page_footer)

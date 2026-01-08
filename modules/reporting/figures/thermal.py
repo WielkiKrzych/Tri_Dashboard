@@ -76,7 +76,7 @@ def generate_thermal_chart(
     fig, ax1 = plt.subplots(figsize=figsize, dpi=dpi)
     
     # Core Temp (Left Axis)
-    l1, = ax1.plot(time_vals, df[temp_col], color='#ff7f0e', label="Core Temp", linewidth=2)
+    l1, = ax1.plot(time_vals, df[temp_col], color='#ff7f0e', label="Temp. rdzenia", linewidth=2)
     ax1.set_xlabel("Czas [min]", fontsize=font_size)
     ax1.set_ylabel("Temperatura [°C]", fontsize=font_size, color='#ff7f0e')
     ax1.tick_params(axis='y', labelcolor='#ff7f0e')
@@ -87,13 +87,13 @@ def generate_thermal_chart(
 
     # HSI (Right Axis)
     ax2 = ax1.twinx()
-    l2, = ax2.plot(time_vals, df[hsi_col], color='#d62728', linestyle=':', label="HSI", linewidth=2)
-    ax2.set_ylabel("Heat Strain Index (HSI)", fontsize=font_size, color='#d62728')
+    l2, = ax2.plot(time_vals, df[hsi_col], color='#d62728', linestyle=':', label="Wsk. Obciążenia Cieplnego", linewidth=2)
+    ax2.set_ylabel("Wskaźnik Obciążenia Cieplnego (HSI)", fontsize=font_size, color='#d62728')
     ax2.tick_params(axis='y', labelcolor='#d62728')
     ax2.set_ylim(0, 12)  # HSI scale usually 0-10+
 
     # Title & Legend
-    ax1.set_title("Termoregulacja: Core Temp vs HSI", fontsize=title_size, fontweight='bold')
+    ax1.set_title("Termoregulacja: Temp. rdzenia vs HSI", fontsize=title_size, fontweight='bold')
     
     lines = [l1, l2]
     labels = [l.get_label() for l in lines]
@@ -172,8 +172,8 @@ def generate_efficiency_chart(
     except:
         pass 
 
-    ax.set_xlabel("Core Temperature [°C]", fontsize=font_size)
-    ax.set_ylabel("Efficiency Factor [W/bpm]", fontsize=font_size)
+    ax.set_xlabel("Temperatura rdzenia [°C]", fontsize=font_size)
+    ax.set_ylabel("Współczynnik Efektywności [W/bpm]", fontsize=font_size)
     ax.set_title("Spadek Efektywności (Cardiac Drift) vs Temperatura", fontsize=title_size, fontweight='bold')
     ax.legend(loc='upper right')
     

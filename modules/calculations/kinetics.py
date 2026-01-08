@@ -58,8 +58,8 @@ def detect_smo2_trend(
     if len(time_series) < 10:
         return {
             "slope": 0.0,
-            "category": "Insufficient Data",
-            "description": "Too few data points"
+            "category": "Niewystarczające dane",
+            "description": "Za mało punktów danych"
         }
         
     slope, _, _, _, std_err = stats.linregress(time_series, smo2_series)
@@ -67,24 +67,24 @@ def detect_smo2_trend(
     # Classification thresholds (assuming %/s for raw, or unit/s for norm)
     # If raw SmO2 (0-100), slope is %/s.
     
-    category = "Stable"
-    description = "Equilibrium (Steady State)"
+    category = "Stabilny"
+    description = "Równowaga (Stan stały)"
     
     if slope < -0.05:
-        category = "Rapid Deoxygenation"
-        description = "High Intensity (>> Critical Power). Very fast O2 extraction."
+        category = "Szybka deoksygenacja"
+        description = "Wysoka intensywność (>> CP). Bardzo szybka ekstrakcja O2."
     elif slope < -0.01:
-        category = "Deoxygenation"
-        description = "Non-Steady State (> Critical Power). O2 debt accumulating."
+        category = "Deoksygenacja"
+        description = "Stan niestały (> CP). Dług tlenowy kumuluje się."
     elif slope <= 0.01:
-        category = "Equilibrium"
-        description = "Steady State. Supply matches Demand."
+        category = "Równowaga"
+        description = "Stan stały. Podaż równa się popytowi."
     elif slope > 0.05:
-        category = "Rapid Reoxygenation"
-        description = "Recovery / Reperfusion."
+        category = "Szybka reoksygenacja"
+        description = "Regeneracja / Reperfuzja."
     else: # > 0.01
-        category = "Reoxygenation"
-        description = "Supply exceeds Demand (Recovery)."
+        category = "Reoksygenacja"
+        description = "Podaż przewyższa popyt (Regeneracja)."
         
     return {
         "slope": slope,
@@ -111,8 +111,8 @@ def classify_smo2_context(
     category = smo2_trend_result.get('category', '')
     slope_smo2 = smo2_trend_result.get('slope', 0)
     
-    if "Insufficient" in category:
-        return {"cause": "Unknown", "explanation": "Insufficient data"}
+    if "Niewystarczaj" in category:
+        return {"cause": "Nieznana", "explanation": "Niewystarczające dane"}
 
     # Calculate trends for other metrics
     time = df_window['time']
@@ -141,8 +141,8 @@ def classify_smo2_context(
         # Low cadence + Stable/Rising Torque implies high muscle tension restricting flow
         if avg_cadence < 65 and avg_cadence > 10: # >10 to ignore coasting
             return {
-                "cause": "Mechanical Occlusion",
-                "explanation": f"Low cadence ({avg_cadence:.0f} rpm) creates high muscle tension, physically restricting blood flow.",
+                "cause": "Okluzja mechaniczna",
+                "explanation": f"Niska kadencja ({avg_cadence:.0f} rpm) tworzy wysokie napięcie mięśniowe, fizycznie ograniczając przepływ krwi.",
                 "type": "mechanical"
             }
             
@@ -150,8 +150,8 @@ def classify_smo2_context(
         # Power is rising significantly
         if slope_watts > 0.5: # Rising by >0.5 W/s
             return {
-                "cause": "Demand Driven",
-                "explanation": "Normal response to increasing power output.",
+                "cause": "Napędzany popytem",
+                "explanation": "Normalna odpowiedź na rosnącą moc wyjściową.",
                 "type": "normal"
             }
             
@@ -159,8 +159,8 @@ def classify_smo2_context(
         # Power is dropping but we are STILL desaturating? Very bad sign.
         if slope_watts < -0.5:
              return {
-                "cause": "Efficiency Loss",
-                "explanation": "Desaturation continues despite decreasing power. Indicates severe metabolic fatigue or decoupling.",
+                "cause": "Utrata efektywności",
+                "explanation": "Desaturacja kontynuuje się mimo spadającej mocy. Wskazuje na poważne zmęczenie metaboliczne lub rozjechanie.",
                 "type": "warning"
             }
             
@@ -169,18 +169,18 @@ def classify_smo2_context(
         # Check HR. If HR is flat/maxed, it might be cardiac limit.
         if abs(slope_watts) <= 0.5:
              return {
-                "cause": "Delivery Limitation",
-                "explanation": "Desaturation at constant power. Oxygen supply cannot meet steady demand.",
+                "cause": "Ograniczenie dostawy",
+                "explanation": "Desaturacja przy stałej mocy. Podaż tlenu nie może zaspokoić stałego popytu.",
                 "type": "limit"
             }
             
-        return {"cause": "Metabolic Stress", "explanation": "General utilization exceeds supply.", "type": "normal"}
+        return {"cause": "Stres metaboliczny", "explanation": "Ogólne zużycie przewyższa podaż.", "type": "normal"}
 
     # 2. EQUILIBRIUM / STABLE
     elif abs(slope_smo2) <= 0.01:
         return {
-            "cause": "Steady State",
-            "explanation": "Oxygen supply matches demand.",
+            "cause": "Stan stały",
+            "explanation": "Podaż tlenu równa się popytowi.",
             "type": "success"
         }
 
@@ -188,14 +188,14 @@ def classify_smo2_context(
     else: # > 0.01
         if slope_watts < -0.5:
             return {
-                "cause": "Recovery",
-                "explanation": "Normal recovery due to reduced load.",
+                "cause": "Regeneracja",
+                "explanation": "Normalna regeneracja z powodu zmniejszonego obciążenia.",
                 "type": "success"
             }
         else:
              return {
-                "cause": "Overshoot / Priming",
-                "explanation": "Supply exceeds demand despite steady/rising load (Warm-up effect).",
+                "cause": "Przesterowanie / Rozgrzewka",
+                "explanation": "Podaż przewyższa popyt mimo stałego/rosnącego obciążenia (efekt rozgrzewki).",
                 "type": "success"
             }
 
@@ -376,7 +376,7 @@ def detect_physiological_state(
         Dict with 'state', 'confidence', 'details'
     """
     if len(df_window) < 10:
-        return {"state": "UNKNOWN", "confidence": 0.0}
+        return {"state": "NIEZNANY", "confidence": 0.0}
         
     time = df_window['time']
     
@@ -402,26 +402,26 @@ def detect_physiological_state(
     # SmO2 Rising (>0.05), Watts Dropping or Low
     if slope_smo2 > 0.05:
         confidence = min(1.0, slope_smo2 * 10) # Higher slope = higher confidence
-        return {"state": "RECOVERY", "confidence": confidence, "details": "SmO2 Rising"}
+        return {"state": "REGENERACJA", "confidence": confidence, "details": "SmO2 rośnie"}
         
     # 2. NON-STEADY (Deoxygenation)
     # SmO2 Dropping (<-0.05)
     if slope_smo2 < -0.05:
         if slope_watts < -0.5:
-             return {"state": "FATIGUE", "confidence": 0.8, "details": "Power dropping, SmO2 dropping"}
+             return {"state": "ZMĘCZENIE", "confidence": 0.8, "details": "Moc spada, SmO2 spada"}
         else:
-             return {"state": "NON_STEADY", "confidence": 0.9, "details": "High demand (Deox)"}
+             return {"state": "STAN_NIESTAŁY", "confidence": 0.9, "details": "Wysokie zapotrzebowanie (Deox)"}
              
     # 3. STEADY STATE vs DRIFT
     # SmO2 Stable (-0.05 to 0.05)
     else:
         # Check HR drift
         if slope_hr > 0.05: # HR Rising significantly (>3 bpm/min)
-             return {"state": "NON_STEADY", "confidence": 0.7, "details": "HR Drift detected"}
+             return {"state": "STAN_NIESTAŁY", "confidence": 0.7, "details": "Wykryto dryf HR"}
         elif slope_watts > 0.5:
-              return {"state": "RAMP_UP", "confidence": 0.8, "details": "Power increasing"}
+              return {"state": "NARASTANIE", "confidence": 0.8, "details": "Moc rośnie"}
         else:
-             return {"state": "STEADY_STATE", "confidence": 0.9, "details": "All signals stable"}
+             return {"state": "STAN_STAŁY", "confidence": 0.9, "details": "Wszystkie sygnały stabilne"}
 
 
 def generate_state_timeline(

@@ -182,7 +182,7 @@ def generate_vlamax_balance_chart(
         time_series = report_data.get("time_series", {})
         power_watts = time_series.get("power_watts", [])
         if power_watts and len(power_watts) > 300:
-            import pandas as pd
+            # pd is already imported at module level
             power_series = pd.Series(power_watts)
             mmp_5min = power_series.rolling(300, min_periods=60).mean().max()
             if len(power_watts) > 1200:

@@ -357,15 +357,16 @@ def build_contact_footer(styles: Dict) -> List:
 
 
 # ============================================================================
-# TABLE OF CONTENTS (SPIS TREŚCI)
+# TABLE OF CONTENTS (SPIS TREŚCI) - HIERARCHICAL
 # ============================================================================
 
 def build_table_of_contents(styles: Dict, section_titles: List[Dict[str, Any]]) -> List:
-    """Build Table of Contents page.
+    """Build hierarchical Table of Contents page.
     
     Args:
         styles: PDF styles dictionary
-        section_titles: List of dicts with 'title', 'page' keys
+        section_titles: List of dicts with 'title', 'page', 'level' keys
+                        level=0 for main chapters, level=1 for subchapters
         
     Returns:
         List of reportlab flowables
@@ -379,22 +380,35 @@ def build_table_of_contents(styles: Dict, section_titles: List[Dict[str, Any]]) 
         "<font size='22'><b>SPIS TREŚCI</b></font>",
         styles["title"]
     ))
-    elements.append(Spacer(1, 10 * mm))
+    elements.append(Spacer(1, 8 * mm))
     
-    # Table of Contents entries
+    # Table of Contents entries with hierarchy
     toc_data = []
     for section in section_titles:
         title = section.get("title", "---")
         page = section.get("page", "---")
+        level = section.get("level", 1)  # 0=chapter, 1=subchapter
         
-        title_para = Paragraph(
-            f"<font color='#333333'>{title}</font>",
-            styles["body"]
-        )
-        page_para = Paragraph(
-            f"<font color='#7F8C8D'>{page}</font>",
-            styles["body"]
-        )
+        if level == 0:
+            # Main chapter - bold, larger, dark blue background
+            title_para = Paragraph(
+                f"<font color='#1A5276' size='11'><b>{title}</b></font>",
+                styles["body"]
+            )
+            page_para = Paragraph(
+                f"<font color='#1A5276' size='11'><b>{page}</b></font>",
+                styles["body"]
+            )
+        else:
+            # Subchapter - indented with bullet
+            title_para = Paragraph(
+                f"<font color='#555555' size='9'>    • {title}</font>",
+                styles["body"]
+            )
+            page_para = Paragraph(
+                f"<font color='#7F8C8D' size='9'>{page}</font>",
+                styles["body"]
+            )
         
         toc_data.append([title_para, page_para])
     
@@ -405,10 +419,8 @@ def build_table_of_contents(styles: Dict, section_titles: List[Dict[str, Any]]) 
             ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
             ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
             ('FONTNAME', (0, 0), (-1, -1), 'DejaVuSans'),
-            ('FONTSIZE', (0, 0), (-1, -1), 10),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
-            ('TOPPADDING', (0, 0), (-1, -1), 6),
-            ('LINEBELOW', (0, 0), (-1, -2), 0.5, HexColor("#E0E0E0")),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+            ('TOPPADDING', (0, 0), (-1, -1), 4),
         ]))
         elements.append(toc_table)
     else:
@@ -416,6 +428,39 @@ def build_table_of_contents(styles: Dict, section_titles: List[Dict[str, Any]]) 
             "<font color='#7F8C8D'>Brak sekcji do wyświetlenia</font>",
             styles["body"]
         ))
+    
+    return elements
+
+
+def build_chapter_header(chapter_num: str, chapter_title: str, styles: Dict) -> List:
+    """Build a prominent chapter header with Roman numeral.
+    
+    Args:
+        chapter_num: Roman numeral (I, II, III, IV, V)
+        chapter_title: Chapter title text
+        styles: PDF styles dict
+        
+    Returns:
+        List of flowables
+    """
+    elements = []
+    
+    # Chapter header with navy background
+    header_content = [[Paragraph(
+        f"<font color='white' size='16'><b>{chapter_num}. {chapter_title}</b></font>",
+        styles["center"]
+    )]]
+    
+    header_table = Table(header_content, colWidths=[170 * mm])
+    header_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), PREMIUM_COLORS["navy"]),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('TOPPADDING', (0, 0), (-1, -1), 12),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 12),
+    ]))
+    elements.append(header_table)
+    elements.append(Spacer(1, 6 * mm))
     
     return elements
 
@@ -460,8 +505,8 @@ def build_page_executive_summary(
     
     # Title row
     elements.append(Paragraph(
-        f"<font size='22'><b>15. PODSUMOWANIE FIZJOLOGICZNE</b></font>",
-        styles["title"]
+        "<font size='12'>5.2 PODSUMOWANIE FIZJOLOGICZNE</font>",
+        styles["center"]
     ))
     
     # Status badge + date row
@@ -807,7 +852,7 @@ def build_page_executive_verdict(
     # A. HERO BOX - MAIN VERDICT
     # ==========================================================================
     
-    elements.append(Paragraph("WERDYKT FIZJOLOGICZNY", styles["title"]))
+    elements.append(Paragraph("<font size='12'>5.3 WERDYKT FIZJOLOGICZNY</font>", styles["center"]))
     elements.append(Paragraph(
         "<font size='10' color='#7F8C8D'>Decyzyjne podsumowanie całego raportu fizjologicznego</font>",
         styles["center"]
@@ -1212,7 +1257,8 @@ def build_page_cover(
     session_id = metadata.get("session_id", "")[:8]
     method_version = metadata.get("method_version", "1.0.0")
     
-    elements.append(Paragraph("1. BADANIA WYDOLNOŚCIOWE - RAPORT POTESTOWY", styles["title"]))
+    elements.append(Paragraph("1. PODSUMOWANIE WYKONAWCZE", styles["title"]))
+    elements.append(Paragraph("<font size='12'>1.1 RAPORT POTESTOWY</font>", styles["center"]))
     
     meta_text = f"Data: <b>{test_date}</b> | ID: {session_id} | v{method_version}"
     elements.append(Paragraph(meta_text, styles["center"]))
@@ -1298,7 +1344,8 @@ def build_page_thresholds(
     """
     elements = []
     
-    elements.append(Paragraph("3. SZCZEGÓŁY PROGÓW VT1 / VT2", styles["title"]))
+    elements.append(Paragraph("2. PROGI METABOLICZNE", styles["title"]))
+    elements.append(Paragraph("<font size='12'>2.1 SZCZEGÓŁY VT1 / VT2</font>", styles["center"]))
     elements.append(Spacer(1, 6 * mm))
     
     # === EXPLANATION ===
@@ -1380,8 +1427,8 @@ def build_page_smo2(smo2_data, smo2_manual, figure_paths, styles):
     # HEADER
     # ==========================================================================
     elements.append(Paragraph(
-        "<font size='18'><b>8. DIAGNOSTYKA OKSYGENACJI MIĘŚNIOWEJ</b></font>",
-        styles['title']
+        "<font size='12'>3.3 OKSYGENACJA MIĘŚNIOWA (SmO₂)</font>",
+        styles['center']
     ))
     elements.append(Paragraph(
         "<font size='10' color='#7F8C8D'>Kliniczna analiza dostawy i wykorzystania tlenu</font>",
@@ -1649,7 +1696,7 @@ def build_page_pdc(
     """
     elements = []
     
-    elements.append(Paragraph("7. KRZYWA MOCY I CRITICAL POWER", styles["title"]))
+    elements.append(Paragraph("<font size='12'>2.5 KRZYWA MOCY (PDC)</font>", styles["center"]))
     elements.append(Spacer(1, 6 * mm))
     
     # === EXPLANATION ===
@@ -1756,7 +1803,7 @@ def build_page_interpretation(
     """
     elements = []
     
-    elements.append(Paragraph("4. CO OZNACZAJĄ TE WYNIKI?", styles["title"]))
+    elements.append(Paragraph("<font size='12'>2.2 CO OZNACZAJĄ TE WYNIKI?</font>", styles["center"]))
     elements.append(Spacer(1, 6 * mm))
     
     vt1_watts_raw = thresholds.get("vt1_watts", "brak danych")
@@ -1903,8 +1950,8 @@ def build_page_cardiovascular(cardio_data: Dict[str, Any], styles: Dict) -> List
     # HEADER
     # ==========================================================================
     elements.append(Paragraph(
-        "<font size='18'><b>9. DIAGNOSTYKA KOSZTU SERCOWO-NACZYNIOWEGO</b></font>",
-        styles['title']
+        "<font size='12'>3.2 UKŁAD SERCOWO-NACZYNIOWY</font>",
+        styles['center']
     ))
     elements.append(Paragraph(
         "<font size='10' color='#7F8C8D'>Diagnostyka kosztu sercowego generowania mocy</font>",
@@ -2078,8 +2125,12 @@ def build_page_ventilation(vent_data: Dict[str, Any], styles: Dict) -> List:
     # HEADER
     # ==========================================================================
     elements.append(Paragraph(
-        "<font size='18'><b>5. KONTROLA ODDYCHANIA I METABOLIZMU</b></font>",
+        "3. DIAGNOSTYKA UKŁADÓW",
         styles['title']
+    ))
+    elements.append(Paragraph(
+        "<font size='12'>3.1 KONTROLA ODDYCHANIA</font>",
+        styles['center']
     ))
     elements.append(Paragraph(
         "<font size='10' color='#7F8C8D'>Diagnostyka wentylacji i kontroli metabolicznej</font>",
@@ -2263,8 +2314,8 @@ def build_page_metabolic_engine(metabolic_data: Dict[str, Any], styles: Dict) ->
     # HEADER
     # ==========================================================================
     elements.append(Paragraph(
-        "<font size='18'><b>6. SILNIK METABOLICZNY I STRATEGIA TRENINGOWA</b></font>",
-        styles['title']
+        "<font size='12'>2.4 SILNIK METABOLICZNY</font>",
+        styles['center']
     ))
     elements.append(Paragraph(
         "<font size='10' color='#7F8C8D'>Profil metaboliczny i strategia 6-8 tygodni</font>",
@@ -2498,7 +2549,8 @@ def build_page_limiter_radar(
     elements = []
     
     # Title
-    elements.append(Paragraph("10. RADAR OBCIĄŻENIA SYSTEMÓW", styles["title"]))
+    elements.append(Paragraph("4. LIMITERY I OBCIĄŻENIE CIEPLNE", styles["title"]))
+    elements.append(Paragraph("<font size='12'>4.1 RADAR OBCIĄŻENIA SYSTEMÓW</font>", styles["center"]))
     elements.append(Paragraph(
         "<font size='10' color='#7F8C8D'>Analiza limiterów fizjologicznych dla 20 min (FTP)</font>",
         styles["center"]
@@ -2632,7 +2684,7 @@ def build_page_zones(
     """
     elements = []
     
-    elements.append(Paragraph("2. REKOMENDOWANE STREFY TRENINGOWE", styles["title"]))
+    elements.append(Paragraph("<font size='12'>1.2 STREFY TRENINGOWE</font>", styles["center"]))
     elements.append(Spacer(1, 6 * mm))
     
     vt1_raw = thresholds.get("vt1_watts", "brak danych")
@@ -2706,7 +2758,7 @@ def build_page_limitations(
     """
     elements = []
     
-    elements.append(Paragraph("16. OGRANICZENIA INTERPRETACJI", styles["title"]))
+    elements.append(Paragraph("<font size='12'>5.5 OGRANICZENIA INTERPRETACJI</font>", styles["center"]))
     elements.append(Spacer(1, 6 * mm))
     
     limitations = [
@@ -2778,14 +2830,18 @@ def _build_chart(chart_path: str, title: str, styles: Dict) -> List:
     Returns:
         List of flowables
     """
-    elements = []
-    elements.append(Paragraph(title, styles["subheading"]))
+    from reportlab.platypus import KeepTogether
+    
+    chart_elements = []
+    
+    # Title for the chart
+    chart_elements.append(Paragraph(title, styles["subheading"]))
     
     # 1. Check if file exists
     if not chart_path or not os.path.exists(chart_path):
         logger.warning(f"PDF Layout: Chart file missing for '{title}' at path: {chart_path}")
-        elements.append(Paragraph("Wykres niedostępny", styles["small"]))
-        return elements
+        chart_elements.append(Paragraph("Wykres niedostępny", styles["small"]))
+        return [KeepTogether(chart_elements)]
     
     # 2. Embed image
     try:
@@ -2805,10 +2861,12 @@ def _build_chart(chart_path: str, title: str, styles: Dict) -> List:
         img.drawWidth = img_width
         img.drawHeight = img_height
         
-        elements.append(img)
+        chart_elements.append(img)
     except Exception as e:
         logger.error(f"PDF Layout: Error embedding chart '{title}' from {chart_path}: {e}")
-    return elements
+    
+    # Wrap in KeepTogether to prevent title/chart separation across pages
+    return [KeepTogether(chart_elements)]
 
 
 def _build_education_block(title: str, content: str, styles: Dict) -> List:
@@ -2846,12 +2904,12 @@ def _build_education_block(title: str, content: str, styles: Dict) -> List:
 # ============================================================================
 
 def build_page_theory(styles: Dict) -> List:
-    """Build Page 5: Advanced Physiological Theory."""
+    """Build Page: Model Metaboliczny (2.3)."""
     from reportlab.lib.colors import HexColor
     from reportlab.platypus import TableStyle
     elements = []
     
-    elements.append(Paragraph("Model Metaboliczny (INSCYD/WKO5)", styles["title"]))
+    elements.append(Paragraph("<font size='12'>2.3 MODEL METABOLICZNY</font>", styles["center"]))
     elements.append(Spacer(1, 6 * mm))
     
     # Intro
@@ -2935,8 +2993,7 @@ def build_page_protocol(
     """Build Page for Signal Hierarchy and Protocol information."""
     elements = []
     
-    elements.append(Spacer(1, 20 * mm)) # Move down for better placement
-    elements.append(Paragraph("HIERARCHIA SYGNAŁÓW I PROTOKÓŁ", styles["title"]))
+    elements.append(Paragraph("<font size='12'>5.4 PROTOKÓŁ TESTU</font>", styles["center"]))
     elements.append(Spacer(1, 8 * mm))
     
     # Extensive Theory Section
@@ -2995,7 +3052,7 @@ def build_page_thermal(
     
     elements = []
     
-    elements.append(Paragraph("14. ANALIZA TERMOREGULACJI", styles["title"]))
+    elements.append(Paragraph("<font size='12'>4.3 TERMOREGULACJA</font>", styles["center"]))
     elements.append(Paragraph("<font size='10' color='#7F8C8D'>Dynamika temperatury, tolerancja cieplna, rekomendacje</font>", styles["body"]))
     elements.append(Spacer(1, 6 * mm))
     
@@ -3444,7 +3501,7 @@ def build_page_biomech(
     
     elements = []
     
-    elements.append(Paragraph("11. ANALIZA BIOMECHANICZNA", styles["title"]))
+    elements.append(Paragraph("<font size='12'>3.4 BIOMECHANIKA</font>", styles["center"]))
     elements.append(Paragraph("<font size='10' color='#7F8C8D'>Fizjologia okluzji i relacja siła–tlen</font>", styles["body"]))
     elements.append(Spacer(1, 6 * mm))
     
@@ -3674,7 +3731,7 @@ def build_page_drift(
     """Build Physiological Drift page (heatmaps only, no KPI table)."""
     elements = []
     
-    elements.append(Paragraph("12. DRYF FIZJOLOGICZNY", styles["title"]))
+    elements.append(Paragraph("<font size='12'>4.2 DRYF FIZJOLOGICZNY</font>", styles["center"]))
     elements.append(Spacer(1, 6 * mm))
     
     # Heatmaps
@@ -3741,7 +3798,8 @@ def build_page_kpi_dashboard(
     
     elements = []
     
-    elements.append(Paragraph("13. KLUCZOWE WSKAŹNIKI WYDAJNOŚCI (KPI)", styles["title"]))
+    elements.append(Paragraph("5. PODSUMOWANIE", styles["title"]))
+    elements.append(Paragraph("<font size='12'>5.1 WSKAŹNIKI KPI</font>", styles["center"]))
     elements.append(Paragraph("<font size='10' color='#7F8C8D'>Dashboard stabilności układu krążenia i kosztu energetycznego</font>", styles["body"]))
     elements.append(Spacer(1, 8 * mm))
     

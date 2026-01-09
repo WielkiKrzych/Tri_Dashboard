@@ -423,10 +423,32 @@ def build_ramp_pdf(
     method_version = metadata.get("method_version", "1.0.0")
     
     def add_page_footer(canvas, doc):
-        """Add footer to each page."""
+        """Add footer and watermark to each page."""
+        import os
         canvas.saveState()
         
-        # Footer text
+        # === WATERMARK (subtle, centered) ===
+        watermark_path = os.path.join(os.path.dirname(__file__), "..", "..", "..", "assets", "watermark.jpg")
+        if os.path.exists(watermark_path):
+            try:
+                # Draw watermark as semi-transparent image in center
+                canvas.saveState()
+                canvas.setFillAlpha(0.06)  # Very low opacity for subtle effect
+                
+                # Center of page
+                page_width, page_height = PAGE_SIZE
+                wm_width = 60 * mm
+                wm_height = 60 * mm
+                x = (page_width - wm_width) / 2
+                y = (page_height - wm_height) / 2
+                
+                canvas.drawImage(watermark_path, x, y, width=wm_width, height=wm_height, 
+                                mask='auto', preserveAspectRatio=True)
+                canvas.restoreState()
+            except Exception:
+                pass  # Silently skip if watermark fails
+        
+        # === FOOTER TEXT ===
         page_num = doc.page
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
         footer_text = f"Strona {page_num} | ID: {session_id} | v{method_version} | {timestamp} | Tri_Dashboard"
@@ -463,22 +485,39 @@ def build_ramp_pdf(
     # ===========================================================================
     
     section_titles = [
-        {"title": "1. BADANIA WYDOLNOŚCIOWE - RAPORT POTESTOWY", "page": "3"},
-        {"title": "2. REKOMENDOWANE STREFY TRENINGOWE", "page": "4"},
-        {"title": "3. SZCZEGÓŁY PROGÓW VT1 / VT2", "page": "5"},
-        {"title": "4. CO OZNACZAJĄ TE WYNIKI?", "page": "6"},
-        {"title": "5. KONTROLA ODDYCHANIA I METABOLIZMU", "page": "8"},
-        {"title": "6. SILNIK METABOLICZNY I STRATEGIA", "page": "10"},
-        {"title": "7. KRZYWA MOCY (PDC)", "page": "12"},
-        {"title": "8. DIAGNOSTYKA OKSYGENACJI MIĘŚNIOWEJ", "page": "14"},
-        {"title": "9. DIAGNOSTYKA SERCOWO-NACZYNIOWA", "page": "16"},
-        {"title": "10. RADAR OBCIĄŻENIA SYSTEMÓW", "page": "17"},
-        {"title": "11. ANALIZA BIOMECHANICZNA", "page": "18"},
-        {"title": "12. DRYF FIZJOLOGICZNY", "page": "20"},
-        {"title": "13. KLUCZOWE WSKAŹNIKI WYDAJNOŚCI (KPI)", "page": "21"},
-        {"title": "14. ANALIZA TERMOREGULACJI", "page": "22"},
-        {"title": "15. PODSUMOWANIE FIZJOLOGICZNE", "page": "24"},
-        {"title": "16. OGRANICZENIA INTERPRETACJI", "page": "26"},
+        # === ROZDZIAŁ 1: PODSUMOWANIE WYKONAWCZE ===
+        {"title": "1. PODSUMOWANIE WYKONAWCZE", "page": "3", "level": 0},
+        {"title": "1.1 Raport potestowy", "page": "3", "level": 1},
+        {"title": "1.2 Strefy treningowe", "page": "4", "level": 1},
+        
+        # === ROZDZIAŁ 2: PROGI METABOLICZNE ===
+        {"title": "2. PROGI METABOLICZNE", "page": "5", "level": 0},
+        {"title": "2.1 Szczegóły VT1/VT2", "page": "5", "level": 1},
+        {"title": "2.2 Co oznaczają wyniki?", "page": "6", "level": 1},
+        {"title": "2.3 Model metaboliczny", "page": "7", "level": 1},
+        {"title": "2.4 Silnik metaboliczny", "page": "8", "level": 1},
+        {"title": "2.5 Krzywa mocy (PDC)", "page": "10", "level": 1},
+        
+        # === ROZDZIAŁ 3: DIAGNOSTYKA UKŁADÓW ===
+        {"title": "3. DIAGNOSTYKA UKŁADÓW", "page": "12", "level": 0},
+        {"title": "3.1 Kontrola oddychania", "page": "12", "level": 1},
+        {"title": "3.2 Układ sercowo-naczyniowy", "page": "13", "level": 1},
+        {"title": "3.3 Oksygenacja mięśniowa (SmO₂)", "page": "14", "level": 1},
+        {"title": "3.4 Biomechanika", "page": "16", "level": 1},
+        
+        # === ROZDZIAŁ 4: LIMITERY I OBCIĄŻENIE CIEPLNE ===
+        {"title": "4. LIMITERY I OBCIĄŻENIE CIEPLNE", "page": "17", "level": 0},
+        {"title": "4.1 Radar obciążenia systemów", "page": "17", "level": 1},
+        {"title": "4.2 Dryf fizjologiczny", "page": "18", "level": 1},
+        {"title": "4.3 Termoregulacja", "page": "19", "level": 1},
+        
+        # === ROZDZIAŁ 5: PODSUMOWANIE ===
+        {"title": "5. PODSUMOWANIE", "page": "21", "level": 0},
+        {"title": "5.1 Wskaźniki KPI", "page": "21", "level": 1},
+        {"title": "5.2 Podsumowanie fizjologiczne", "page": "22", "level": 1},
+        {"title": "5.3 Werdykt fizjologiczny", "page": "23", "level": 1},
+        {"title": "5.4 Protokół testu", "page": "24", "level": 1},
+        {"title": "5.5 Ograniczenia interpretacji", "page": "25", "level": 1},
     ]
     
     story.extend(build_table_of_contents(styles=styles, section_titles=section_titles))
@@ -488,7 +527,11 @@ def build_ramp_pdf(
     # NOWA KOLEJNOŚĆ STRON PDF (wg specyfikacji użytkownika)
     # ===========================================================================
     
-    # === 1) RAPORT Z TESTU RAMP (dawna str 3 - Okładka) ===
+    # ===========================================================================
+    # ROZDZIAŁ 1: PODSUMOWANIE WYKONAWCZE
+    # ===========================================================================
+    
+    # === 1.1 RAPORT POTESTOWY ===
     story.extend(build_page_cover(
         metadata=metadata,
         thresholds=thresholds,
@@ -500,14 +543,18 @@ def build_ramp_pdf(
     ))
     story.append(PageBreak())
     
-    # === 2) REKOMENDOWANE STREFY TRENINGOWE (dawna str 32) ===
+    # === 1.2 STREFY TRENINGOWE ===
     story.extend(build_page_zones(
         thresholds=thresholds,
         styles=styles
     ))
     story.append(PageBreak())
     
-    # === 3) SZCZEGÓŁY PROGÓW VT1/VT2 (dawna str 6) ===
+    # ===========================================================================
+    # ROZDZIAŁ 2: PROGI METABOLICZNE
+    # ===========================================================================
+    
+    # === 2.1 SZCZEGÓŁY VT1/VT2 ===
     story.extend(build_page_thresholds(
         thresholds=thresholds,
         smo2=pdf_data["smo2"],
@@ -516,7 +563,7 @@ def build_ramp_pdf(
     ))
     story.append(PageBreak())
     
-    # === 4) CO OZNACZAJĄ TE WYNIKI? (dawna str 23 + 24 - Interpretacja + Teoria) ===
+    # === 2.2 CO OZNACZAJĄ TE WYNIKI? ===
     story.extend(build_page_interpretation(
         thresholds=thresholds,
         cp_model=cp_model,
@@ -524,20 +571,12 @@ def build_ramp_pdf(
     ))
     story.append(PageBreak())
     
+    # === 2.3 MODEL METABOLICZNY (teoria) ===
     if not compact_mode:
         story.extend(build_page_theory(styles=styles))
         story.append(PageBreak())
     
-    # === 5) KONTROLA ODDYCHANIA (dawna str 10) ===
-    vent_data = pdf_data.get("vent_advanced", {})
-    if vent_data:
-        story.extend(build_page_ventilation(
-            vent_data=vent_data,
-            styles=styles
-        ))
-        story.append(PageBreak())
-    
-    # === 6) METABOLIC ENGINE (dawna str 11 + 12) ===
+    # === 2.4 SILNIK METABOLICZNY ===
     metabolic_data = pdf_data.get("metabolic_strategy", {})
     if metabolic_data:
         story.extend(build_page_metabolic_engine(
@@ -546,7 +585,7 @@ def build_ramp_pdf(
         ))
         story.append(PageBreak())
     
-    # === 7) KRZYWA MOCY I CP (dawna str 14 + 15) ===
+    # === 2.5 KRZYWA MOCY (PDC) ===
     story.extend(build_page_pdc(
         cp_model=cp_model,
         metadata=metadata,
@@ -555,15 +594,20 @@ def build_ramp_pdf(
     ))
     story.append(PageBreak())
     
-    # === 8) MUSCLE OXYGENATION DIAGNOSTIC (dawna str 7 + 8 + 9) ===
-    story.extend(build_page_smo2(
-        smo2_data=pdf_data["smo2"],
-        smo2_manual=pdf_data["smo2_manual"],
-        figure_paths=figure_paths,
-        styles=styles
-    ))
-    story.append(PageBreak())
+    # ===========================================================================
+    # ROZDZIAŁ 3: DIAGNOSTYKA UKŁADÓW
+    # ===========================================================================
     
+    # === 3.1 KONTROLA ODDYCHANIA ===
+    vent_data = pdf_data.get("vent_advanced", {})
+    if vent_data:
+        story.extend(build_page_ventilation(
+            vent_data=vent_data,
+            styles=styles
+        ))
+        story.append(PageBreak())
+    
+    # === 3.2 UKŁAD SERCOWO-NACZYNIOWY ===
     cardio_data = pdf_data.get("cardio_advanced", {})
     if cardio_data:
         story.extend(build_page_cardiovascular(
@@ -572,17 +616,16 @@ def build_ramp_pdf(
         ))
         story.append(PageBreak())
     
-    # === 9) RADAR OBCIĄŻENIA SYSTEMÓW (dawna str 13) ===
-    limiter_data = pdf_data.get("limiter_analysis", {})
-    if limiter_data:
-        story.extend(build_page_limiter_radar(
-            limiter_data=limiter_data,
-            figure_paths=figure_paths,
-            styles=styles
-        ))
-        story.append(PageBreak())
+    # === 3.3 OKSYGENACJA MIĘŚNIOWA (SmO2) ===
+    story.extend(build_page_smo2(
+        smo2_data=pdf_data["smo2"],
+        smo2_manual=pdf_data["smo2_manual"],
+        figure_paths=figure_paths,
+        styles=styles
+    ))
+    story.append(PageBreak())
     
-    # === 10) ANALIZA BIOMECHANICZNA (dawna str 16 + 17 + 18) ===
+    # === 3.4 BIOMECHANIKA ===
     from .layout import build_page_biomech, build_page_drift_kpi
     biomech_data = pdf_data.get("biomech_occlusion", {})
     if any(k in figure_paths for k in ["biomech_summary", "biomech_torque_smo2"]) or biomech_data:
@@ -593,9 +636,21 @@ def build_ramp_pdf(
         ))
         story.append(PageBreak())
     
-    # === 11) MODEL METABOLICZNY - USUNIĘTY NA ŻYCZENIE UŻYTKOWNIKA ===
+    # ===========================================================================
+    # ROZDZIAŁ 4: LIMITERY I OBCIĄŻENIE CIEPLNE
+    # ===========================================================================
     
-    # === 12) DRYF FIZJOLOGICZNY (dawna str 20 + 21) ===
+    # === 4.1 RADAR OBCIĄŻENIA SYSTEMÓW ===
+    limiter_data = pdf_data.get("limiter_analysis", {})
+    if limiter_data:
+        story.extend(build_page_limiter_radar(
+            limiter_data=limiter_data,
+            figure_paths=figure_paths,
+            styles=styles
+        ))
+        story.append(PageBreak())
+    
+    # === 4.2 DRYF FIZJOLOGICZNY ===
     if any(k in figure_paths for k in ["drift_heatmap_hr", "drift_heatmap_smo2"]):
         story.extend(build_page_drift_kpi(
             kpi=pdf_data["kpi"],
@@ -604,15 +659,7 @@ def build_ramp_pdf(
         ))
         story.append(PageBreak())
     
-    # === 13) KLUCZOWE WSKAŹNIKI WYDAJNOŚCI (dawna str 22) ===
-    from .layout import build_page_kpi_dashboard
-    story.extend(build_page_kpi_dashboard(
-        kpi=pdf_data["kpi"],
-        styles=styles
-    ))
-    story.append(PageBreak())
-    
-    # === 14) ANALIZA TERMOREGULACJI (dawna str 26 + 27) ===
+    # === 4.3 TERMOREGULACJA ===
     story.extend(build_page_thermal(
         thermo_data=pdf_data.get("thermo_analysis", {}),
         figure_paths=figure_paths,
@@ -620,14 +667,19 @@ def build_ramp_pdf(
     ))
     story.append(PageBreak())
     
-    # === 15) ANALIZA DRYFU EFEKTYWNOŚCI (dawna str 28 + 30, bez str 29) ===
-    # UWAGA: Strona 29 została usunięta, stronę 30 dodajemy pod 28
-    if not compact_mode:
-        from .layout import build_page_protocol
-        story.extend(build_page_protocol(styles=styles))
-        story.append(PageBreak())
+    # ===========================================================================
+    # ROZDZIAŁ 5: PODSUMOWANIE
+    # ===========================================================================
     
-    # === 16) PODSUMOWANIE FIZJOLOGICZNE (dawna str 1 + 2 + 4 + 5) ===
+    # === 5.1 WSKAŹNIKI KPI ===
+    from .layout import build_page_kpi_dashboard
+    story.extend(build_page_kpi_dashboard(
+        kpi=pdf_data["kpi"],
+        styles=styles
+    ))
+    story.append(PageBreak())
+    
+    # === 5.2 PODSUMOWANIE FIZJOLOGICZNE ===
     story.extend(build_page_executive_summary(
         executive_data=pdf_data.get("executive_summary", {}),
         metadata=metadata,
@@ -635,6 +687,7 @@ def build_ramp_pdf(
     ))
     story.append(PageBreak())
     
+    # === 5.3 WERDYKT FIZJOLOGICZNY ===
     story.extend(build_page_executive_verdict(
         canonical_physio=pdf_data.get("canonical_physiology", {}),
         smo2_advanced=pdf_data.get("smo2_advanced", pdf_data.get("smo2", {}).get("advanced_metrics", {})),
@@ -646,7 +699,13 @@ def build_ramp_pdf(
     ))
     story.append(PageBreak())
     
-    # === 17) OGRANICZENIA + NOTATKI (dawna str 31 + 33) ===
+    # === 5.4 PROTOKÓŁ TESTU ===
+    if not compact_mode:
+        from .layout import build_page_protocol
+        story.extend(build_page_protocol(styles=styles))
+        story.append(PageBreak())
+    
+    # === 5.5 OGRANICZENIA INTERPRETACJI ===
     story.extend(build_page_limitations(
         styles=styles,
         is_conditional=config.is_conditional

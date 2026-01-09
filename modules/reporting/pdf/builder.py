@@ -125,8 +125,24 @@ def map_ramp_json_to_pdf_data(report_json: Dict[str, Any], manual_overrides: Opt
         "protocol": meta.get("protocol", "Ramp Test"),
         "notes": meta.get("notes", "-"),
         "pmax_watts": pmax_val,
-        "athlete_weight_kg": meta.get("athlete_weight_kg", meta.get("rider_weight", 0))
+        "athlete_weight_kg": meta.get("athlete_weight_kg", meta.get("rider_weight", 0)),
+        # NEW: Metryka Dokumentu fields (default empty)
+        "subject_name": "",
+        "subject_anthropometry": "",
     }
+    
+    # === METADATA OVERRIDES from Ramp Archive editor ===
+    if manual_overrides.get("test_date_override"):
+        mapped_meta["test_date"] = manual_overrides["test_date_override"]
+        logger.info(f"PDF: test_date overridden to {mapped_meta['test_date']} (manual)")
+    
+    if manual_overrides.get("subject_name"):
+        mapped_meta["subject_name"] = manual_overrides["subject_name"]
+        logger.info(f"PDF: subject_name set to '{mapped_meta['subject_name']}' (manual)")
+        
+    if manual_overrides.get("subject_anthropometry"):
+        mapped_meta["subject_anthropometry"] = manual_overrides["subject_anthropometry"]
+        logger.info(f"PDF: subject_anthropometry set to '{mapped_meta['subject_anthropometry']}' (manual)")
 
     # 2. Thresholds (midpoints and ranges)
     thresholds = report_json.get("thresholds", {})

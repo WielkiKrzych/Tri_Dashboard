@@ -184,8 +184,8 @@ def build_title_page(metadata: Dict[str, Any], styles: Dict) -> List:
         elements.append(Spacer(1, 30 * mm))
         _add_fallback_title(elements, styles)
     
-    # Spacer before metadata
-    elements.append(Spacer(1, 25 * mm))
+    # Spacer before metadata (reduced to fit on one page)
+    elements.append(Spacer(1, 10 * mm))
     
     # === METRYKA DOKUMENTU (CENTERED) ===
     elements.append(Paragraph(
@@ -199,6 +199,8 @@ def build_title_page(metadata: Dict[str, Any], styles: Dict) -> List:
     session_id = metadata.get('session_id', '')[:8] if metadata.get('session_id') else ''
     method_version = metadata.get('method_version', '1.0.0')
     gen_date = datetime.now().strftime("%d.%m.%Y, %H:%M")
+    subject_name = metadata.get('subject_name', '')
+    subject_anthropometry = metadata.get('subject_anthropometry', '')
     
     meta_data = [
         [Paragraph("<b>Data testu:</b>", styles["center"]), 
@@ -211,6 +213,20 @@ def build_title_page(metadata: Dict[str, Any], styles: Dict) -> List:
          Paragraph(gen_date, styles["center"])],
     ]
     
+    # Add subject name row if provided
+    if subject_name:
+        meta_data.append([
+            Paragraph("<b>Osoba badana:</b>", styles["center"]),
+            Paragraph(subject_name, styles["center"])
+        ])
+    
+    # Add anthropometry row if provided
+    if subject_anthropometry:
+        meta_data.append([
+            Paragraph("<b>Wiek / Wzrost / Waga:</b>", styles["center"]),
+            Paragraph(subject_anthropometry, styles["center"])
+        ])
+    
     meta_table = Table(meta_data, colWidths=[60 * mm, 80 * mm])
     meta_table.setStyle(TableStyle([
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
@@ -220,14 +236,59 @@ def build_title_page(metadata: Dict[str, Any], styles: Dict) -> List:
     ]))
     elements.append(meta_table)
     
-    # Large spacer to push author to bottom
-    elements.append(Spacer(1, 50 * mm))
+    # Spacer before author section (reduced to fit on one page)
+    elements.append(Spacer(1, 20 * mm))
     
-    # Author info at bottom - LARGER and BOLD
-    elements.append(Paragraph(
-        "<font size='16'><b>Opracowanie: Krzysztof Kubicz</b></font>",
-        styles["center"]
-    ))
+    # === OPRACOWANIE SECTION WITH BACKGROUND IMAGE (like title banner) ===
+    # Use the same background image for premium styling
+    if bg_image_path and os.path.exists(bg_image_path):
+        try:
+            from reportlab.platypus import Image as RLImage
+            
+            # Add smaller banner for author section (compact to fit on one page)
+            author_banner = RLImage(bg_image_path, width=180 * mm, height=25 * mm)
+            elements.append(author_banner)
+            
+            # Overlay author text - use negative spacer to position on image
+            elements.append(Spacer(1, -18 * mm))  # Move up into image area
+            
+            author_content = [[Paragraph(
+                "<font color='white' size='20'><b>Opracowanie: Krzysztof Kubicz</b></font>",
+                styles["center"]
+            )]]
+            
+            author_table = Table(author_content, colWidths=[170 * mm])
+            author_table.setStyle(TableStyle([
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                ('TOPPADDING', (0, 0), (-1, -1), 4),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+            ]))
+            elements.append(author_table)
+            elements.append(Spacer(1, 5 * mm))  # Move back down
+            
+        except Exception as e:
+            logger.warning(f"Could not create author banner: {e}")
+            # Fallback to simple larger bold text
+            elements.append(Paragraph(
+                "<font size='20'><b>Opracowanie: Krzysztof Kubicz</b></font>",
+                styles["center"]
+            ))
+    else:
+        # Fallback: larger bold text with solid background
+        author_content = [[Paragraph(
+            "<font color='white' size='20'><b>Opracowanie: Krzysztof Kubicz</b></font>",
+            styles["center"]
+        )]]
+        author_table = Table(author_content, colWidths=[170 * mm])
+        author_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, -1), PREMIUM_COLORS["navy"]),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('TOPPADDING', (0, 0), (-1, -1), 12),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 12),
+        ]))
+        elements.append(author_table)
     
     return elements
 

@@ -105,6 +105,10 @@ def render_ramp_archive():
             
         # Display basic JSON info (optional preview)
         meta = report_data.get('metadata', {})
+        
+        # Extract session_id early for use in widget keys
+        session_id = record.get('session_id', 'unknown')
+        
         col1, col2 = st.columns(2)
         with col1:
              st.write(f"**ID Sesji:** `{meta.get('session_id')}`")
@@ -113,6 +117,50 @@ def render_ramp_archive():
              st.write(f"**Timestamp:** `{meta.get('analysis_timestamp')}`")
              st.write(f"**Notatka:** {meta.get('notes', '-')}")
 
+        # ===================================================================
+        # METRYKA DOKUMENTU EDITOR (editable fields for PDF title page)
+        # ===================================================================
+        st.divider()
+        st.markdown("### ✏️ Edycja Metryki Dokumentu")
+        st.caption("Te wartości pojawią się na stronie tytułowej PDF")
+        
+        meta_col1, meta_col2 = st.columns(2)
+        
+        with meta_col1:
+            # Data Testu - editable date
+            default_test_date = record['test_date'].date() if pd.notna(record.get('test_date')) else None
+            edited_test_date = st.date_input(
+                "📅 Data Testu",
+                value=default_test_date,
+                key=f"edit_test_date_{session_id}"
+            )
+            
+            # Imię i Nazwisko Osoby Badanej
+            subject_name = st.text_input(
+                "👤 Imię i Nazwisko Osoby Badanej",
+                value=st.session_state.get(f"subject_name_{session_id}", ""),
+                placeholder="np. Jan Kowalski",
+                key=f"subject_name_{session_id}"
+            )
+        
+        with meta_col2:
+            # Wiek / Wzrost / Waga
+            subject_anthropometry = st.text_input(
+                "📊 Wiek / Wzrost / Waga",
+                value=st.session_state.get(f"subject_anthropometry_{session_id}", ""),
+                placeholder="np. 35 lat / 178 cm / 72 kg",
+                key=f"subject_anthropometry_{session_id}"
+            )
+            
+            # Read-only display
+            st.text_input(
+                "🔒 ID Sesji (auto)",
+                value=meta.get('session_id', '')[:8],
+                disabled=True
+            )
+        
+        st.divider()
+
         # 5. Download buttons
         btn_col1, btn_col2, btn_col3 = st.columns(3)
         
@@ -120,7 +168,6 @@ def render_ramp_archive():
         with btn_col1:
             raw_path = record.get('pdf_path', '')
             pdf_path = str(raw_path).strip() if raw_path and str(raw_path).lower() != 'nan' else ""
-            session_id = record.get('session_id', 'unknown')
             pdf_exists = os.path.exists(pdf_path) if pdf_path else False
             
             if pdf_path and pdf_exists:
@@ -170,6 +217,10 @@ def render_ramp_archive():
                             "ve_breakpoint_manual": st.session_state.get("ve_breakpoint_manual", 0),
                             # Reoxy Half-Time from SmO2 Manual tab
                             "reoxy_halftime_manual": st.session_state.get("reoxy_halftime_manual", 0),
+                            # ======= NEW: Metryka Dokumentu fields =======
+                            "test_date_override": str(edited_test_date) if edited_test_date else None,
+                            "subject_name": subject_name if subject_name else "",
+                            "subject_anthropometry": subject_anthropometry if subject_anthropometry else "",
                         }
                         
                         with st.spinner("Generowanie PDF z wartościami manualnymi..."):

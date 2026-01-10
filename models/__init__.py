@@ -16,7 +16,7 @@ from typing import Optional, List, Dict, Any, Tuple
 import pandas as pd
 
 # Re-export data classes from modules.calculations
-from modules.calculations.thresholds import (
+from modules.calculations.threshold_types import (
     TransitionZone,
     ThresholdResult,
     StepTestResult,

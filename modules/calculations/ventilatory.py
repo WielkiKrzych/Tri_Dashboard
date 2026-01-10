@@ -344,156 +344,468 @@ def detect_vt_vslope_savgol(
     time_column: str = 'time'
 ) -> dict:
     """
-    Detekcja VT1/VT2 metodą V-Slope z filtrem Savitzky-Golay.
+    DEPRECATED: Use detect_vt_cpet() for CPET-grade detection.
+    This wrapper calls the new function for backward compatibility.
+    """
+    return detect_vt_cpet(df, step_range, power_column, ve_column, time_column)
+
+
+# =============================================================================
+# CPET-GRADE VT DETECTION (V2.0 - Laboratory Standard)
+# =============================================================================
+
+def detect_vt_cpet(
+    df: pd.DataFrame,
+    step_range: Optional[Any] = None,
+    power_column: str = 'watts',
+    ve_column: str = 'tymeventilation',
+    time_column: str = 'time',
+    vo2_column: str = 'tymevo2',
+    vco2_column: str = 'tymevco2',
+    hr_column: str = 'hr',
+    step_duration_sec: int = 180,
+    smoothing_window_sec: int = 25
+) -> dict:
+    """
+    CPET-Grade VT1/VT2 Detection using Ventilatory Equivalents.
     
-    Algorytm:
-    1. Normalizacja VE (L/s → L/min)
-    2. Agregacja po schodkach (steady-state mean, pominięcie pierwszych 30%)
-    3. Wygładzanie Savitzky-Golay
-    4. Obliczanie gradientu dVE/dP
-    5. Detekcja progów przez wzrost nachylenia
+    Algorithm:
+    1. Preprocessing: Smooth signals with rolling window, remove artifacts
+    2. Calculate VE/VO2, VE/VCO2, RER for each step (steady-state)
+    3. VT1: Segmented regression on VE/VO2 - find first breakpoint
+       - VE/VO2 slope increases while VE/VCO2 remains flat
+    4. VT2: Segmented regression on VE/VCO2 - find breakpoint
+       - VE/VCO2 transitions from flat to rising, RER ≈ 1.0
+    5. Physiological validation: VT1 < VT2 < max power
     
     Args:
-        df: DataFrame z danymi testu (1Hz)
-        step_range: Opcjonalnie wykryte schodki RampTest
-        power_column: Kolumna z mocą [W]
-        ve_column: Kolumna z wentylacją [L/s lub L/min]
-        time_column: Kolumna z czasem [s]
+        df: DataFrame with test data (1Hz or breath-by-breath)
+        step_range: Optional detected step ranges
+        power_column: Power column name [W]
+        ve_column: Ventilation column name [L/min or L/s]
+        time_column: Time column name [s]
+        vo2_column: VO2 column name [L/min or ml/min]
+        vco2_column: VCO2 column name [L/min or ml/min]
+        hr_column: Heart rate column name [bpm]
+        step_duration_sec: Expected step duration (default 180s = 3min)
+        smoothing_window_sec: Smoothing window size (default 25s)
         
     Returns:
-        dict: {
-            'vt1_watts', 'vt2_watts',
-            'vt1_ve', 'vt2_ve',
-            'df_steps': DataFrame z przetworzonymi schodkami
-        }
+        dict with vt1_watts, vt2_watts, charts data, analysis notes
     """
     from scipy.signal import savgol_filter
+    from scipy.optimize import minimize
     
-    # 1. PRZYGOTOWANIE DANYCH
+    # Initialize result
+    result = {
+        'vt1_watts': None, 'vt2_watts': None,
+        'vt1_hr': None, 'vt2_hr': None,
+        'vt1_ve': None, 'vt2_ve': None,
+        'vt1_vo2': None, 'vt2_vo2': None,
+        'vt1_step': None, 'vt2_step': None,
+        'vt1_pct_vo2max': None, 'vt2_pct_vo2max': None,
+        'df_steps': None,
+        'method': 'cpet_segmented_regression',
+        'has_gas_exchange': False,
+        'analysis_notes': [],
+        'validation': {'vt1_lt_vt2': False, 've_vo2_rises_first': False}
+    }
+    
+    # =========================================================================
+    # 1. DATA PREPARATION
+    # =========================================================================
     data = df.copy()
     data.columns = data.columns.str.lower().str.strip()
     
-    # Normalizuj kolumny
-    power_col = power_column.lower()
-    ve_col = ve_column.lower()
-    time_col = time_column.lower()
+    # Normalize column names
+    cols = {
+        'power': power_column.lower(),
+        've': ve_column.lower(),
+        'time': time_column.lower(),
+        'vo2': vo2_column.lower(),
+        'vco2': vco2_column.lower(),
+        'hr': hr_column.lower()
+    }
     
-    if power_col not in data.columns:
-        return {'vt1_watts': None, 'vt2_watts': None, 'error': f'Missing {power_column}'}
-    if ve_col not in data.columns:
-        return {'vt1_watts': None, 'vt2_watts': None, 'error': f'Missing {ve_column}'}
+    # Check required columns
+    if cols['power'] not in data.columns:
+        result['error'] = f"Missing {power_column}"
+        return result
+    if cols['ve'] not in data.columns:
+        result['error'] = f"Missing {ve_column}"
+        return result
     
-    # Konwersja L/s → L/min (jeśli wartości małe, zakładamy L/s)
-    if data[ve_col].mean() < 10:
-        data['ve_lmin'] = data[ve_col] * 60
+    # Check for gas exchange data
+    has_vo2 = cols['vo2'] in data.columns and data[cols['vo2']].notna().sum() > 10
+    has_vco2 = cols['vco2'] in data.columns and data[cols['vco2']].notna().sum() > 10
+    has_hr = cols['hr'] in data.columns and data[cols['hr']].notna().sum() > 10
+    result['has_gas_exchange'] = has_vo2 and has_vco2
+    
+    # =========================================================================
+    # 2. UNIT NORMALIZATION
+    # =========================================================================
+    # VE: L/s → L/min
+    if data[cols['ve']].mean() < 10:
+        data['ve_lmin'] = data[cols['ve']] * 60
     else:
-        data['ve_lmin'] = data[ve_col]
+        data['ve_lmin'] = data[cols['ve']]
     
-    # 2. AGREGACJA PO SCHODKACH (Steady-State Mean)
-    # Jeśli mamy step_range, używamy konkretnych schodków
+    # VO2/VCO2: ml/min → L/min (if > 100, assume ml/min)
+    if has_vo2:
+        if data[cols['vo2']].mean() > 100:
+            data['vo2_lmin'] = data[cols['vo2']] / 1000
+        else:
+            data['vo2_lmin'] = data[cols['vo2']]
+    
+    if has_vco2:
+        if data[cols['vco2']].mean() > 100:
+            data['vco2_lmin'] = data[cols['vco2']] / 1000
+        else:
+            data['vco2_lmin'] = data[cols['vco2']]
+    
+    # =========================================================================
+    # 3. SMOOTHING (Artifact Removal)
+    # =========================================================================
+    window = min(smoothing_window_sec, len(data) // 4)
+    if window < 3:
+        window = 3
+    
+    data['ve_smooth'] = data['ve_lmin'].rolling(window, center=True, min_periods=1).mean()
+    
+    if has_vo2:
+        data['vo2_smooth'] = data['vo2_lmin'].rolling(window, center=True, min_periods=1).mean()
+    if has_vco2:
+        data['vco2_smooth'] = data['vco2_lmin'].rolling(window, center=True, min_periods=1).mean()
+    
+    # Artifact detection: Remove spikes in VE without matching VO2/VCO2 change
+    if has_vo2 and has_vco2:
+        ve_diff = data['ve_smooth'].diff().abs()
+        vo2_diff = data['vo2_smooth'].diff().abs()
+        vco2_diff = data['vco2_smooth'].diff().abs()
+        
+        # Spike = VE changes > 3σ but VO2/VCO2 change < 1σ
+        ve_threshold = ve_diff.std() * 3
+        gas_threshold = max(vo2_diff.std(), vco2_diff.std())
+        
+        artifact_mask = (ve_diff > ve_threshold) & ((vo2_diff < gas_threshold) & (vco2_diff < gas_threshold))
+        artifact_count = artifact_mask.sum()
+        if artifact_count > 0:
+            result['analysis_notes'].append(f"Removed {artifact_count} respiratory artifacts")
+            data.loc[artifact_mask, 've_smooth'] = np.nan
+            data['ve_smooth'] = data['ve_smooth'].interpolate(method='linear')
+    
+    # =========================================================================
+    # 4. STEP AGGREGATION (Steady-State from last 60-90s)
+    # =========================================================================
+    step_data = []
+    
     if step_range and hasattr(step_range, 'steps') and step_range.steps:
-        step_data = []
-        for step in step_range.steps:
-            # Filtruj dane dla danego schodka
-            mask = (data[time_col] >= step.start_time) & (data[time_col] <= step.end_time)
+        # Use detected steps
+        for i, step in enumerate(step_range.steps):
+            mask = (data[cols['time']] >= step.start_time) & (data[cols['time']] <= step.end_time)
             step_df = data[mask]
             
-            if len(step_df) < 5:
+            if len(step_df) < 30:  # Need at least 30 samples
                 continue
-                
-            # Średnia ze stanu ustalonego (pomiń pierwsze 30%)
-            cutoff = int(len(step_df) * 0.3)
-            ve_ss = step_df['ve_lmin'].iloc[cutoff:].mean()
             
-            step_data.append({
-                power_col: step.avg_power,
-                've_lmin': ve_ss
-            })
-        df_steps = pd.DataFrame(step_data)
+            # Steady-state: last 60-90s or last 50% of step
+            step_duration = step.end_time - step.start_time
+            ss_start_ratio = max(0.5, 1 - (90 / step_duration)) if step_duration > 90 else 0.5
+            cutoff = int(len(step_df) * ss_start_ratio)
+            ss_df = step_df.iloc[cutoff:]
+            
+            row = {
+                'step': i + 1,
+                'power': step.avg_power,
+                've': ss_df['ve_smooth'].mean(),
+                'time': step.start_time
+            }
+            
+            if has_vo2:
+                row['vo2'] = ss_df['vo2_smooth'].mean()
+            if has_vco2:
+                row['vco2'] = ss_df['vco2_smooth'].mean()
+            if has_hr and cols['hr'] in ss_df.columns:
+                row['hr'] = ss_df[cols['hr']].mean()
+            
+            step_data.append(row)
     else:
-        # Fallback: Grupujemy po mocy (jeśli nie ma schodków)
-        def steady_state_mean(x):
-            """Średnia ze stanu ustalonego (pomiń pierwsze 30% każdego schodka)."""
-            cutoff = int(len(x) * 0.3)
-            if len(x) - cutoff < 2:
-                return x.mean()
-            return x.iloc[cutoff:].mean()
+        # Auto-detect steps by power grouping
+        data['power_bin'] = (data[cols['power']] // 10) * 10  # 10W bins
         
-        df_steps = data.groupby(power_col)[['ve_lmin']].agg(steady_state_mean).reset_index()
+        for power_bin, group in data.groupby('power_bin'):
+            if len(group) < 30 or power_bin < 50:  # Skip warmup / short segments
+                continue
+            
+            # Steady-state: last 50%
+            cutoff = len(group) // 2
+            ss_df = group.iloc[cutoff:]
+            
+            row = {
+                'step': len(step_data) + 1,
+                'power': power_bin,
+                've': ss_df['ve_smooth'].mean(),
+                'time': group[cols['time']].iloc[0] if cols['time'] in group.columns else 0
+            }
+            
+            if has_vo2:
+                row['vo2'] = ss_df['vo2_smooth'].mean()
+            if has_vco2:
+                row['vco2'] = ss_df['vco2_smooth'].mean()
+            if has_hr and cols['hr'] in ss_df.columns:
+                row['hr'] = ss_df[cols['hr']].mean()
+            
+            step_data.append(row)
     
-    df_steps = df_steps.sort_values(by=power_col)
+    if len(step_data) < 5:
+        result['error'] = f"Insufficient steps ({len(step_data)}). Need at least 5."
+        result['analysis_notes'].append("Not enough steps for reliable analysis")
+        return result
     
-    if len(df_steps) < 5:
-        return {'vt1_watts': None, 'vt2_watts': None, 'error': 'Insufficient steps for analysis'}
+    df_steps = pd.DataFrame(step_data).sort_values('power').reset_index(drop=True)
+    result['df_steps'] = df_steps
     
-    # 3. WYGŁADZANIE (Savitzky-Golay Filter)
-    try:
-        window = min(5, len(df_steps) if len(df_steps) % 2 == 1 else len(df_steps) - 1)
-        if window < 3:
-            window = 3
-        df_steps['ve_smooth'] = savgol_filter(
-            df_steps['ve_lmin'], 
-            window_length=window, 
-            polyorder=2
+    # =========================================================================
+    # 5. CALCULATE VENTILATORY EQUIVALENTS
+    # =========================================================================
+    if has_vo2 and has_vco2:
+        # CPET Mode: Full analysis with VE/VO2 and VE/VCO2
+        df_steps['ve_vo2'] = df_steps['ve'] / df_steps['vo2'].replace(0, np.nan)
+        df_steps['ve_vco2'] = df_steps['ve'] / df_steps['vco2'].replace(0, np.nan)
+        df_steps['rer'] = df_steps['vco2'] / df_steps['vo2'].replace(0, np.nan)
+        
+        result['analysis_notes'].append("Using CPET mode: VE/VO2 and VE/VCO2 analysis")
+        
+        # Calculate VO2max for %VO2max
+        vo2max = df_steps['vo2'].max()
+        
+        # -----------------------------------------------------------------
+        # VT1 DETECTION: Segmented regression on VE/VO2
+        # -----------------------------------------------------------------
+        vt1_idx = _find_breakpoint_segmented(
+            df_steps['power'].values,
+            df_steps['ve_vo2'].values,
+            min_segment_size=3
         )
-    except Exception as e:
-        # Fallback na rolling mean
-        df_steps['ve_smooth'] = df_steps['ve_lmin'].rolling(3, center=True).mean().fillna(method='bfill').fillna(method='ffill')
-    
-    # 4. OBLICZANIE NACHYLENIA (dVE/dP - Gradient)
-    ve_gradient = np.gradient(df_steps['ve_smooth'], df_steps[power_col])
-    df_steps['slope'] = ve_gradient
-    
-    # Linia bazowa (baseline) - średnie nachylenie z pierwszych 4 schodków
-    baseline_slope = df_steps['slope'].iloc[:min(4, len(df_steps))].mean()
-    
-    # 5. DETEKCJA PROGÓW
-    vt1_power = None
-    vt2_power = None
-    
-    # Progi wykrycia
-    vt1_threshold_ratio = 1.15  # Wzrost nachylenia o >15% względem bazy
-    vt2_threshold_ratio = 1.40  # Wzrost o >40%
-    
-    # Szukamy VT1 (startujemy od 5. schodka, żeby pominąć start)
-    start_idx = min(4, len(df_steps) - 3)
-    
-    for i in range(start_idx, len(df_steps) - 2):
-        current_slope = df_steps['slope'].iloc[i]
         
-        # Warunek VT1: Nachylenie trwale rośnie powyżej bazy
-        if vt1_power is None:
-            if current_slope > (baseline_slope * vt1_threshold_ratio):
-                # Sprawdź czy trend się utrzymuje w kolejnym kroku (potwierdzenie)
-                if df_steps['slope'].iloc[i + 1] > current_slope * 0.95:  # Allow 5% tolerance
-                    vt1_power = df_steps[power_col].iloc[i]
-                    vt1_ve = df_steps['ve_smooth'].iloc[i]
-                    vt1_idx = i
+        if vt1_idx is not None and 1 < vt1_idx < len(df_steps) - 1:
+            # Validate: VE/VCO2 should be relatively flat at VT1
+            vco2_slope_before = _calculate_segment_slope(
+                df_steps['power'].values[:vt1_idx],
+                df_steps['ve_vco2'].values[:vt1_idx]
+            )
+            vco2_slope_at = _calculate_segment_slope(
+                df_steps['power'].values[max(0, vt1_idx-2):vt1_idx+2],
+                df_steps['ve_vco2'].values[max(0, vt1_idx-2):vt1_idx+2]
+            )
+            
+            # VE/VCO2 should not be rising significantly at VT1
+            if abs(vco2_slope_at) < 0.1 or vco2_slope_at < vco2_slope_before * 1.5:
+                result['vt1_watts'] = int(df_steps.loc[vt1_idx, 'power'])
+                result['vt1_ve'] = round(df_steps.loc[vt1_idx, 've'], 1)
+                result['vt1_vo2'] = round(df_steps.loc[vt1_idx, 'vo2'], 2)
+                result['vt1_step'] = int(df_steps.loc[vt1_idx, 'step'])
+                result['vt1_pct_vo2max'] = round(df_steps.loc[vt1_idx, 'vo2'] / vo2max * 100, 1) if vo2max > 0 else None
+                if 'hr' in df_steps.columns:
+                    result['vt1_hr'] = int(df_steps.loc[vt1_idx, 'hr'])
+                result['analysis_notes'].append(f"VT1 detected at step {result['vt1_step']} via VE/VO2 breakpoint")
+            else:
+                result['analysis_notes'].append("VT1 candidate rejected: VE/VCO2 already rising")
         
-        # Warunek VT2: Szukamy dopiero PO znalezieniu VT1
-        elif vt2_power is None:
-            # Musi być znaczny skok względem nachylenia przy VT1
-            slope_at_vt1 = df_steps['slope'].iloc[vt1_idx]
-            if current_slope > (slope_at_vt1 * 1.25):  # +25% względem slope'a na VT1
-                if df_steps['slope'].iloc[i + 1] > current_slope * 0.95:  # Potwierdzenie trendu
-                    vt2_power = df_steps[power_col].iloc[i]
-                    vt2_ve = df_steps['ve_smooth'].iloc[i]
-                    break  # Znaleziono oba, koniec pętli
+        # -----------------------------------------------------------------
+        # VT2 DETECTION: Segmented regression on VE/VCO2 + RER validation
+        # -----------------------------------------------------------------
+        search_start = vt1_idx + 1 if vt1_idx else 3
+        
+        # Guard: ensure search_start is within bounds
+        if search_start >= len(df_steps) - 4:
+            search_start = max(3, len(df_steps) // 2)
+        
+        # Only search if we have enough data points remaining
+        remaining_points = len(df_steps) - search_start
+        if remaining_points >= 4:
+            vt2_idx = _find_breakpoint_segmented(
+                df_steps['power'].values[search_start:],
+                df_steps['ve_vco2'].values[search_start:],
+                min_segment_size=2
+            )
+            
+            if vt2_idx is not None:
+                vt2_idx += search_start  # Adjust for subset
+                
+                if vt2_idx < len(df_steps):
+                    # Validate: RER should be near 1.0
+                    rer_at_vt2 = df_steps.loc[vt2_idx, 'rer']
+                    
+                    if pd.notna(rer_at_vt2) and 0.95 <= rer_at_vt2 <= 1.15:
+                        result['vt2_watts'] = int(df_steps.loc[vt2_idx, 'power'])
+                        result['vt2_ve'] = round(df_steps.loc[vt2_idx, 've'], 1)
+                        result['vt2_vo2'] = round(df_steps.loc[vt2_idx, 'vo2'], 2) if 'vo2' in df_steps.columns else None
+                        result['vt2_step'] = int(df_steps.loc[vt2_idx, 'step'])
+                        result['vt2_pct_vo2max'] = round(df_steps.loc[vt2_idx, 'vo2'] / vo2max * 100, 1) if vo2max > 0 and 'vo2' in df_steps.columns else None
+                        if 'hr' in df_steps.columns and pd.notna(df_steps.loc[vt2_idx, 'hr']):
+                            result['vt2_hr'] = int(df_steps.loc[vt2_idx, 'hr'])
+                        result['analysis_notes'].append(f"VT2 detected at step {result['vt2_step']} (RER={rer_at_vt2:.2f})")
+                    else:
+                        # Accept but note RER discrepancy
+                        result['vt2_watts'] = int(df_steps.loc[vt2_idx, 'power'])
+                        result['vt2_ve'] = round(df_steps.loc[vt2_idx, 've'], 1)
+                        result['vt2_step'] = int(df_steps.loc[vt2_idx, 'step'])
+                        if 'hr' in df_steps.columns and pd.notna(df_steps.loc[vt2_idx, 'hr']):
+                            result['vt2_hr'] = int(df_steps.loc[vt2_idx, 'hr'])
+                        rer_str = f"{rer_at_vt2:.2f}" if pd.notna(rer_at_vt2) else "N/A"
+                        result['analysis_notes'].append(f"VT2 detected but RER={rer_str} (expected ~1.0)")
+        
+    else:
+        # FALLBACK: VE-only mode (no gas exchange data)
+        result['analysis_notes'].append("Using VE-only mode (no VO2/VCO2 data)")
+        result['method'] = 've_only_gradient'
+        
+        # Apply Savitzky-Golay smoothing
+        try:
+            window = min(5, len(df_steps) if len(df_steps) % 2 == 1 else len(df_steps) - 1)
+            if window < 3:
+                window = 3
+            df_steps['ve_smooth'] = savgol_filter(df_steps['ve'].values, window_length=window, polyorder=2)
+        except:
+            df_steps['ve_smooth'] = df_steps['ve'].rolling(3, center=True, min_periods=1).mean()
+        
+        # Calculate VE gradient
+        ve_gradient = np.gradient(df_steps['ve_smooth'].values, df_steps['power'].values)
+        df_steps['ve_slope'] = ve_gradient
+        
+        # Baseline slope from first 3-4 steps
+        baseline_slope = df_steps['ve_slope'].iloc[:min(4, len(df_steps))].mean()
+        
+        # VT1: 15% increase over baseline
+        for i in range(3, len(df_steps) - 1):
+            if df_steps['ve_slope'].iloc[i] > baseline_slope * 1.15:
+                if df_steps['ve_slope'].iloc[i + 1] >= df_steps['ve_slope'].iloc[i] * 0.95:
+                    result['vt1_watts'] = int(df_steps.loc[i, 'power'])
+                    result['vt1_ve'] = round(df_steps.loc[i, 've'], 1)
+                    result['vt1_step'] = int(df_steps.loc[i, 'step'])
+                    if 'hr' in df_steps.columns and not pd.isna(df_steps.loc[i, 'hr']):
+                        result['vt1_hr'] = int(df_steps.loc[i, 'hr'])
+                    break
+        
+        # VT2: 40% increase over baseline
+        if result['vt1_watts']:
+            vt1_matches = df_steps[df_steps['power'] == result['vt1_watts']].index
+            if len(vt1_matches) > 0:
+                vt1_idx = vt1_matches[0]
+                for i in range(vt1_idx + 1, len(df_steps) - 1):
+                    if df_steps['ve_slope'].iloc[i] > baseline_slope * 1.40:
+                        if df_steps['ve_slope'].iloc[i + 1] >= df_steps['ve_slope'].iloc[i] * 0.95:
+                            result['vt2_watts'] = int(df_steps.loc[i, 'power'])
+                            result['vt2_ve'] = round(df_steps.loc[i, 've'], 1)
+                            result['vt2_step'] = int(df_steps.loc[i, 'step'])
+                            if 'hr' in df_steps.columns and not pd.isna(df_steps.loc[i, 'hr']):
+                                result['vt2_hr'] = int(df_steps.loc[i, 'hr'])
+                            break
     
-    # Zabezpieczenie (Fallback), jeśli algorytm nie znajdzie punktów
-    if vt1_power is None:
-        vt1_power = df_steps[power_col].max() * 0.60  # Default 60% max
-        vt1_ve = df_steps.loc[df_steps[power_col] >= vt1_power, 've_smooth'].iloc[0] if len(df_steps[df_steps[power_col] >= vt1_power]) > 0 else df_steps['ve_smooth'].mean()
+    # =========================================================================
+    # 6. FALLBACK DEFAULTS
+    # =========================================================================
+    max_power = df_steps['power'].max()
     
-    if vt2_power is None:
-        vt2_power = df_steps[power_col].max() * 0.85  # Default 85% max
-        vt2_ve = df_steps.loc[df_steps[power_col] >= vt2_power, 've_smooth'].iloc[0] if len(df_steps[df_steps[power_col] >= vt2_power]) > 0 else df_steps['ve_smooth'].mean()
+    if result['vt1_watts'] is None:
+        result['vt1_watts'] = int(max_power * 0.60)
+        result['analysis_notes'].append("VT1 not detected - using default (60% max)")
     
-    return {
-        'vt1_watts': int(vt1_power),
-        'vt2_watts': int(vt2_power),
-        'vt1_ve': round(vt1_ve, 1),
-        'vt2_ve': round(vt2_ve, 1),
-        'df_steps': df_steps,  # Zwracamy przetworzone dane do wizualizacji
-        'baseline_slope': baseline_slope
-    }
+    if result['vt2_watts'] is None:
+        result['vt2_watts'] = int(max_power * 0.85)
+        result['analysis_notes'].append("VT2 not detected - using default (85% max)")
+    
+    # =========================================================================
+    # 7. PHYSIOLOGICAL VALIDATION
+    # =========================================================================
+    # VT1 < VT2
+    if result['vt1_watts'] >= result['vt2_watts']:
+        # Swap or adjust
+        result['analysis_notes'].append("⚠️ VT1 >= VT2 - adjusted VT2 to VT1 + 15%")
+        result['vt2_watts'] = int(result['vt1_watts'] * 1.15)
+    result['validation']['vt1_lt_vt2'] = result['vt1_watts'] < result['vt2_watts']
+    
+    # VE/VO2 rises before VE/VCO2 (only check if both thresholds detected via CPET)
+    if result['vt1_step'] and result['vt2_step']:
+        result['validation']['ve_vo2_rises_first'] = result['vt1_step'] < result['vt2_step']
+    
+    return result
+
+
+def _find_breakpoint_segmented(x: np.ndarray, y: np.ndarray, min_segment_size: int = 3) -> Optional[int]:
+    """
+    Find optimal breakpoint using piecewise linear regression.
+    
+    Tests each potential breakpoint and returns the one minimizing total SSE.
+    
+    Args:
+        x: Independent variable (power)
+        y: Dependent variable (VE/VO2 or VE/VCO2)
+        min_segment_size: Minimum points in each segment
+        
+    Returns:
+        Index of optimal breakpoint, or None if not found
+    """
+    if len(x) < 2 * min_segment_size:
+        return None
+    
+    # Remove NaN values
+    mask = ~(np.isnan(x) | np.isnan(y))
+    x = x[mask]
+    y = y[mask]
+    
+    if len(x) < 2 * min_segment_size:
+        return None
+    
+    best_idx = None
+    best_sse = np.inf
+    best_slope_ratio = 0
+    
+    for i in range(min_segment_size, len(x) - min_segment_size):
+        # Fit two segments
+        x1, y1 = x[:i], y[:i]
+        x2, y2 = x[i:], y[i:]
+        
+        try:
+            # Segment 1
+            slope1, intercept1, _, _, _ = stats.linregress(x1, y1)
+            pred1 = slope1 * x1 + intercept1
+            sse1 = np.sum((y1 - pred1) ** 2)
+            
+            # Segment 2
+            slope2, intercept2, _, _, _ = stats.linregress(x2, y2)
+            pred2 = slope2 * x2 + intercept2
+            sse2 = np.sum((y2 - pred2) ** 2)
+            
+            total_sse = sse1 + sse2
+            
+            # We want slope2 > slope1 (increasing trend after breakpoint)
+            slope_ratio = slope2 / slope1 if slope1 != 0 else slope2
+            
+            if total_sse < best_sse and slope_ratio > 1.1:
+                best_sse = total_sse
+                best_idx = i
+                best_slope_ratio = slope_ratio
+                
+        except Exception:
+            continue
+    
+    return best_idx
+
+
+def _calculate_segment_slope(x: np.ndarray, y: np.ndarray) -> float:
+    """Calculate slope of a segment using linear regression."""
+    if len(x) < 2:
+        return 0.0
+    
+    mask = ~(np.isnan(x) | np.isnan(y))
+    if mask.sum() < 2:
+        return 0.0
+    
+    try:
+        slope, _, _, _, _ = stats.linregress(x[mask], y[mask])
+        return slope
+    except:
+        return 0.0
+

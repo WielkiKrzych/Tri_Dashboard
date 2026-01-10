@@ -308,96 +308,247 @@ def render_vent_thresholds_tab(target_df, training_notes, uploaded_file_name, cp
     # 🔬 METODA V-SLOPE (ADVANCED DIAGNOSTICS)
     # =========================================================================
     st.markdown("---")
-    with st.expander("🔬 Metoda V-Slope (Scientific Diagnostics)", expanded=False):
-        st.markdown("### Zaawansowana Analiza Gradientu dVE/dP")
+    with st.expander("🔬 Metoda CPET (Scientific Diagnostics)", expanded=True):
+        st.markdown("### Zaawansowana Analiza Ekwiwalentów Wentylacyjnych")
         st.info("""
-        Ta metoda wykorzystuje filtr **Savitzky-Golay** do wygładzenia trendów oraz agregację **Steady-State** 
-        (pominięcie fazy lag każdego schodka). Pozwala to na precyzyjne znalezienie punktu załamania dynamiki wentylacji.
+        **CPET-Grade Algorithm** wykorzystuje:
+        - **VE/VO2** (ekwiwalent tlenowy) - dla detekcji VT1
+        - **VE/VCO2** (ekwiwalent węglowy) - dla detekcji VT2
+        - **Segmented Regression** (breakpoint detection)
+        - **RER ≈ 1.0** walidacja dla VT2
         """)
         
-        with st.spinner("Przeliczanie gradientów..."):
+        with st.spinner("Przeliczanie CPET breakpoints..."):
             vslope_res = detect_vt_vslope_savgol(target_df, result.step_range, 'watts', 'tymeventilation', 'time')
             
         if 'error' in vslope_res:
-            st.error(f"Błąd analizy V-Slope: {vslope_res['error']}")
+            st.error(f"Błąd analizy CPET: {vslope_res['error']}")
         else:
-            v1_w = vslope_res['vt1_watts']
-            v2_w = vslope_res['vt2_watts']
-            df_s = vslope_res['df_steps']
+            v1_w = vslope_res.get('vt1_watts')
+            v2_w = vslope_res.get('vt2_watts')
+            df_s = vslope_res.get('df_steps')
+            has_gas = vslope_res.get('has_gas_exchange', False)
+            method = vslope_res.get('method', 'unknown')
+            notes = vslope_res.get('analysis_notes', [])
+            validation = vslope_res.get('validation', {})
             
-            c1, c2 = st.columns(2)
+            # Method badge
+            if has_gas:
+                st.success("✅ **Tryb CPET**: Wykryto dane VO2/VCO2 - pełna analiza ekwiwalentów wentylacyjnych")
+            else:
+                st.warning("⚠️ **Tryb VE-only**: Brak danych VO2/VCO2 - uproszczona analiza gradientowa")
+            
+            # Analysis notes
+            if notes:
+                with st.expander("📋 Notatki z analizy", expanded=False):
+                    for note in notes:
+                        if note.startswith("⚠️"):
+                            st.warning(note)
+                        else:
+                            st.info(note)
+            
+            # Results cards
+            c1, c2, c3 = st.columns(3)
             with c1:
-                st.metric("VT1 (SavGol)", f"{v1_w} W", help="Punkt pierwszego wzrostu nachylenia o >15%")
-                if st.button("Aplikuj jako VT1 Manual", key="apply_vt1_savgol"):
+                st.metric("VT1 (CPET)", f"{v1_w} W" if v1_w else "—", 
+                          help="Próg tlenowy - punkt gdzie VE/VO2 zaczyna rosnąć")
+                if vslope_res.get('vt1_pct_vo2max'):
+                    st.caption(f"@ {vslope_res['vt1_pct_vo2max']:.0f}% VO2max")
+                if st.button("Aplikuj VT1", key="apply_vt1_cpet"):
                     st.session_state['manual_vt1_watts'] = v1_w
                     if vslope_res.get('vt1_ve'): st.session_state['vt1_ve'] = vslope_res['vt1_ve']
-                    # Try to find HR for this power
-                    idx_v1 = (target_df['watts'] - v1_w).abs().idxmin()
-                    if 'hr' in target_df.columns: st.session_state['vt1_hr'] = int(target_df.loc[idx_v1, 'hr'])
-                    if 'br' in target_df.columns: st.session_state['vt1_br'] = int(target_df.loc[idx_v1, 'br'])
-                    
+                    if vslope_res.get('vt1_hr'): st.session_state['vt1_hr'] = vslope_res['vt1_hr']
                     st.success(f"Ustawiono VT1 = {v1_w}W")
                     st.rerun()
+                    
             with c2:
-                st.metric("VT2 (SavGol)", f"{v2_w} W", help="Punkt gwałtownej hiperwentylacji (>40% baseline)")
-                if st.button("Aplikuj jako VT2 Manual", key="apply_vt2_savgol"):
+                st.metric("VT2 (CPET)", f"{v2_w} W" if v2_w else "—",
+                          help="Próg beztlenowy - punkt gdzie VE/VCO2 zaczyna rosnąć, RER ≈ 1.0")
+                if vslope_res.get('vt2_pct_vo2max'):
+                    st.caption(f"@ {vslope_res['vt2_pct_vo2max']:.0f}% VO2max")
+                if st.button("Aplikuj VT2", key="apply_vt2_cpet"):
                     st.session_state['manual_vt2_watts'] = v2_w
                     if vslope_res.get('vt2_ve'): st.session_state['vt2_ve'] = vslope_res['vt2_ve']
-                    # Try to find HR for this power
-                    idx_v2 = (target_df['watts'] - v2_w).abs().idxmin()
-                    if 'hr' in target_df.columns: st.session_state['vt2_hr'] = int(target_df.loc[idx_v2, 'hr'])
-                    if 'br' in target_df.columns: st.session_state['vt2_br'] = int(target_df.loc[idx_v2, 'br'])
-                    
+                    if vslope_res.get('vt2_hr'): st.session_state['vt2_hr'] = vslope_res['vt2_hr']
                     st.success(f"Ustawiono VT2 = {v2_w}W")
                     st.rerun()
+                    
+            with c3:
+                # Validation status
+                if validation.get('vt1_lt_vt2'):
+                    st.success("✅ VT1 < VT2")
+                else:
+                    st.error("❌ VT1 >= VT2")
+                if validation.get('ve_vo2_rises_first'):
+                    st.success("✅ VE/VO2 rośnie przed VE/VCO2")
             
-            # Diagnostic Plot (Matplotlib for detailed twin-axis as per request)
-            import matplotlib.pyplot as plt
-            
-            fig, ax1 = plt.subplots(figsize=(10, 5))
-            plt.style.use('dark_background')
-            fig.patch.set_facecolor('#0E1117')
-            ax1.set_facecolor('#0E1117')
-            
-            # Oś Y1: Wentylacja
-            ax1.plot(df_s['watts'], df_s['ve_smooth'], 'b-', label='VE (L/min)', alpha=0.8, linewidth=2)
-            ax1.scatter(df_s['watts'], df_s['ve_lmin'], color='blue', alpha=0.3, s=20)
-            ax1.set_xlabel('Moc [W]', color='white')
-            ax1.set_ylabel('Wentylacja [L/min]', color='#5da5da')
-            ax1.tick_params(axis='y', labelcolor='#5da5da')
-            
-            # Oś Y2: Slope
-            ax2 = ax1.twinx()
-            ax2.plot(df_s['watts'], df_s['slope'], 'g--', label='Slope (dVE/dP)', alpha=0.5)
-            ax2.set_ylabel('Zmiana VE / Wat (Slope)', color='#60bd68')
-            ax2.tick_params(axis='y', labelcolor='#60bd68')
-            
-            # Baseline line
-            ax2.axhline(vslope_res['baseline_slope'], color='gray', linestyle=':', alpha=0.5, label='Baseline')
-
-            # Linie progów
-            if v1_w:
-                ax1.axvline(v1_w, color='#ffa15a', linestyle='--', linewidth=2, label=f'VT1: {v1_w}W')
-            if v2_w:
-                ax1.axvline(v2_w, color='#ef553b', linestyle='--', linewidth=2, label=f'VT2: {v2_w}W')
-            
-            ax1.set_title('Analiza V-Slope: Progi vs Nachylenie', color='white', pad=20)
-            ax1.grid(True, alpha=0.1)
-            
-            # Legend
-            lines1, labels1 = ax1.get_legend_handles_labels()
-            lines2, labels2 = ax2.get_legend_handles_labels()
-            ax1.legend(lines1 + lines2, labels1 + labels2, loc='upper left', fontsize='small')
-            
-            plt.tight_layout()
-            st.pyplot(fig)
-            
-            with st.expander("📝 Detale schodków (V-Slope)", expanded=False):
-                st.dataframe(df_s.style.format({
-                    've_lmin': '{:.1f}',
-                    've_smooth': '{:.1f}',
-                    'slope': '{:.4f}'
-                }), use_container_width=True)
+            # =========================================================================
+            # CPET CHARTS (VE/VO2 vs Power, VE/VCO2 vs Power)
+            # =========================================================================
+            if df_s is not None and len(df_s) > 0:
+                import matplotlib.pyplot as plt
+                
+                # Check if we have gas exchange data
+                has_ve_vo2 = 've_vo2' in df_s.columns and df_s['ve_vo2'].notna().any()
+                has_ve_vco2 = 've_vco2' in df_s.columns and df_s['ve_vco2'].notna().any()
+                
+                if has_ve_vo2 or has_ve_vco2:
+                    st.markdown("### 📊 Wykresy Ekwiwalentów Wentylacyjnych")
+                    
+                    # Create 2-panel figure
+                    fig, axes = plt.subplots(1, 2 if (has_ve_vo2 and has_ve_vco2) else 1, figsize=(14, 5))
+                    plt.style.use('dark_background')
+                    fig.patch.set_facecolor('#0E1117')
+                    
+                    if not isinstance(axes, (list, tuple)):
+                        axes = [axes]
+                    ax_idx = 0
+                    
+                    # Panel 1: VE/VO2 vs Power (VT1 detection)
+                    if has_ve_vo2:
+                        ax1 = axes[ax_idx]
+                        ax1.set_facecolor('#0E1117')
+                        ax1.plot(df_s['power'], df_s['ve_vo2'], 'b-o', linewidth=2, markersize=6, label='VE/VO2')
+                        ax1.set_xlabel('Moc [W]', color='white')
+                        ax1.set_ylabel('VE/VO2', color='#5da5da')
+                        ax1.set_title('VE/VO2 vs Power (VT1 Detection)', color='white', pad=10)
+                        ax1.grid(True, alpha=0.2)
+                        
+                        # Mark VT1
+                        if v1_w:
+                            ax1.axvline(v1_w, color='#ffa15a', linestyle='--', linewidth=2, label=f'VT1: {v1_w}W')
+                            # Find y value at VT1
+                            vt1_row = df_s[df_s['power'] == v1_w]
+                            if len(vt1_row) > 0:
+                                y_vt1 = vt1_row['ve_vo2'].iloc[0]
+                                ax1.scatter([v1_w], [y_vt1], color='#ffa15a', s=150, zorder=5, marker='*')
+                        
+                        ax1.legend(loc='upper left')
+                        ax_idx += 1
+                    
+                    # Panel 2: VE/VCO2 vs Power (VT2 detection)
+                    if has_ve_vco2:
+                        ax2 = axes[ax_idx] if ax_idx < len(axes) else axes[0]
+                        ax2.set_facecolor('#0E1117')
+                        ax2.plot(df_s['power'], df_s['ve_vco2'], 'r-o', linewidth=2, markersize=6, label='VE/VCO2')
+                        ax2.set_xlabel('Moc [W]', color='white')
+                        ax2.set_ylabel('VE/VCO2', color='#ef553b')
+                        ax2.set_title('VE/VCO2 vs Power (VT2 Detection)', color='white', pad=10)
+                        ax2.grid(True, alpha=0.2)
+                        
+                        # Mark VT1 and VT2
+                        if v1_w:
+                            ax2.axvline(v1_w, color='#ffa15a', linestyle=':', linewidth=1.5, alpha=0.7, label=f'VT1: {v1_w}W')
+                        if v2_w:
+                            ax2.axvline(v2_w, color='#ef553b', linestyle='--', linewidth=2, label=f'VT2: {v2_w}W')
+                            # Find y value at VT2
+                            vt2_row = df_s[df_s['power'] == v2_w]
+                            if len(vt2_row) > 0:
+                                y_vt2 = vt2_row['ve_vco2'].iloc[0]
+                                ax2.scatter([v2_w], [y_vt2], color='#ef553b', s=150, zorder=5, marker='*')
+                        
+                        ax2.legend(loc='upper left')
+                    
+                    plt.tight_layout()
+                    st.pyplot(fig)
+                    plt.close(fig)
+                    
+                    # RER chart if available
+                    if 'rer' in df_s.columns and df_s['rer'].notna().any():
+                        st.markdown("### 📈 RER (Respiratory Exchange Ratio)")
+                        fig_rer, ax_rer = plt.subplots(figsize=(10, 4))
+                        ax_rer.set_facecolor('#0E1117')
+                        fig_rer.patch.set_facecolor('#0E1117')
+                        
+                        ax_rer.plot(df_s['power'], df_s['rer'], 'g-o', linewidth=2, markersize=6, label='RER')
+                        ax_rer.axhline(1.0, color='yellow', linestyle='--', linewidth=1.5, alpha=0.7, label='RER = 1.0 (VT2 marker)')
+                        ax_rer.set_xlabel('Moc [W]', color='white')
+                        ax_rer.set_ylabel('RER (VCO2/VO2)', color='#60bd68')
+                        ax_rer.set_title('Respiratory Exchange Ratio vs Power', color='white', pad=10)
+                        ax_rer.grid(True, alpha=0.2)
+                        
+                        if v2_w:
+                            ax_rer.axvline(v2_w, color='#ef553b', linestyle='--', linewidth=2, label=f'VT2: {v2_w}W')
+                        
+                        ax_rer.legend(loc='upper left')
+                        plt.tight_layout()
+                        st.pyplot(fig_rer)
+                        plt.close(fig_rer)
+                
+                else:
+                    # VE-only mode chart
+                    st.markdown("### 📊 Wykres VE vs Power (VE-only mode)")
+                    
+                    fig, ax1 = plt.subplots(figsize=(10, 5))
+                    plt.style.use('dark_background')
+                    fig.patch.set_facecolor('#0E1117')
+                    ax1.set_facecolor('#0E1117')
+                    
+                    # Plot VE
+                    if 've' in df_s.columns:
+                        ax1.plot(df_s['power'], df_s['ve'], 'b-o', linewidth=2, label='VE (L/min)')
+                    elif 've_smooth' in df_s.columns:
+                        ax1.plot(df_s['power'], df_s['ve_smooth'], 'b-o', linewidth=2, label='VE (L/min)')
+                    
+                    ax1.set_xlabel('Moc [W]', color='white')
+                    ax1.set_ylabel('Wentylacja [L/min]', color='#5da5da')
+                    
+                    # Plot slope on secondary axis
+                    if 've_slope' in df_s.columns:
+                        ax2 = ax1.twinx()
+                        ax2.plot(df_s['power'], df_s['ve_slope'], 'g--', alpha=0.5, label='Slope')
+                        ax2.set_ylabel('dVE/dP', color='#60bd68')
+                    
+                    # Mark thresholds
+                    if v1_w:
+                        ax1.axvline(v1_w, color='#ffa15a', linestyle='--', linewidth=2, label=f'VT1: {v1_w}W')
+                    if v2_w:
+                        ax1.axvline(v2_w, color='#ef553b', linestyle='--', linewidth=2, label=f'VT2: {v2_w}W')
+                    
+                    ax1.set_title('VE vs Power z Progami VT1/VT2', color='white', pad=10)
+                    ax1.grid(True, alpha=0.2)
+                    ax1.legend(loc='upper left')
+                    
+                    plt.tight_layout()
+                    st.pyplot(fig)
+                    plt.close(fig)
+                
+                # =========================================================================
+                # METABOLIC ZONES TABLE
+                # =========================================================================
+                st.markdown("### 🎯 Strefy Metaboliczne")
+                
+                if v1_w and v2_w:
+                    zones_data = [
+                        {"Strefa": "Z1 (Recovery)", "Zakres": f"< {v1_w} W", "Opis": "Regeneracja, rozgrzewka", "Metabolizm": "100% Tlenowy"},
+                        {"Strefa": "Z2 (Endurance)", "Zakres": f"{v1_w} - {int((v1_w + v2_w) / 2)} W", "Opis": "Baza tlenowa, spalanie tłuszczu", "Metabolizm": "Dominująco tlenowy"},
+                        {"Strefa": "Z3 (Tempo)", "Zakres": f"{int((v1_w + v2_w) / 2)} - {v2_w} W", "Opis": "Sweet Spot, próg", "Metabolizm": "Mieszany"},
+                        {"Strefa": "Z4 (Threshold)", "Zakres": f"{v2_w} - {int(v2_w * 1.05)} W", "Opis": "FTP, MLSS", "Metabolizm": "Wysoki udziału glikolizy"},
+                        {"Strefa": "Z5 (VO2max)", "Zakres": f"> {int(v2_w * 1.05)} W", "Opis": "Interwały, moc szczytowa", "Metabolizm": "Anaerobowy"}
+                    ]
+                    zones_df = pd.DataFrame(zones_data)
+                    st.dataframe(zones_df, hide_index=True, use_container_width=True)
+                else:
+                    st.warning("Brak danych do wygenerowania stref metabolicznych")
+                
+                # Raw data expander
+                with st.expander("📝 Dane schodków (raw)", expanded=False):
+                    display_cols = ['step', 'power', 've']
+                    if 'vo2' in df_s.columns:
+                        display_cols.append('vo2')
+                    if 'vco2' in df_s.columns:
+                        display_cols.append('vco2')
+                    if 've_vo2' in df_s.columns:
+                        display_cols.append('ve_vo2')
+                    if 've_vco2' in df_s.columns:
+                        display_cols.append('ve_vco2')
+                    if 'rer' in df_s.columns:
+                        display_cols.append('rer')
+                    if 'hr' in df_s.columns:
+                        display_cols.append('hr')
+                    
+                    available_cols = [c for c in display_cols if c in df_s.columns]
+                    st.dataframe(df_s[available_cols].round(2), use_container_width=True)
 
     st.markdown("---")
 

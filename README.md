@@ -10,10 +10,19 @@ Tri_Dashboard is a specialized analytical platform designed for sports scientist
 
 ### 📄 Ramp Test Analytics & Reporting
 A fully automated pipeline for analyzing metabolic ramp tests.
-- **Automated Threshold Detection**: 
-    - **Ventilation (VT1/VT2)** using V-slope, Ventilatory Equivalents, and Savitzky-Golay filtering.
-    - **SmO2 (LT1/LT2)** kinetics using NIRS data (Moxy/TrainRed) with slope-based detection.
+- **Advanced Automated Threshold Detection**: 
+    - **4-Point Ventilatory Model (CPET Method)**: 
+        - **VT1_onset** (Gas Exchange Threshold)
+        - **VT1_steady** (Steady-State Aerobic Ceiling)
+        - **RCP_onset** (Respiratory Compensation Point / VT2)
+        - **RCP_steady** (Severe Domain Entry)
+    - **Physiological SmO2 Kinetics**: 
+        - **SmO2_T1** (LT1 analog): Trend-based detection with CV < 4%.
+        - **SmO2_T2_onset** (RCP analog): Maximum global curvature and oscillation amplitude analysis (↑30%).
+        - **Strict Ramp Logic**: Explicit exclusion of SmO2_T2_steady (physiologically invalid for ramps) and removal of the final "ischemic crash" step.
 - **Pro-Level Reporting**: Generates professional **PDF** and editable **DOCX** reports.
+    - **Confidence Scoring**: 0-100% reliability score based on signal quality and cross-sensor validation.
+    - **4-Domain Zones**: Stable Aerobic, Progressive Extraction, Non-Steady Severe, and Ischemic Collapse.
     - **Educational Content**: "Why it matters" blocks explaining metrics to athletes.
     - **Advanced Metrics**: Biomechanics (Torque vs Cadence), Metabolic Model (VO2max/VLaMax balance), Cardiac Drift Heatmaps, and Thermal Efficiency.
     - **Table of Contents** with synchronized page numbering.

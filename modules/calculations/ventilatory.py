@@ -341,13 +341,14 @@ def detect_vt_vslope_savgol(
     step_range: Optional[Any] = None,
     power_column: str = 'watts',
     ve_column: str = 'tymeventilation',
-    time_column: str = 'time'
+    time_column: str = 'time',
+    min_power_watts: Optional[int] = None
 ) -> dict:
     """
     DEPRECATED: Use detect_vt_cpet() for CPET-grade detection.
     This wrapper calls the new function for backward compatibility.
     """
-    return detect_vt_cpet(df, step_range, power_column, ve_column, time_column)
+    return detect_vt_cpet(df, step_range, power_column, ve_column, time_column, min_power_watts=min_power_watts)
 
 
 # =============================================================================
@@ -364,7 +365,8 @@ def detect_vt_cpet(
     vco2_column: str = 'tymevco2',
     hr_column: str = 'hr',
     step_duration_sec: int = 180,
-    smoothing_window_sec: int = 25
+    smoothing_window_sec: int = 25,
+    min_power_watts: Optional[int] = None
 ) -> dict:
     """
     CPET-Grade VT1/VT2 Detection using Ventilatory Equivalents.
@@ -389,6 +391,7 @@ def detect_vt_cpet(
         hr_column: Heart rate column name [bpm]
         step_duration_sec: Expected step duration (default 180s = 3min)
         smoothing_window_sec: Smoothing window size (default 25s)
+        min_power_watts: Manual override - minimum power to start VT search (skip warmup)
         
     Returns:
         dict with vt1_watts, vt2_watts, charts data, analysis notes
@@ -401,6 +404,7 @@ def detect_vt_cpet(
         'vt1_watts': None, 'vt2_watts': None,
         'vt1_hr': None, 'vt2_hr': None,
         'vt1_ve': None, 'vt2_ve': None,
+        'vt1_br': None, 'vt2_br': None,  # Breathing rate
         'vt1_vo2': None, 'vt2_vo2': None,
         'vt1_step': None, 'vt2_step': None,
         'vt1_pct_vo2max': None, 'vt2_pct_vo2max': None,
@@ -408,7 +412,8 @@ def detect_vt_cpet(
         'method': 'cpet_segmented_regression',
         'has_gas_exchange': False,
         'analysis_notes': [],
-        'validation': {'vt1_lt_vt2': False, 've_vo2_rises_first': False}
+        'validation': {'vt1_lt_vt2': False, 've_vo2_rises_first': False},
+        'ramp_start_step': None  # First actual ramp step (after warmup)
     }
     
     # =========================================================================
@@ -499,6 +504,14 @@ def detect_vt_cpet(
     # =========================================================================
     step_data = []
     
+    # Check if we have breathing rate column
+    br_col = None
+    for col in ['tymebreathrate', 'br', 'resprate', 'breathing_rate', 'rf', 'rr']:
+        if col in data.columns:
+            br_col = col
+            break
+    has_br = br_col is not None
+    
     if step_range and hasattr(step_range, 'steps') and step_range.steps:
         # Use detected steps
         for i, step in enumerate(step_range.steps):
@@ -518,7 +531,8 @@ def detect_vt_cpet(
                 'step': i + 1,
                 'power': step.avg_power,
                 've': ss_df['ve_smooth'].mean(),
-                'time': step.start_time
+                'time': step.start_time,
+                'duration': step_duration
             }
             
             if has_vo2:
@@ -527,25 +541,34 @@ def detect_vt_cpet(
                 row['vco2'] = ss_df['vco2_smooth'].mean()
             if has_hr and cols['hr'] in ss_df.columns:
                 row['hr'] = ss_df[cols['hr']].mean()
+            if br_col and br_col in ss_df.columns:
+                row['br'] = ss_df[br_col].mean()
             
             step_data.append(row)
     else:
-        # Auto-detect steps by power grouping
-        data['power_bin'] = (data[cols['power']] // 10) * 10  # 10W bins
+        # Auto-detect steps by power grouping with 20W bins (better for 20-30W protocol)
+        data['power_bin'] = (data[cols['power']] // 20) * 20  # 20W bins for 20-30W increments
         
+        raw_steps = []
         for power_bin, group in data.groupby('power_bin'):
-            if len(group) < 30 or power_bin < 50:  # Skip warmup / short segments
+            if len(group) < 30:  # Skip very short segments
                 continue
+            
+            # Calculate duration in seconds
+            if cols['time'] in group.columns:
+                duration = group[cols['time']].max() - group[cols['time']].min()
+            else:
+                duration = len(group)  # Assume 1Hz data
             
             # Steady-state: last 50%
             cutoff = len(group) // 2
             ss_df = group.iloc[cutoff:]
             
             row = {
-                'step': len(step_data) + 1,
                 'power': power_bin,
                 've': ss_df['ve_smooth'].mean(),
-                'time': group[cols['time']].iloc[0] if cols['time'] in group.columns else 0
+                'time': group[cols['time']].iloc[0] if cols['time'] in group.columns else 0,
+                'duration': duration
             }
             
             if has_vo2:
@@ -554,8 +577,72 @@ def detect_vt_cpet(
                 row['vco2'] = ss_df['vco2_smooth'].mean()
             if has_hr and cols['hr'] in ss_df.columns:
                 row['hr'] = ss_df[cols['hr']].mean()
+            if br_col and br_col in ss_df.columns:
+                row['br'] = ss_df[br_col].mean()
             
-            step_data.append(row)
+            raw_steps.append(row)
+        
+        # Sort by power
+        raw_steps = sorted(raw_steps, key=lambda x: x['power'])
+        
+        # =====================================================================
+        # RAMP TEST DETECTION: Find where actual protocol begins
+        # Priority: 1) Manual min_power_watts, 2) Auto-detect consecutive steps
+        # =====================================================================
+        ramp_start_idx = 0
+        
+        # Option 1: Manual override - filter by minimum power
+        if min_power_watts is not None and min_power_watts > 0:
+            for i, step in enumerate(raw_steps):
+                if step['power'] >= min_power_watts:
+                    ramp_start_idx = i
+                    result['ramp_start_step'] = i + 1
+                    result['analysis_notes'].append(
+                        f"Manual override: Starting analysis from {int(min_power_watts)}W (step {i+1})"
+                    )
+                    break
+        else:
+            # Option 2: Auto-detect - look for consecutive 3-min steps with +20-30W increments
+            min_step_duration = 120  # At least 2 minutes
+            power_increment_range = (15, 40)  # Accept 15-40W increments
+            
+            for i in range(len(raw_steps) - 2):
+                step1 = raw_steps[i]
+                step2 = raw_steps[i + 1]
+                step3 = raw_steps[i + 2]
+                
+                # Check if all 3 steps are at least ~3 minutes
+                dur_ok = all(
+                    s['duration'] >= min_step_duration 
+                    for s in [step1, step2, step3]
+                )
+                
+                # Check power increments are in expected range
+                inc1 = step2['power'] - step1['power']
+                inc2 = step3['power'] - step2['power']
+                inc_ok = (
+                    power_increment_range[0] <= inc1 <= power_increment_range[1] and
+                    power_increment_range[0] <= inc2 <= power_increment_range[1]
+                )
+                
+                if dur_ok and inc_ok:
+                    ramp_start_idx = i
+                    result['ramp_start_step'] = i + 1
+                    result['analysis_notes'].append(
+                        f"Ramp test detected starting at step {i+1} ({int(step1['power'])}W)"
+                    )
+                    break
+        
+        # Use only steps from ramp start onwards
+        if ramp_start_idx > 0:
+            result['analysis_notes'].append(
+                f"Skipping first {ramp_start_idx} warmup steps"
+            )
+        
+        # Filter to ramp test steps only and renumber
+        for i, step in enumerate(raw_steps[ramp_start_idx:]):
+            step['step'] = i + 1
+            step_data.append(step)
     
     if len(step_data) < 5:
         result['error'] = f"Insufficient steps ({len(step_data)}). Need at least 5."
@@ -606,8 +693,10 @@ def detect_vt_cpet(
                 result['vt1_vo2'] = round(df_steps.loc[vt1_idx, 'vo2'], 2)
                 result['vt1_step'] = int(df_steps.loc[vt1_idx, 'step'])
                 result['vt1_pct_vo2max'] = round(df_steps.loc[vt1_idx, 'vo2'] / vo2max * 100, 1) if vo2max > 0 else None
-                if 'hr' in df_steps.columns:
+                if 'hr' in df_steps.columns and pd.notna(df_steps.loc[vt1_idx, 'hr']):
                     result['vt1_hr'] = int(df_steps.loc[vt1_idx, 'hr'])
+                if 'br' in df_steps.columns and pd.notna(df_steps.loc[vt1_idx, 'br']):
+                    result['vt1_br'] = int(df_steps.loc[vt1_idx, 'br'])
                 result['analysis_notes'].append(f"VT1 detected at step {result['vt1_step']} via VE/VO2 breakpoint")
             else:
                 result['analysis_notes'].append("VT1 candidate rejected: VE/VCO2 already rising")
@@ -645,6 +734,8 @@ def detect_vt_cpet(
                         result['vt2_pct_vo2max'] = round(df_steps.loc[vt2_idx, 'vo2'] / vo2max * 100, 1) if vo2max > 0 and 'vo2' in df_steps.columns else None
                         if 'hr' in df_steps.columns and pd.notna(df_steps.loc[vt2_idx, 'hr']):
                             result['vt2_hr'] = int(df_steps.loc[vt2_idx, 'hr'])
+                        if 'br' in df_steps.columns and pd.notna(df_steps.loc[vt2_idx, 'br']):
+                            result['vt2_br'] = int(df_steps.loc[vt2_idx, 'br'])
                         result['analysis_notes'].append(f"VT2 detected at step {result['vt2_step']} (RER={rer_at_vt2:.2f})")
                     else:
                         # Accept but note RER discrepancy
@@ -653,6 +744,8 @@ def detect_vt_cpet(
                         result['vt2_step'] = int(df_steps.loc[vt2_idx, 'step'])
                         if 'hr' in df_steps.columns and pd.notna(df_steps.loc[vt2_idx, 'hr']):
                             result['vt2_hr'] = int(df_steps.loc[vt2_idx, 'hr'])
+                        if 'br' in df_steps.columns and pd.notna(df_steps.loc[vt2_idx, 'br']):
+                            result['vt2_br'] = int(df_steps.loc[vt2_idx, 'br'])
                         rer_str = f"{rer_at_vt2:.2f}" if pd.notna(rer_at_vt2) else "N/A"
                         result['analysis_notes'].append(f"VT2 detected but RER={rer_str} (expected ~1.0)")
         
@@ -686,6 +779,8 @@ def detect_vt_cpet(
                     result['vt1_step'] = int(df_steps.loc[i, 'step'])
                     if 'hr' in df_steps.columns and not pd.isna(df_steps.loc[i, 'hr']):
                         result['vt1_hr'] = int(df_steps.loc[i, 'hr'])
+                    if 'br' in df_steps.columns and not pd.isna(df_steps.loc[i, 'br']):
+                        result['vt1_br'] = int(df_steps.loc[i, 'br'])
                     break
         
         # VT2: 40% increase over baseline
@@ -701,6 +796,8 @@ def detect_vt_cpet(
                             result['vt2_step'] = int(df_steps.loc[i, 'step'])
                             if 'hr' in df_steps.columns and not pd.isna(df_steps.loc[i, 'hr']):
                                 result['vt2_hr'] = int(df_steps.loc[i, 'hr'])
+                            if 'br' in df_steps.columns and not pd.isna(df_steps.loc[i, 'br']):
+                                result['vt2_br'] = int(df_steps.loc[i, 'br'])
                             break
     
     # =========================================================================

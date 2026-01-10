@@ -560,9 +560,16 @@ def detect_vt_cpet(
             else:
                 duration = len(group)  # Assume 1Hz data
             
-            # Steady-state: last 50%
-            cutoff = len(group) // 2
-            ss_df = group.iloc[cutoff:]
+            # Steady-state: use EXACTLY last 60-90 seconds of each step
+            # For 1Hz data: 60-90 samples; for 180s step: last ~45% to last sample
+            if cols['time'] in group.columns:
+                step_end_time = group[cols['time']].max()
+                # Use last 75 seconds (middle of 60-90 range)
+                ss_start_time = step_end_time - 75
+                ss_df = group[group[cols['time']] >= ss_start_time]
+            else:
+                # Fallback for data without time: use last 75 samples (~75 seconds at 1Hz)
+                ss_df = group.iloc[-min(75, len(group)):]
             
             row = {
                 'power': power_bin,
@@ -751,10 +758,11 @@ def detect_vt_cpet(
         
     else:
         # FALLBACK: VE-only mode (no gas exchange data)
-        result['analysis_notes'].append("Using VE-only mode (no VO2/VCO2 data)")
-        result['method'] = 've_only_gradient'
+        # Uses SECOND DERIVATIVE method: breakpoint = where VE slope accelerates
+        result['analysis_notes'].append("Using VE-only mode: Second derivative breakpoint detection")
+        result['method'] = 've_only_second_derivative'
         
-        # Apply Savitzky-Golay smoothing
+        # Apply Savitzky-Golay smoothing to VE
         try:
             window = min(5, len(df_steps) if len(df_steps) % 2 == 1 else len(df_steps) - 1)
             if window < 3:
@@ -763,42 +771,76 @@ def detect_vt_cpet(
         except:
             df_steps['ve_smooth'] = df_steps['ve'].rolling(3, center=True, min_periods=1).mean()
         
-        # Calculate VE gradient
-        ve_gradient = np.gradient(df_steps['ve_smooth'].values, df_steps['power'].values)
-        df_steps['ve_slope'] = ve_gradient
+        # Calculate FIRST derivative: VE slope (dVE/dPower)
+        ve_slope = np.gradient(df_steps['ve_smooth'].values, df_steps['power'].values)
+        df_steps['ve_slope'] = ve_slope
         
-        # Baseline slope from first 3-4 steps
-        baseline_slope = df_steps['ve_slope'].iloc[:min(4, len(df_steps))].mean()
+        # Calculate SECOND derivative: VE acceleration (d²VE/dPower²)
+        # This is where slope CHANGES - the key for breakpoint detection
+        ve_acceleration = np.gradient(ve_slope, df_steps['power'].values)
+        df_steps['ve_acceleration'] = ve_acceleration
         
-        # VT1: 15% increase over baseline
-        for i in range(3, len(df_steps) - 1):
-            if df_steps['ve_slope'].iloc[i] > baseline_slope * 1.15:
-                if df_steps['ve_slope'].iloc[i + 1] >= df_steps['ve_slope'].iloc[i] * 0.95:
-                    result['vt1_watts'] = int(df_steps.loc[i, 'power'])
-                    result['vt1_ve'] = round(df_steps.loc[i, 've'], 1)
-                    result['vt1_step'] = int(df_steps.loc[i, 'step'])
-                    if 'hr' in df_steps.columns and not pd.isna(df_steps.loc[i, 'hr']):
-                        result['vt1_hr'] = int(df_steps.loc[i, 'hr'])
-                    if 'br' in df_steps.columns and not pd.isna(df_steps.loc[i, 'br']):
-                        result['vt1_br'] = int(df_steps.loc[i, 'br'])
+        # Smooth the acceleration to reduce noise
+        if len(df_steps) >= 3:
+            df_steps['ve_accel_smooth'] = df_steps['ve_acceleration'].rolling(3, center=True, min_periods=1).mean()
+        else:
+            df_steps['ve_accel_smooth'] = df_steps['ve_acceleration']
+        
+        # VT1: First significant positive acceleration (slope starts increasing faster)
+        # Find where acceleration exceeds threshold (mean + 1 std of baseline)
+        baseline_accel = df_steps['ve_accel_smooth'].iloc[:min(4, len(df_steps))]
+        accel_threshold_vt1 = baseline_accel.mean() + baseline_accel.std() * 1.5
+        
+        vt1_found = False
+        for i in range(3, len(df_steps) - 2):
+            # VT1: acceleration becomes significantly positive AND sustained
+            if df_steps['ve_accel_smooth'].iloc[i] > accel_threshold_vt1:
+                # Check if sustained (next point also elevated)
+                if df_steps['ve_accel_smooth'].iloc[i + 1] > accel_threshold_vt1 * 0.7:
+                    result['vt1_watts'] = int(df_steps.loc[df_steps.index[i], 'power'])
+                    result['vt1_ve'] = round(df_steps.loc[df_steps.index[i], 've'], 1)
+                    result['vt1_step'] = int(df_steps.loc[df_steps.index[i], 'step'])
+                    if 'hr' in df_steps.columns and pd.notna(df_steps.iloc[i]['hr']):
+                        result['vt1_hr'] = int(df_steps.iloc[i]['hr'])
+                    if 'br' in df_steps.columns and pd.notna(df_steps.iloc[i]['br']):
+                        result['vt1_br'] = int(df_steps.iloc[i]['br'])
+                    result['analysis_notes'].append(
+                        f"VT1: Slope acceleration detected at step {result['vt1_step']} ({result['vt1_watts']}W)"
+                    )
+                    vt1_found = True
                     break
         
-        # VT2: 40% increase over baseline
-        if result['vt1_watts']:
-            vt1_matches = df_steps[df_steps['power'] == result['vt1_watts']].index
-            if len(vt1_matches) > 0:
-                vt1_idx = vt1_matches[0]
-                for i in range(vt1_idx + 1, len(df_steps) - 1):
-                    if df_steps['ve_slope'].iloc[i] > baseline_slope * 1.40:
-                        if df_steps['ve_slope'].iloc[i + 1] >= df_steps['ve_slope'].iloc[i] * 0.95:
-                            result['vt2_watts'] = int(df_steps.loc[i, 'power'])
-                            result['vt2_ve'] = round(df_steps.loc[i, 've'], 1)
-                            result['vt2_step'] = int(df_steps.loc[i, 'step'])
-                            if 'hr' in df_steps.columns and not pd.isna(df_steps.loc[i, 'hr']):
-                                result['vt2_hr'] = int(df_steps.loc[i, 'hr'])
-                            if 'br' in df_steps.columns and not pd.isna(df_steps.loc[i, 'br']):
-                                result['vt2_br'] = int(df_steps.loc[i, 'br'])
-                            break
+        # VT2: Second major acceleration peak (much higher than VT1)
+        if vt1_found and result['vt1_watts']:
+            vt1_power = result['vt1_watts']
+            # Search for VT2 only after VT1
+            vt2_search_start = df_steps[df_steps['power'] > vt1_power].index
+            
+            if len(vt2_search_start) > 2:
+                # VT2 threshold: higher acceleration than at VT1
+                accel_at_vt1 = df_steps.loc[df_steps['power'] == vt1_power, 've_accel_smooth'].values
+                if len(accel_at_vt1) > 0:
+                    accel_threshold_vt2 = accel_at_vt1[0] * 1.5  # 50% higher than VT1
+                else:
+                    accel_threshold_vt2 = accel_threshold_vt1 * 2
+                
+                for idx in vt2_search_start[2:]:  # Skip first 2 steps after VT1
+                    if df_steps.loc[idx, 've_accel_smooth'] > accel_threshold_vt2:
+                        # Check if this is a sustained acceleration
+                        next_idx = df_steps.index.get_loc(idx) + 1
+                        if next_idx < len(df_steps):
+                            if df_steps.iloc[next_idx]['ve_accel_smooth'] > accel_threshold_vt2 * 0.7:
+                                result['vt2_watts'] = int(df_steps.loc[idx, 'power'])
+                                result['vt2_ve'] = round(df_steps.loc[idx, 've'], 1)
+                                result['vt2_step'] = int(df_steps.loc[idx, 'step'])
+                                if 'hr' in df_steps.columns and pd.notna(df_steps.loc[idx, 'hr']):
+                                    result['vt2_hr'] = int(df_steps.loc[idx, 'hr'])
+                                if 'br' in df_steps.columns and pd.notna(df_steps.loc[idx, 'br']):
+                                    result['vt2_br'] = int(df_steps.loc[idx, 'br'])
+                                result['analysis_notes'].append(
+                                    f"VT2: Second acceleration peak at step {result['vt2_step']} ({result['vt2_watts']}W)"
+                                )
+                                break
     
     # =========================================================================
     # 6. FALLBACK DEFAULTS

@@ -251,19 +251,34 @@ def render_vent_thresholds_tab(target_df, training_notes, uploaded_file_name, cp
         vt1_br = cpet_result.get('vt1_br')
         vt1_pct_vo2max = cpet_result.get('vt1_pct_vo2max')
         
-        # Fallback: Get BR from target_df if not in cpet_result
-        if vt1_br is None and vt1_watts and 'tymebreathrate' in target_df.columns:
-            # Find rows around VT1 power
+        # Fallback: Get missing metrics from target_df if not in cpet_result
+        if vt1_watts:
             vt1_mask = (target_df['watts'] >= vt1_watts - 10) & (target_df['watts'] <= vt1_watts + 10)
             if vt1_mask.any():
-                vt1_br = target_df.loc[vt1_mask, 'tymebreathrate'].mean()
-                if pd.notna(vt1_br):
-                    vt1_br = int(vt1_br)
+                try:
+                    # HR fallback
+                    if vt1_hr is None and 'hr' in target_df.columns:
+                        hr_val = target_df.loc[vt1_mask, 'hr'].mean()
+                        if pd.notna(hr_val) and hr_val > 0:
+                            vt1_hr = int(hr_val)
+                    # VE fallback
+                    if vt1_ve is None and 'tymeventilation' in target_df.columns:
+                        ve_val = target_df.loc[vt1_mask, 'tymeventilation'].mean()
+                        if pd.notna(ve_val) and ve_val > 0:
+                            vt1_ve = round(ve_val, 1)
+                    # BR fallback
+                    if vt1_br is None and 'tymebreathrate' in target_df.columns:
+                        br_val = target_df.loc[vt1_mask, 'tymebreathrate'].mean()
+                        if pd.notna(br_val) and br_val > 0:
+                            vt1_br = int(br_val)
+                except:
+                    pass
         
         if vt1_watts:
+            # Build metric lines (only if value exists)
             hr_line = f'<p style="margin:0; color:#aaa;"><b>HR:</b> {int(vt1_hr)} bpm</p>' if vt1_hr else ''
             ve_line = f'<p style="margin:0; color:#aaa;"><b>VE:</b> {vt1_ve} L/min</p>' if vt1_ve else ''
-            br_line = f'<p style="margin:0; color:#aaa;"><b>BR:</b> {int(vt1_br)} oddech/min</p>' if vt1_br else ''
+            br_line = f'<p style="margin:0; color:#aaa;"><b>BR:</b> {int(vt1_br)} oddech/min</p>' if (vt1_br and vt1_br > 0) else ''
             vo2_line = f'<p style="margin:0; color:#aaa;"><b>%VO2max:</b> {vt1_pct_vo2max:.0f}%</p>' if vt1_pct_vo2max else ''
             
             st.markdown(f"""
@@ -301,18 +316,34 @@ def render_vent_thresholds_tab(target_df, training_notes, uploaded_file_name, cp
         vt2_br = cpet_result.get('vt2_br')
         vt2_pct_vo2max = cpet_result.get('vt2_pct_vo2max')
         
-        # Fallback: Get BR from target_df if not in cpet_result
-        if vt2_br is None and vt2_watts and 'tymebreathrate' in target_df.columns:
+        # Fallback: Get missing metrics from target_df if not in cpet_result
+        if vt2_watts:
             vt2_mask = (target_df['watts'] >= vt2_watts - 10) & (target_df['watts'] <= vt2_watts + 10)
             if vt2_mask.any():
-                vt2_br = target_df.loc[vt2_mask, 'tymebreathrate'].mean()
-                if pd.notna(vt2_br):
-                    vt2_br = int(vt2_br)
+                try:
+                    # HR fallback
+                    if vt2_hr is None and 'hr' in target_df.columns:
+                        hr_val = target_df.loc[vt2_mask, 'hr'].mean()
+                        if pd.notna(hr_val) and hr_val > 0:
+                            vt2_hr = int(hr_val)
+                    # VE fallback
+                    if vt2_ve is None and 'tymeventilation' in target_df.columns:
+                        ve_val = target_df.loc[vt2_mask, 'tymeventilation'].mean()
+                        if pd.notna(ve_val) and ve_val > 0:
+                            vt2_ve = round(ve_val, 1)
+                    # BR fallback
+                    if vt2_br is None and 'tymebreathrate' in target_df.columns:
+                        br_val = target_df.loc[vt2_mask, 'tymebreathrate'].mean()
+                        if pd.notna(br_val) and br_val > 0:
+                            vt2_br = int(br_val)
+                except:
+                    pass
         
         if vt2_watts:
+            # Build metric lines (only if value exists)
             hr_line = f'<p style="margin:0; color:#aaa;"><b>HR:</b> {int(vt2_hr)} bpm</p>' if vt2_hr else ''
             ve_line = f'<p style="margin:0; color:#aaa;"><b>VE:</b> {vt2_ve} L/min</p>' if vt2_ve else ''
-            br_line = f'<p style="margin:0; color:#aaa;"><b>BR:</b> {int(vt2_br)} oddech/min</p>' if vt2_br else ''
+            br_line = f'<p style="margin:0; color:#aaa;"><b>BR:</b> {int(vt2_br)} oddech/min</p>' if (vt2_br and vt2_br > 0) else ''
             vo2_line = f'<p style="margin:0; color:#aaa;"><b>%VO2max:</b> {vt2_pct_vo2max:.0f}%</p>' if vt2_pct_vo2max else ''
             
             st.markdown(f"""

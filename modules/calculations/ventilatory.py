@@ -560,16 +560,29 @@ def detect_vt_cpet(
             else:
                 duration = len(group)  # Assume 1Hz data
             
-            # Steady-state: use EXACTLY last 60-90 seconds of each step
-            # For 1Hz data: 60-90 samples; for 180s step: last ~45% to last sample
+            # Steady-state averaging:
+            # 1. Skip first 30s (kinetics phase - VO2 slow component settling)
+            # 2. Use EXACTLY last 60s for steady-state analysis
             if cols['time'] in group.columns:
+                step_start_time = group[cols['time']].min()
                 step_end_time = group[cols['time']].max()
-                # Use last 75 seconds (middle of 60-90 range)
-                ss_start_time = step_end_time - 75
-                ss_df = group[group[cols['time']] >= ss_start_time]
+                
+                # Skip first 30s kinetics
+                kinetics_cutoff = step_start_time + 30
+                steady_group = group[group[cols['time']] >= kinetics_cutoff]
+                
+                # Use last 60s of remaining data
+                if len(steady_group) > 0:
+                    ss_start_time = step_end_time - 60
+                    ss_df = steady_group[steady_group[cols['time']] >= ss_start_time]
+                else:
+                    ss_df = group.iloc[-60:]  # Fallback
             else:
-                # Fallback for data without time: use last 75 samples (~75 seconds at 1Hz)
-                ss_df = group.iloc[-min(75, len(group)):]
+                # Fallback for data without time: skip first 30 samples, use last 60
+                if len(group) > 90:
+                    ss_df = group.iloc[-60:]
+                else:
+                    ss_df = group.iloc[30:] if len(group) > 30 else group
             
             row = {
                 'power': power_bin,
@@ -757,12 +770,21 @@ def detect_vt_cpet(
                         result['analysis_notes'].append(f"VT2 detected but RER={rer_str} (expected ~1.0)")
         
     else:
-        # FALLBACK: VE-only mode (no gas exchange data)
-        # Uses SECOND DERIVATIVE method: breakpoint = where VE slope accelerates
-        result['analysis_notes'].append("Using VE-only mode: Second derivative breakpoint detection")
-        result['method'] = 've_only_second_derivative'
+        # =========================================================================
+        # VE-ONLY MODE: 4-POINT CPET DETECTION
+        # =========================================================================
+        # Clinical CPET algorithm for TymeWear data (VE, BR, VT, Power, HR)
+        # Detects: VT1_onset, VT1_steady, RCP_onset, RCP_steady
+        # Builds: 4 metabolic domains (Pure Aerobic, Upper Aerobic, Heavy, Severe)
         
-        # Apply Savitzky-Golay smoothing to VE
+        result['analysis_notes'].append("VE-only mode: 4-point CPET detection")
+        result['method'] = 've_only_4point_cpet'
+        
+        # =====================================================================
+        # 1. PREPROCESSING
+        # =====================================================================
+        
+        # Savitzky-Golay smoothing for VE
         try:
             window = min(5, len(df_steps) if len(df_steps) % 2 == 1 else len(df_steps) - 1)
             if window < 3:
@@ -771,131 +793,500 @@ def detect_vt_cpet(
         except:
             df_steps['ve_smooth'] = df_steps['ve'].rolling(3, center=True, min_periods=1).mean()
         
+        # Check data availability
+        has_hr = 'hr' in df_steps.columns and df_steps['hr'].notna().sum() > 3
+        has_br = 'br' in df_steps.columns and df_steps['br'].notna().sum() > 3
+        
+        # Smooth BR if available
+        if has_br:
+            df_steps['br_smooth'] = df_steps['br'].rolling(3, center=True, min_periods=1).mean()
+            # Tidal Volume = VE / BR
+            df_steps['vt_calc'] = df_steps['ve_smooth'] / df_steps['br_smooth'].replace(0, np.nan)
+            df_steps['vt_smooth'] = df_steps['vt_calc'].rolling(3, center=True, min_periods=1).mean()
+        
         # =====================================================================
-        # CALCULATE KEY METRICS FOR VT DETECTION
+        # 2. CALCULATE DERIVATIVES
         # =====================================================================
         
-        # 1. VE slope (first derivative: dVE/dPower)
+        # VE derivatives
         ve_slope = np.gradient(df_steps['ve_smooth'].values, df_steps['power'].values)
         df_steps['ve_slope'] = ve_slope
         
-        # 2. VE acceleration (second derivative: d²VE/dPower²)
-        ve_acceleration = np.gradient(ve_slope, df_steps['power'].values)
-        df_steps['ve_acceleration'] = ve_acceleration
+        ve_accel = np.gradient(ve_slope, df_steps['power'].values)
+        df_steps['ve_accel'] = ve_accel
+        df_steps['ve_accel_smooth'] = df_steps['ve_accel'].rolling(3, center=True, min_periods=1).mean()
         
-        # 3. VE/Power ratio (ventilatory efficiency)
-        df_steps['ve_power_ratio'] = df_steps['ve_smooth'] / df_steps['power']
+        # BR derivatives (if available)
+        if has_br:
+            br_slope = np.gradient(df_steps['br_smooth'].values, df_steps['power'].values)
+            df_steps['br_slope'] = br_slope
+            df_steps['br_slope_smooth'] = df_steps['br_slope'].rolling(3, center=True, min_periods=1).mean()
+            
+            # VT (tidal volume) derivatives
+            vt_slope = np.gradient(df_steps['vt_smooth'].fillna(method='ffill').values, df_steps['power'].values)
+            df_steps['vt_slope'] = vt_slope
+            df_steps['vt_slope_smooth'] = df_steps['vt_slope'].rolling(3, center=True, min_periods=1).mean()
         
-        # 4. Slope of VE/Power ratio (to detect plateau)
-        ve_ratio_slope = np.gradient(df_steps['ve_power_ratio'].values, df_steps['power'].values)
-        df_steps['ve_ratio_slope'] = ve_ratio_slope
-        
-        # 5. HR slope (for decoupling detection) - if HR available
-        has_hr = 'hr' in df_steps.columns and df_steps['hr'].notna().sum() > 3
+        # HR derivatives (if available)
         if has_hr:
             hr_slope = np.gradient(df_steps['hr'].values, df_steps['power'].values)
             df_steps['hr_slope'] = hr_slope
-            # HR/Power decoupling: ratio of HR slope to baseline
             baseline_hr_slope = np.mean(hr_slope[:min(4, len(hr_slope))])
             if baseline_hr_slope > 0:
-                df_steps['hr_decoupling'] = hr_slope / baseline_hr_slope
+                df_steps['hr_drift'] = hr_slope / baseline_hr_slope
             else:
-                df_steps['hr_decoupling'] = hr_slope
-        
-        # Smooth the metrics
-        if len(df_steps) >= 3:
-            df_steps['ve_accel_smooth'] = df_steps['ve_acceleration'].rolling(3, center=True, min_periods=1).mean()
-            df_steps['ve_ratio_slope_smooth'] = df_steps['ve_ratio_slope'].rolling(3, center=True, min_periods=1).mean()
-        else:
-            df_steps['ve_accel_smooth'] = df_steps['ve_acceleration']
-            df_steps['ve_ratio_slope_smooth'] = df_steps['ve_ratio_slope']
+                df_steps['hr_drift'] = np.ones(len(hr_slope))
         
         # =====================================================================
-        # VT1 DETECTION: VE gradient rises + VE/Power ratio plateau
+        # 3. DETECT 4 PHYSIOLOGICAL POINTS
         # =====================================================================
-        # VT1 = first point where:
-        #   1. VE slope starts increasing (positive acceleration)
-        #   2. VE/Power ratio slope stabilizes (approaches zero = plateau)
         
-        baseline_slope = np.mean(df_steps['ve_slope'].iloc[:min(4, len(df_steps))])
-        baseline_ratio_slope = np.mean(df_steps['ve_ratio_slope_smooth'].iloc[:min(4, len(df_steps))])
+        baseline_ve_slope = np.mean(df_steps['ve_slope'].iloc[:min(4, len(df_steps))])
+        baseline_ve_accel = np.mean(df_steps['ve_accel_smooth'].iloc[:min(4, len(df_steps))])
+        baseline_br_slope = 0
+        if has_br:
+            baseline_br_slope = np.mean(df_steps['br_slope_smooth'].iloc[:min(4, len(df_steps))])
         
-        vt1_found = False
-        for i in range(3, len(df_steps) - 2):
-            # Condition 1: VE slope is increasing (rising gradient)
-            slope_increasing = df_steps['ve_slope'].iloc[i] > baseline_slope * 1.15
+        vt1_onset_idx = None
+        vt1_steady_idx = None
+        rcp_onset_idx = None
+        rcp_steady_idx = None
+        
+        # ---------------------------------------------------------------------
+        # A. VT1_ONSET (GET / LT1 Onset)
+        # First point where:
+        # - d²VE/dP² changes sign (start of nonlinearity)
+        # - VE gradient starts rising persistently
+        # - BR not accelerating sharply yet
+        # ---------------------------------------------------------------------
+        
+        for i in range(3, len(df_steps) - 4):
+            # Check d²VE/dP² sign change (goes positive)
+            accel_prev = df_steps['ve_accel_smooth'].iloc[i-1]
+            accel_curr = df_steps['ve_accel_smooth'].iloc[i]
+            sign_change = (accel_prev <= 0 and accel_curr > 0) or (accel_curr > baseline_ve_accel * 2)
             
-            # Condition 2: VE/Power ratio is plateauing (slope approaching zero or positive)
-            # After initial decrease, ratio stabilizes
-            ratio_plateau = abs(df_steps['ve_ratio_slope_smooth'].iloc[i]) < abs(baseline_ratio_slope) * 0.5
+            # VE slope increasing persistently (2 steps)
+            slope_rising = (df_steps['ve_slope'].iloc[i] > baseline_ve_slope * 1.15 and
+                           df_steps['ve_slope'].iloc[i+1] > baseline_ve_slope * 1.10)
             
-            # Alternative: ratio slope changes from negative to less negative or positive
-            if i > 0:
-                ratio_improving = df_steps['ve_ratio_slope_smooth'].iloc[i] > df_steps['ve_ratio_slope_smooth'].iloc[i-1]
-            else:
-                ratio_improving = False
+            # BR not spiking yet (if available)
+            br_not_spiking = True
+            if has_br and baseline_br_slope > 0:
+                br_not_spiking = df_steps['br_slope_smooth'].iloc[i] < baseline_br_slope * 2.0
             
-            if slope_increasing and (ratio_plateau or ratio_improving):
-                # Verify it's sustained
-                if df_steps['ve_slope'].iloc[i + 1] >= df_steps['ve_slope'].iloc[i] * 0.95:
-                    result['vt1_watts'] = int(df_steps.iloc[i]['power'])
-                    result['vt1_ve'] = round(df_steps.iloc[i]['ve'], 1)
-                    result['vt1_step'] = int(df_steps.iloc[i]['step'])
-                    if 'hr' in df_steps.columns and pd.notna(df_steps.iloc[i]['hr']):
-                        result['vt1_hr'] = int(df_steps.iloc[i]['hr'])
-                    if 'br' in df_steps.columns and pd.notna(df_steps.iloc[i]['br']):
-                        result['vt1_br'] = int(df_steps.iloc[i]['br'])
-                    result['analysis_notes'].append(
-                        f"VT1: VE gradient + VE/Power plateau at step {result['vt1_step']} ({result['vt1_watts']}W)"
-                    )
-                    vt1_found = True
+            if (sign_change or slope_rising) and br_not_spiking:
+                # Verify persistence (2 more steps)
+                if df_steps['ve_slope'].iloc[i+2] > baseline_ve_slope * 1.05:
+                    vt1_onset_idx = i
                     break
         
-        # =====================================================================
-        # VT2 DETECTION: Max VE acceleration + HR decoupling
-        # =====================================================================
-        # VT2 = point where:
-        #   1. VE second derivative (acceleration) reaches maximum
-        #   2. HR starts drifting faster than power (decoupling)
+        # ---------------------------------------------------------------------
+        # B. VT1_STEADY (LT1 Steady / Upper Aerobic Ceiling)
+        # STRICT PLATEAU CONDITIONS - only detect if physiologically present
+        # 
+        # Conditions for REAL VT1_steady:
+        # 1. After VT1_onset, at least 2 consecutive steps where:
+        #    - dVE/dP is significantly higher than pre-VT1_onset baseline
+        #    - dVE/dP is STABLE (|Δgradient| < 10-15%)
+        #    - No sharp BR increase (no respiratory compensation signs)
+        #    - No exponential VE acceleration
+        # 
+        # If conditions NOT met → VT1_steady_virtual (interpolated)
+        # ---------------------------------------------------------------------
         
-        if vt1_found and result['vt1_watts']:
-            vt1_power = result['vt1_watts']
-            vt2_search_df = df_steps[df_steps['power'] > vt1_power + 20].copy()  # At least 20W above VT1
+        vt1_steady_is_real = False  # Flag to track if plateau exists
+        
+        if vt1_onset_idx is not None:
+            # Get VE slope at VT1_onset as reference
+            vt1_onset_slope = df_steps['ve_slope'].iloc[vt1_onset_idx]
             
-            if len(vt2_search_df) >= 3:
-                # Find maximum acceleration point
-                max_accel_idx = vt2_search_df['ve_accel_smooth'].idxmax()
-                max_accel_value = vt2_search_df.loc[max_accel_idx, 've_accel_smooth']
+            # Search for plateau starting at least 2 steps after onset
+            for i in range(vt1_onset_idx + 2, len(df_steps) - 3):
+                curr_slope = df_steps['ve_slope'].iloc[i]
+                next_slope = df_steps['ve_slope'].iloc[i + 1]
+                next2_slope = df_steps['ve_slope'].iloc[i + 2]
                 
-                # Check HR decoupling if available
-                hr_decoupling_confirmed = True  # Default to true if no HR data
-                if has_hr and 'hr_decoupling' in df_steps.columns:
-                    hr_decouple = df_steps.loc[max_accel_idx, 'hr_decoupling']
-                    # HR decoupling: HR slope increases significantly (>1.3x baseline)
-                    hr_decoupling_confirmed = hr_decouple > 1.3
-                    
-                    # If HR not decoupling at max accel, search nearby
-                    if not hr_decoupling_confirmed:
-                        for idx in vt2_search_df.index:
-                            if (df_steps.loc[idx, 've_accel_smooth'] > max_accel_value * 0.7 and
-                                df_steps.loc[idx, 'hr_decoupling'] > 1.3):
-                                max_accel_idx = idx
-                                hr_decoupling_confirmed = True
-                                break
+                # Condition 1: Slope significantly higher than baseline
+                elevated = curr_slope > baseline_ve_slope * 1.15
                 
-                if hr_decoupling_confirmed or not has_hr:
-                    result['vt2_watts'] = int(df_steps.loc[max_accel_idx, 'power'])
-                    result['vt2_ve'] = round(df_steps.loc[max_accel_idx, 've'], 1)
-                    result['vt2_step'] = int(df_steps.loc[max_accel_idx, 'step'])
-                    if 'hr' in df_steps.columns and pd.notna(df_steps.loc[max_accel_idx, 'hr']):
-                        result['vt2_hr'] = int(df_steps.loc[max_accel_idx, 'hr'])
-                    if 'br' in df_steps.columns and pd.notna(df_steps.loc[max_accel_idx, 'br']):
-                        result['vt2_br'] = int(df_steps.loc[max_accel_idx, 'br'])
+                # Condition 2: Slope is STABLE across 2+ steps (within 10-15%)
+                delta_1 = abs(next_slope - curr_slope) / max(abs(curr_slope), 0.01)
+                delta_2 = abs(next2_slope - curr_slope) / max(abs(curr_slope), 0.01)
+                slope_stable = delta_1 < 0.12 and delta_2 < 0.15
+                
+                # Condition 3: No sharp BR acceleration (no RC signs)
+                br_ok = True
+                if has_br and baseline_br_slope > 0:
+                    br_at_i = df_steps['br_slope_smooth'].iloc[i]
+                    br_ok = br_at_i < baseline_br_slope * 1.5  # Stricter than before
+                
+                # Condition 4: No exponential VE acceleration
+                ve_accel_at_i = df_steps['ve_accel_smooth'].iloc[i]
+                no_exponential = ve_accel_at_i < baseline_ve_accel * 2.5
+                
+                # All conditions must be met
+                if elevated and slope_stable and br_ok and no_exponential:
+                    vt1_steady_idx = i
+                    vt1_steady_is_real = True
+                    break
+        
+        result['vt1_steady_is_real'] = vt1_steady_is_real
+        
+        # ---------------------------------------------------------------------
+        # C. RCP_ONSET (VT2 / LT2 Onset - Respiratory Compensation Point)
+        # Point where simultaneously:
+        # - d²VE/dP² reaches local maximum
+        # - BR slope spikes sharply
+        # - VT (tidal volume) slope starts flattening (plateau)
+        # ---------------------------------------------------------------------
+        
+        search_start = vt1_steady_idx if vt1_steady_idx else (vt1_onset_idx + 2 if vt1_onset_idx else 4)
+        
+        if search_start and search_start < len(df_steps) - 3:
+            search_df = df_steps.iloc[search_start:]
+            
+            if len(search_df) >= 3:
+                # Find max VE acceleration
+                max_accel_idx = search_df['ve_accel_smooth'].idxmax()
+                max_accel_val = df_steps.loc[max_accel_idx, 've_accel_smooth']
+                
+                # Check BR spike and VT plateau
+                rcp_candidates = []
+                
+                for idx in search_df.index:
+                    ve_accel_high = df_steps.loc[idx, 've_accel_smooth'] > max_accel_val * 0.6
                     
-                    note = f"VT2: Max VE acceleration at step {result['vt2_step']} ({result['vt2_watts']}W)"
-                    if has_hr and hr_decoupling_confirmed:
-                        note += " + HR decoupling confirmed"
-                    result['analysis_notes'].append(note)
+                    br_spike = True
+                    vt_plateau = True
+                    
+                    if has_br:
+                        br_slope_val = df_steps.loc[idx, 'br_slope_smooth']
+                        br_spike = br_slope_val > baseline_br_slope * 2.0 if baseline_br_slope > 0 else br_slope_val > 0.1
+                        
+                        # VT flattening
+                        vt_slope_val = abs(df_steps.loc[idx, 'vt_slope_smooth'])
+                        baseline_vt_slope = abs(np.mean(df_steps['vt_slope_smooth'].iloc[:min(4, len(df_steps))]))
+                        vt_plateau = vt_slope_val < baseline_vt_slope * 0.7 if baseline_vt_slope > 0 else True
+                    
+                    if ve_accel_high and br_spike and vt_plateau:
+                        rcp_candidates.append((idx, df_steps.loc[idx, 've_accel_smooth']))
+                
+                if rcp_candidates:
+                    # Take the one with highest acceleration
+                    rcp_onset_idx = max(rcp_candidates, key=lambda x: x[1])[0]
+                else:
+                    # Fallback: just use max acceleration
+                    rcp_onset_idx = max_accel_idx
+        
+        # ---------------------------------------------------------------------
+        # D. RCP_STEADY (Full RCP / Severe Domain Entry)
+        # Point where:
+        # - VE grows exponentially (acceleration stays high)
+        # - BR dominates over VT as main VE driver
+        # - HR shows strong drift
+        # ---------------------------------------------------------------------
+        
+        if rcp_onset_idx is not None:
+            rcp_onset_loc = df_steps.index.get_loc(rcp_onset_idx)
+            
+            for i in range(rcp_onset_loc + 1, len(df_steps) - 1):
+                idx = df_steps.index[i]
+                
+                # VE still accelerating (exponential growth)
+                ve_accel_high = df_steps.loc[idx, 've_accel_smooth'] > baseline_ve_accel * 3
+                
+                # BR dominates VT
+                br_dominates = True
+                if has_br:
+                    br_slope_val = df_steps.loc[idx, 'br_slope_smooth']
+                    vt_slope_val = df_steps.loc[idx, 'vt_slope_smooth']
+                    # BR/VT ratio: BR contribution > VT contribution
+                    br_dominates = abs(br_slope_val) > abs(vt_slope_val) * 1.5 if vt_slope_val != 0 else True
+                
+                # HR strong drift
+                hr_drift_strong = True
+                if has_hr:
+                    hr_drift_strong = df_steps.loc[idx, 'hr_drift'] > 1.5
+                
+                if ve_accel_high and br_dominates and hr_drift_strong:
+                    rcp_steady_idx = idx
+                    break
+            
+            # Fallback: if not found, estimate 10-15W above RCP_onset
+            if rcp_steady_idx is None and rcp_onset_loc + 1 < len(df_steps):
+                rcp_steady_idx = df_steps.index[min(rcp_onset_loc + 1, len(df_steps) - 1)]
+        
+        # =====================================================================
+        # 4. STORE RESULTS
+        # =====================================================================
+        
+        def get_point_data(idx, point_name):
+            """Extract all metrics for a detection point."""
+            if idx is None:
+                return None
+            row = df_steps.loc[idx] if isinstance(idx, (int, np.integer)) and idx in df_steps.index else df_steps.iloc[idx]
+            data = {
+                'watts': int(row['power']),
+                've': round(row['ve'], 1),
+                'step': int(row['step']),
+                'time': row.get('time', 0)
+            }
+            if 'hr' in row and pd.notna(row['hr']):
+                data['hr'] = int(row['hr'])
+            if 'br' in row and pd.notna(row['br']):
+                data['br'] = int(row['br'])
+            if 'vt_smooth' in row and pd.notna(row['vt_smooth']):
+                data['vt'] = round(row['vt_smooth'], 2)
+            return data
+        
+        # VT1 Onset
+        if vt1_onset_idx is not None:
+            pt = get_point_data(vt1_onset_idx, 'vt1_onset')
+            result['vt1_onset_watts'] = pt['watts']
+            result['vt1_watts'] = pt['watts']  # Legacy compatibility
+            result['vt1_ve'] = pt['ve']
+            result['vt1_step'] = pt['step']
+            result['vt1_hr'] = pt.get('hr')
+            result['vt1_br'] = pt.get('br')
+            result['vt1_vt'] = pt.get('vt')
+            result['vt1_onset_time'] = pt.get('time')
+            result['analysis_notes'].append(f"VT1_onset (GET/LT1): {pt['watts']}W @ step {pt['step']}")
+        
+        # VT1 Steady (or Virtual if no plateau)
+        if vt1_steady_idx is not None and result.get('vt1_steady_is_real', False):
+            # REAL VT1_steady detected
+            pt = get_point_data(vt1_steady_idx, 'vt1_steady')
+            result['vt1_steady_watts'] = pt['watts']
+            result['vt1_steady_ve'] = pt['ve']
+            result['vt1_steady_hr'] = pt.get('hr')
+            result['vt1_steady_br'] = pt.get('br')
+            result['vt1_steady_vt'] = pt.get('vt')
+            result['vt1_steady_time'] = pt.get('time')
+            result['vt1_steady_is_interpolated'] = False
+            result['analysis_notes'].append(f"VT1_steady (LT1 steady): {pt['watts']}W @ step {pt['step']} ✓plateau")
+        elif result.get('vt1_onset_watts') and result.get('rcp_onset_watts'):
+            # NO REAL PLATEAU - create VIRTUAL interpolated point
+            vt1_onset_w = result['vt1_onset_watts']
+            rcp_onset_w = result['rcp_onset_watts']
+            
+            # Interpolate: midpoint between VT1_onset and RCP_onset
+            vt1_steady_virtual_w = int((vt1_onset_w + rcp_onset_w) / 2)
+            
+            # Get metrics at this power level
+            virtual_mask = (df_steps['power'] >= vt1_steady_virtual_w - 15) & (df_steps['power'] <= vt1_steady_virtual_w + 15)
+            if virtual_mask.any():
+                closest_idx = df_steps.loc[virtual_mask, 'power'].sub(vt1_steady_virtual_w).abs().idxmin()
+                pt = get_point_data(closest_idx, 'vt1_steady_virtual')
+                result['vt1_steady_watts'] = pt['watts']
+                result['vt1_steady_ve'] = pt['ve']
+                result['vt1_steady_hr'] = pt.get('hr')
+                result['vt1_steady_br'] = pt.get('br')
+                result['vt1_steady_time'] = pt.get('time')
+            else:
+                result['vt1_steady_watts'] = vt1_steady_virtual_w
+            
+            result['vt1_steady_is_interpolated'] = True
+            result['analysis_notes'].append(
+                f"VT1_steady (interpolated): {result['vt1_steady_watts']}W - no physiological plateau detected"
+            )
+            
+            # Add physiological interpretation
+            result['no_steady_state_interpretation'] = (
+                "Pomiędzy VT1_onset a RCP_onset nie występuje stabilny stan ustalony wentylacji. "
+                "Krzywa VE wykazuje ciągłe przyspieszanie, co wskazuje na: "
+                "wąską strefę przejściową, szybkie narastanie buforowania H⁺, "
+                "wczesne wejście w domenę heavy. "
+                "Profil typowy dla sportowca o wysokiej pojemności tlenowej i stromym przejściu do kompensacji oddechowej."
+            )
+        
+        # RCP Onset (VT2)
+        if rcp_onset_idx is not None:
+            pt = get_point_data(rcp_onset_idx, 'rcp_onset')
+            result['rcp_onset_watts'] = pt['watts']
+            result['vt2_watts'] = pt['watts']  # Legacy compatibility
+            result['vt2_ve'] = pt['ve']
+            result['vt2_step'] = pt['step']
+            result['vt2_hr'] = pt.get('hr')
+            result['vt2_br'] = pt.get('br')
+            result['rcp_onset_vt'] = pt.get('vt')
+            result['rcp_onset_time'] = pt.get('time')
+            result['analysis_notes'].append(f"RCP_onset (VT2/LT2): {pt['watts']}W @ step {pt['step']}")
+        
+        # RCP Steady
+        if rcp_steady_idx is not None:
+            pt = get_point_data(rcp_steady_idx, 'rcp_steady')
+            result['rcp_steady_watts'] = pt['watts']
+            result['rcp_steady_ve'] = pt['ve']
+            result['rcp_steady_hr'] = pt.get('hr')
+            result['rcp_steady_br'] = pt.get('br')
+            result['rcp_steady_vt'] = pt.get('vt')
+            result['rcp_steady_time'] = pt.get('time')
+            result['analysis_notes'].append(f"RCP_steady (Full RCP): {pt['watts']}W")
+        
+        # =====================================================================
+        # 5. BUILD METABOLIC ZONES
+        # =====================================================================
+        
+        max_power = int(df_steps['power'].max())
+        
+        # =====================================================================
+        # 5. BUILD METABOLIC ZONES (ALWAYS 4 ZONES)
+        # =====================================================================
+        
+        # Get boundary values (use virtual if real not available)
+        vt1_onset_w = result.get('vt1_onset_watts')
+        vt1_steady_w = result.get('vt1_steady_watts')
+        rcp_onset_w = result.get('rcp_onset_watts') or result.get('vt2_watts')
+        rcp_steady_w = result.get('rcp_steady_watts')
+        is_vt1_steady_interpolated = result.get('vt1_steady_is_interpolated', False)
+        
+        # Fallback: if VT1_onset missing, estimate at 55% max
+        if vt1_onset_w is None:
+            vt1_onset_w = int(max_power * 0.55)
+            result['vt1_onset_watts'] = vt1_onset_w
+            result['vt1_watts'] = vt1_onset_w
+            result['analysis_notes'].append("⚠️ VT1_onset nie wykryty - szacunek 55% max")
+        
+        # Fallback: if RCP_onset missing, estimate at 85% max
+        if rcp_onset_w is None:
+            rcp_onset_w = int(max_power * 0.85)
+            result['rcp_onset_watts'] = rcp_onset_w
+            result['vt2_watts'] = rcp_onset_w
+            result['analysis_notes'].append("⚠️ RCP_onset nie wykryty - szacunek 85% max")
+        
+        # CRITICAL: If VT1_steady still None, create virtual interpolation
+        if vt1_steady_w is None:
+            vt1_steady_w = int((vt1_onset_w + rcp_onset_w) / 2)
+            result['vt1_steady_watts'] = vt1_steady_w
+            result['vt1_steady_is_interpolated'] = True
+            is_vt1_steady_interpolated = True
+            result['analysis_notes'].append(
+                f"⚠️ VT1_steady interpolowany: {vt1_steady_w}W = (VT1_onset + RCP_onset) / 2"
+            )
+            # Add diagnostic interpretation
+            result['no_steady_state_interpretation'] = (
+                "Nie wykryto stabilnego LT1 steady-state pomiędzy VT1_onset a RCP_onset. "
+                "Wentylacja wykazuje ciągłe przyspieszanie, co wskazuje na wąską strefę przejściową "
+                "i szybkie wejście w domenę heavy. "
+                "Zastosowano interpolowany VT1_steady jako punkt referencyjny dla stref treningowych."
+            )
+        
+        # RCP_steady fallback
+        if rcp_steady_w is None:
+            rcp_steady_w = int(rcp_onset_w + (max_power - rcp_onset_w) * 0.4)
+            result['rcp_steady_watts'] = rcp_steady_w
+        
+        # =====================================================================
+        # VALIDATE MONOTONIC BOUNDARIES
+        # =====================================================================
+        boundaries_valid = (vt1_onset_w < vt1_steady_w < rcp_onset_w < rcp_steady_w <= max_power)
+        
+        if not boundaries_valid:
+            # Fix non-monotonic boundaries
+            result['analysis_notes'].append("⚠️ Korekta granic: wymuszenie monotoniczności")
+            
+            # Ensure VT1_steady > VT1_onset
+            if vt1_steady_w <= vt1_onset_w:
+                vt1_steady_w = vt1_onset_w + int((rcp_onset_w - vt1_onset_w) * 0.4)
+                result['vt1_steady_watts'] = vt1_steady_w
+            
+            # Ensure RCP_onset > VT1_steady
+            if rcp_onset_w <= vt1_steady_w:
+                rcp_onset_w = vt1_steady_w + int((max_power - vt1_steady_w) * 0.5)
+                result['rcp_onset_watts'] = rcp_onset_w
+                result['vt2_watts'] = rcp_onset_w
+            
+            # Ensure RCP_steady > RCP_onset
+            if rcp_steady_w <= rcp_onset_w:
+                rcp_steady_w = rcp_onset_w + 15
+                result['rcp_steady_watts'] = rcp_steady_w
+        
+        result['boundaries_valid'] = (vt1_onset_w < vt1_steady_w < rcp_onset_w < rcp_steady_w)
+        
+        # =====================================================================
+        # BUILD 4 ZONES (MANDATORY)
+        # =====================================================================
+        zones = []
+        
+        # Zone 1: Pure Aerobic (< VT1_onset)
+        zones.append({
+            'zone': 1,
+            'name': 'Pure Aerobic',
+            'power_min': 0,
+            'power_max': vt1_onset_w,
+            'hr_min': None,
+            'hr_max': result.get('vt1_hr'),
+            'description': 'Full homeostasis, linear VE, no H⁺ buffering',
+            'training': 'Recovery / Endurance Base',
+            'domain': 'Moderate'
+        })
+        
+        # Zone 2: Upper Aerobic (VT1_onset → VT1_steady)
+        zone2_name = 'Upper Aerobic (Unstable)' if is_vt1_steady_interpolated else 'Upper Aerobic'
+        zone2_desc = ('Strefa niestabilna - brak plateau VE, ciągłe przyspieszanie' 
+                     if is_vt1_steady_interpolated else 
+                     'Buffering onset, rising VE, stable metabolism')
+        zones.append({
+            'zone': 2,
+            'name': zone2_name,
+            'power_min': vt1_onset_w,
+            'power_max': vt1_steady_w,
+            'hr_min': result.get('vt1_hr'),
+            'hr_max': result.get('vt1_steady_hr'),
+            'description': zone2_desc,
+            'training': 'Tempo / Sweet Spot',
+            'domain': 'Moderate-Heavy Transition',
+            'is_interpolated': is_vt1_steady_interpolated
+        })
+        
+        # Zone 3: Heavy Domain (VT1_steady → RCP_onset)
+        zones.append({
+            'zone': 3,
+            'name': 'Heavy Domain',
+            'power_min': vt1_steady_w,
+            'power_max': rcp_onset_w,
+            'hr_min': result.get('vt1_steady_hr'),
+            'hr_max': result.get('vt2_hr'),
+            'description': 'Building acidosis, VE > VO₂, pre-compensation',
+            'training': 'Threshold / FTP Work',
+            'domain': 'Heavy'
+        })
+        
+        # Zone 4: Severe Domain (≥ RCP_onset) with subzones 4a/4b
+        zones.append({
+            'zone': 4,
+            'name': 'Severe Domain',
+            'power_min': rcp_onset_w,
+            'power_max': max_power,
+            'hr_min': result.get('vt2_hr'),
+            'hr_max': None,
+            'description': 'Compensatory hyperventilation, no steady-state possible',
+            'training': 'VO₂max / Anaerobic',
+            'domain': 'Severe',
+            'subzones': [
+                {
+                    'name': '4a - Severe Onset',
+                    'power_min': rcp_onset_w,
+                    'power_max': rcp_steady_w,
+                    'description': 'RCP onset → full RCP transition'
+                },
+                {
+                    'name': '4b - Full Severe',
+                    'power_min': rcp_steady_w,
+                    'power_max': max_power,
+                    'description': 'Full respiratory compensation, exhaustion imminent'
+                }
+            ]
+        })
+        
+        # Validate: must have exactly 4 zones
+        if len(zones) != 4:
+            result['analysis_notes'].append(f"❌ BŁĄD: Wygenerowano {len(zones)} stref zamiast 4!")
+        else:
+            result['analysis_notes'].append(f"✓ 4 strefy wygenerowane poprawnie")
+        
+        result['metabolic_zones'] = zones
     
     # =========================================================================
     # 6. FALLBACK DEFAULTS

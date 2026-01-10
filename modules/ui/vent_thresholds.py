@@ -239,141 +239,212 @@ def render_vent_thresholds_tab(target_df, training_notes, uploaded_file_name, cp
     if has_gas:
         st.success("✅ **Tryb CPET**: Analiza VE/VO2 i VE/VCO2")
     else:
-        st.info("ℹ️ **Tryb VE-only**: Brak VO2/VCO2 - analiza gradientowa")
+        st.info("ℹ️ **Tryb VE-only**: 4-punktowa analiza CPET (VT1_onset, VT1_steady, RCP_onset, RCP_steady)")
     
-    col_z1, col_z2 = st.columns(2)
+    # =========================================================================
+    # 4 THRESHOLD CARDS (2x2 Grid)
+    # =========================================================================
     
-    # --- VT1 CARD (from CPET) ---
-    with col_z1:
-        vt1_watts = cpet_result.get('vt1_watts')
-        vt1_hr = cpet_result.get('vt1_hr')
-        vt1_ve = cpet_result.get('vt1_ve')
-        vt1_br = cpet_result.get('vt1_br')
-        vt1_pct_vo2max = cpet_result.get('vt1_pct_vo2max')
-        
-        # Fallback: Get missing metrics from target_df if not in cpet_result
-        if vt1_watts:
-            vt1_mask = (target_df['watts'] >= vt1_watts - 10) & (target_df['watts'] <= vt1_watts + 10)
-            if vt1_mask.any():
+    # Helper function to get metrics with fallback
+    def get_metric_with_fallback(result_key, target_df, power_val, col_map):
+        val = cpet_result.get(result_key)
+        if val is None and power_val:
+            mask = (target_df['watts'] >= power_val - 10) & (target_df['watts'] <= power_val + 10)
+            if mask.any():
                 try:
-                    # HR fallback
-                    if vt1_hr is None and 'hr' in target_df.columns:
-                        hr_val = target_df.loc[vt1_mask, 'hr'].mean()
-                        if pd.notna(hr_val) and hr_val > 0:
-                            vt1_hr = int(hr_val)
-                    # VE fallback
-                    if vt1_ve is None and 'tymeventilation' in target_df.columns:
-                        ve_val = target_df.loc[vt1_mask, 'tymeventilation'].mean()
-                        if pd.notna(ve_val) and ve_val > 0:
-                            vt1_ve = round(ve_val, 1)
-                    # BR fallback
-                    if vt1_br is None and 'tymebreathrate' in target_df.columns:
-                        br_val = target_df.loc[vt1_mask, 'tymebreathrate'].mean()
-                        if pd.notna(br_val) and br_val > 0:
-                            vt1_br = int(br_val)
+                    for src_col in col_map:
+                        if src_col in target_df.columns:
+                            v = target_df.loc[mask, src_col].mean()
+                            if pd.notna(v) and v > 0:
+                                return int(v) if 'hr' in result_key or 'br' in result_key else round(v, 1)
                 except:
                     pass
+        return val
+    
+    # Row 1: VT1_onset and VT1_steady
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        # VT1 ONSET
+        vt1_onset_w = cpet_result.get('vt1_onset_watts') or cpet_result.get('vt1_watts')
+        vt1_hr = get_metric_with_fallback('vt1_hr', target_df, vt1_onset_w, ['hr'])
+        vt1_ve = get_metric_with_fallback('vt1_ve', target_df, vt1_onset_w, ['tymeventilation'])
+        vt1_br = get_metric_with_fallback('vt1_br', target_df, vt1_onset_w, ['tymebreathrate'])
         
-        if vt1_watts:
-            # Build metric lines (only if value exists)
+        if vt1_onset_w:
             hr_line = f'<p style="margin:0; color:#aaa;"><b>HR:</b> {int(vt1_hr)} bpm</p>' if vt1_hr else ''
             ve_line = f'<p style="margin:0; color:#aaa;"><b>VE:</b> {vt1_ve} L/min</p>' if vt1_ve else ''
             br_line = f'<p style="margin:0; color:#aaa;"><b>BR:</b> {int(vt1_br)} oddech/min</p>' if (vt1_br and vt1_br > 0) else ''
-            vo2_line = f'<p style="margin:0; color:#aaa;"><b>%VO2max:</b> {vt1_pct_vo2max:.0f}%</p>' if vt1_pct_vo2max else ''
             
             st.markdown(f"""
-            <div style="padding:15px; border-radius:8px; border:2px solid #ffa15a; background-color: #222;">
-                <h3 style="margin:0; color: #ffa15a;">VT1 (Próg Tlenowy)</h3>
-                <h1 style="margin:5px 0; font-size:2.5em;">{int(vt1_watts)} W</h1>
-                {hr_line}
-                {ve_line}
-                {br_line}
-                {vo2_line}
+            <div style="padding:12px; border-radius:8px; border:2px solid #ffa15a; background-color: #222;">
+                <h4 style="margin:0; color: #ffa15a; font-size:0.9em;">VT1_onset</h4>
+                <p style="margin:0; color:#888; font-size:0.75em;">GET / LT1 Onset</p>
+                <h2 style="margin:5px 0; font-size:2em;">{int(vt1_onset_w)} W</h2>
+                {hr_line}{ve_line}{br_line}
             </div>
             """, unsafe_allow_html=True)
-            
-            # % of CP
             if cp_input > 0:
-                vt1_pct = (vt1_watts / cp_input) * 100
-                st.caption(f"~{vt1_pct:.0f}% CP")
-                
-            # Apply button
-            if st.button("✅ Aplikuj VT1", key="apply_vt1_main"):
-                st.session_state['manual_vt1_watts'] = vt1_watts
-                if vt1_ve: st.session_state['vt1_ve'] = vt1_ve
-                if vt1_hr: st.session_state['vt1_hr'] = vt1_hr
-                if vt1_br: st.session_state['vt1_br'] = vt1_br
-                st.success(f"Ustawiono VT1 = {vt1_watts}W")
-                st.rerun()
+                st.caption(f"~{(vt1_onset_w / cp_input) * 100:.0f}% CP")
         else:
-            st.warning("VT1: Nie wykryto automatycznie")
-
-    # --- VT2 CARD (from CPET) ---
-    with col_z2:
-        vt2_watts = cpet_result.get('vt2_watts')
-        vt2_hr = cpet_result.get('vt2_hr')
+            st.warning("VT1_onset: Nie wykryto")
+    
+    with col2:
+        # VT1 STEADY (or Virtual if interpolated)
+        vt1_steady_w = cpet_result.get('vt1_steady_watts')
+        vt1_steady_hr = get_metric_with_fallback('vt1_steady_hr', target_df, vt1_steady_w, ['hr'])
+        vt1_steady_ve = cpet_result.get('vt1_steady_ve')
+        vt1_steady_br = cpet_result.get('vt1_steady_br')
+        is_interpolated = cpet_result.get('vt1_steady_is_interpolated', False)
+        
+        if vt1_steady_w:
+            hr_line = f'<p style="margin:0; color:#aaa;"><b>HR:</b> {int(vt1_steady_hr)} bpm</p>' if vt1_steady_hr else ''
+            ve_line = f'<p style="margin:0; color:#aaa;"><b>VE:</b> {vt1_steady_ve} L/min</p>' if vt1_steady_ve else ''
+            br_line = f'<p style="margin:0; color:#aaa;"><b>BR:</b> {int(vt1_steady_br)} oddech/min</p>' if (vt1_steady_br and vt1_steady_br > 0) else ''
+            
+            if is_interpolated:
+                # INTERPOLATED - dashed border, different styling
+                st.markdown(f"""
+                <div style="padding:12px; border-radius:8px; border:2px dashed #888; background-color: #1a1a1a;">
+                    <h4 style="margin:0; color: #888; font-size:0.9em;">VT1_steady (Interpolated)</h4>
+                    <p style="margin:0; color:#666; font-size:0.7em;">⚠️ No physiological plateau detected</p>
+                    <h2 style="margin:5px 0; font-size:2em; color:#aaa;">{int(vt1_steady_w)} W</h2>
+                    {hr_line}{ve_line}{br_line}
+                </div>
+                """, unsafe_allow_html=True)
+            else:
+                # REAL PLATEAU - solid border
+                st.markdown(f"""
+                <div style="padding:12px; border-radius:8px; border:2px solid #00cc96; background-color: #222;">
+                    <h4 style="margin:0; color: #00cc96; font-size:0.9em;">VT1_steady</h4>
+                    <p style="margin:0; color:#888; font-size:0.75em;">LT1 Steady (Upper Aerobic Ceiling) ✓plateau</p>
+                    <h2 style="margin:5px 0; font-size:2em;">{int(vt1_steady_w)} W</h2>
+                    {hr_line}{ve_line}{br_line}
+                </div>
+                """, unsafe_allow_html=True)
+            if cp_input > 0:
+                st.caption(f"~{(vt1_steady_w / cp_input) * 100:.0f}% CP")
+        else:
+            st.warning("VT1_steady: Nie wykryto")
+    
+    # Row 2: RCP_onset and RCP_steady
+    col3, col4 = st.columns(2)
+    
+    with col3:
+        # RCP ONSET (VT2)
+        rcp_onset_w = cpet_result.get('rcp_onset_watts') or cpet_result.get('vt2_watts')
+        vt2_hr = get_metric_with_fallback('vt2_hr', target_df, rcp_onset_w, ['hr'])
         vt2_ve = cpet_result.get('vt2_ve')
-        vt2_br = cpet_result.get('vt2_br')
-        vt2_pct_vo2max = cpet_result.get('vt2_pct_vo2max')
+        vt2_br = get_metric_with_fallback('vt2_br', target_df, rcp_onset_w, ['tymebreathrate'])
         
-        # Fallback: Get missing metrics from target_df if not in cpet_result
-        if vt2_watts:
-            vt2_mask = (target_df['watts'] >= vt2_watts - 10) & (target_df['watts'] <= vt2_watts + 10)
-            if vt2_mask.any():
-                try:
-                    # HR fallback
-                    if vt2_hr is None and 'hr' in target_df.columns:
-                        hr_val = target_df.loc[vt2_mask, 'hr'].mean()
-                        if pd.notna(hr_val) and hr_val > 0:
-                            vt2_hr = int(hr_val)
-                    # VE fallback
-                    if vt2_ve is None and 'tymeventilation' in target_df.columns:
-                        ve_val = target_df.loc[vt2_mask, 'tymeventilation'].mean()
-                        if pd.notna(ve_val) and ve_val > 0:
-                            vt2_ve = round(ve_val, 1)
-                    # BR fallback
-                    if vt2_br is None and 'tymebreathrate' in target_df.columns:
-                        br_val = target_df.loc[vt2_mask, 'tymebreathrate'].mean()
-                        if pd.notna(br_val) and br_val > 0:
-                            vt2_br = int(br_val)
-                except:
-                    pass
-        
-        if vt2_watts:
-            # Build metric lines (only if value exists)
+        if rcp_onset_w:
             hr_line = f'<p style="margin:0; color:#aaa;"><b>HR:</b> {int(vt2_hr)} bpm</p>' if vt2_hr else ''
             ve_line = f'<p style="margin:0; color:#aaa;"><b>VE:</b> {vt2_ve} L/min</p>' if vt2_ve else ''
             br_line = f'<p style="margin:0; color:#aaa;"><b>BR:</b> {int(vt2_br)} oddech/min</p>' if (vt2_br and vt2_br > 0) else ''
-            vo2_line = f'<p style="margin:0; color:#aaa;"><b>%VO2max:</b> {vt2_pct_vo2max:.0f}%</p>' if vt2_pct_vo2max else ''
             
             st.markdown(f"""
-            <div style="padding:15px; border-radius:8px; border:2px solid #ef553b; background-color: #222;">
-                <h3 style="margin:0; color: #ef553b;">VT2 (Próg Beztlenowy)</h3>
-                <h1 style="margin:5px 0; font-size:2.5em;">{int(vt2_watts)} W</h1>
-                {hr_line}
-                {ve_line}
-                {br_line}
-                {vo2_line}
+            <div style="padding:12px; border-radius:8px; border:2px solid #ef553b; background-color: #222;">
+                <h4 style="margin:0; color: #ef553b; font-size:0.9em;">RCP_onset</h4>
+                <p style="margin:0; color:#888; font-size:0.75em;">VT2 / LT2 Onset (Respiratory Compensation Point)</p>
+                <h2 style="margin:5px 0; font-size:2em;">{int(rcp_onset_w)} W</h2>
+                {hr_line}{ve_line}{br_line}
             </div>
             """, unsafe_allow_html=True)
-            
-            # % of CP
             if cp_input > 0:
-                vt2_pct = (vt2_watts / cp_input) * 100
-                st.caption(f"~{vt2_pct:.0f}% CP")
-                
-            # Apply button
-            if st.button("✅ Aplikuj VT2", key="apply_vt2_main"):
-                st.session_state['manual_vt2_watts'] = vt2_watts
-                if vt2_ve: st.session_state['vt2_ve'] = vt2_ve
-                if vt2_hr: st.session_state['vt2_hr'] = vt2_hr
-                if vt2_br: st.session_state['vt2_br'] = vt2_br
-                st.success(f"Ustawiono VT2 = {vt2_watts}W")
-                st.rerun()
+                st.caption(f"~{(rcp_onset_w / cp_input) * 100:.0f}% CP")
         else:
-            st.warning("VT2: Nie wykryto automatycznie")
+            st.warning("RCP_onset: Nie wykryto")
     
-    # Analysis notes
+    with col4:
+        # RCP STEADY
+        rcp_steady_w = cpet_result.get('rcp_steady_watts')
+        rcp_steady_hr = cpet_result.get('rcp_steady_hr')
+        rcp_steady_ve = cpet_result.get('rcp_steady_ve')
+        rcp_steady_br = cpet_result.get('rcp_steady_br')
+        
+        if rcp_steady_w:
+            hr_line = f'<p style="margin:0; color:#aaa;"><b>HR:</b> {int(rcp_steady_hr)} bpm</p>' if rcp_steady_hr else ''
+            ve_line = f'<p style="margin:0; color:#aaa;"><b>VE:</b> {rcp_steady_ve} L/min</p>' if rcp_steady_ve else ''
+            br_line = f'<p style="margin:0; color:#aaa;"><b>BR:</b> {int(rcp_steady_br)} oddech/min</p>' if (rcp_steady_br and rcp_steady_br > 0) else ''
+            
+            st.markdown(f"""
+            <div style="padding:12px; border-radius:8px; border:2px solid #ab63fa; background-color: #222;">
+                <h4 style="margin:0; color: #ab63fa; font-size:0.9em;">RCP_steady</h4>
+                <p style="margin:0; color:#888; font-size:0.75em;">Full RCP (Severe Domain Entry)</p>
+                <h2 style="margin:5px 0; font-size:2em;">{int(rcp_steady_w)} W</h2>
+                {hr_line}{ve_line}{br_line}
+            </div>
+            """, unsafe_allow_html=True)
+            if cp_input > 0:
+                st.caption(f"~{(rcp_steady_w / cp_input) * 100:.0f}% CP")
+        else:
+            st.info("RCP_steady: Nie wykryto (za mało danych)")
+    
+    # =========================================================================
+    # METABOLIC ZONES TABLE
+    # =========================================================================
+    
+    zones = cpet_result.get('metabolic_zones', [])
+    if zones and len(zones) >= 4:
+        st.markdown("---")
+        st.subheader("🎯 Strefy Metaboliczne")
+        
+        zone_data = []
+        for z in zones:
+            hr_range = ""
+            if z.get('hr_min') and z.get('hr_max'):
+                hr_range = f"{z['hr_min']} - {z['hr_max']}"
+            elif z.get('hr_max'):
+                hr_range = f"< {z['hr_max']}"
+            elif z.get('hr_min'):
+                hr_range = f"> {z['hr_min']}"
+            
+            zone_name = z['name']
+            if z.get('is_interpolated'):
+                zone_name += " ⚠️"
+            
+            zone_data.append({
+                "Strefa": f"Z{z['zone']}",
+                "Nazwa": zone_name,
+                "Moc (W)": f"{z['power_min']} - {z['power_max']}",
+                "HR (bpm)": hr_range,
+                "Trening": z['training'],
+                "Domena": z.get('domain', '')
+            })
+            
+            # Add subzones for Z4
+            if z.get('subzones') and isinstance(z['subzones'], list):
+                for sz in z['subzones']:
+                    zone_data.append({
+                        "Strefa": "",
+                        "Nazwa": f"  └ {sz['name']}",
+                        "Moc (W)": f"{sz['power_min']} - {sz['power_max']}",
+                        "HR (bpm)": "",
+                        "Trening": "",
+                        "Domena": ""
+                    })
+        
+        st.dataframe(
+            pd.DataFrame(zone_data),
+            use_container_width=True,
+            hide_index=True
+        )
+        
+        # Diagnostic interpretation if VT1_steady interpolated
+        interp = cpet_result.get('no_steady_state_interpretation')
+        if interp:
+            st.warning(f"📋 **Interpretacja:** {interp}")
+        
+        # Zone descriptions in expander
+        with st.expander("📖 Opisy stref fizjologicznych"):
+            for z in zones:
+                prefix = "⚠️ " if z.get('is_interpolated') else ""
+                st.markdown(f"**{prefix}{z['name']}:** {z['description']}")
+    
+    # =========================================================================
+    # ANALYSIS NOTES
+    # =========================================================================
+    
     analysis_notes = cpet_result.get('analysis_notes', [])
     if analysis_notes:
         with st.expander("📋 Notatki z analizy CPET", expanded=False):
@@ -585,64 +656,130 @@ def render_vent_thresholds_tab(target_df, training_notes, uploaded_file_name, cp
             hovertemplate="<b>Czas:</b> %{customdata}<br><b>HR:</b> %{y:.0f} bpm<extra></extra>"
         ))
 
-    # VT Markers from CPET result
+    # =========================================================================
+    # 4 VT MARKERS from CPET result
+    # =========================================================================
     cpet_result = st.session_state.get('cpet_vt_result', {})
-    vt1_watts = cpet_result.get('vt1_watts')
-    vt2_watts = cpet_result.get('vt2_watts')
-    vt1_hr = cpet_result.get('vt1_hr')
-    vt2_hr = cpet_result.get('vt2_hr')
     
-    # Find times at VT1/VT2 power levels
-    if vt1_watts and 'watts' in target_df.columns:
-        # Find first time when power crosses VT1
-        vt1_mask = target_df['watts'] >= vt1_watts
-        if vt1_mask.any():
-            vt1_time = target_df.loc[vt1_mask, 'time'].iloc[0]
-            hr_str = f"{int(vt1_hr)}" if vt1_hr else "--"
-            
-            fig_thresh.add_vline(
-                x=vt1_time,
-                line=dict(color="#ffa15a", width=3, dash="dash"),
-                layer="above"
-            )
-            fig_thresh.add_annotation(
-                x=vt1_time, y=1, yref="paper",
-                text=f"<b>VT1</b><br>{int(vt1_watts)}W @ {hr_str} bpm",
-                showarrow=False, font=dict(color="white", size=11),
-                bgcolor="rgba(255, 161, 90, 0.8)", bordercolor="#ffa15a",
-                borderwidth=2, borderpad=4, align="center",
-                xanchor="center", yanchor="top"
-            )
+    def get_time_at_power(power_val):
+        """Get first time when power reaches value."""
+        if power_val and 'watts' in target_df.columns:
+            mask = target_df['watts'] >= power_val
+            if mask.any():
+                return target_df.loc[mask, 'time'].iloc[0]
+        return None
     
-    if vt2_watts and 'watts' in target_df.columns:
-        vt2_mask = target_df['watts'] >= vt2_watts
-        if vt2_mask.any():
-            vt2_time = target_df.loc[vt2_mask, 'time'].iloc[0]
+    def get_hr_at_power(power_val, hr_key):
+        """Get HR with fallback to target_df."""
+        hr = cpet_result.get(hr_key)
+        if hr is None and power_val and 'hr' in target_df.columns:
+            mask = (target_df['watts'] >= power_val - 10) & (target_df['watts'] <= power_val + 10)
+            if mask.any():
+                hr_val = target_df.loc[mask, 'hr'].mean()
+                if pd.notna(hr_val) and hr_val > 0:
+                    return int(hr_val)
+        return hr
+    
+    # Get all 4 points
+    vt1_onset_w = cpet_result.get('vt1_onset_watts') or cpet_result.get('vt1_watts')
+    vt1_steady_w = cpet_result.get('vt1_steady_watts')
+    rcp_onset_w = cpet_result.get('rcp_onset_watts') or cpet_result.get('vt2_watts')
+    rcp_steady_w = cpet_result.get('rcp_steady_watts')
+    
+    vt1_onset_t = get_time_at_power(vt1_onset_w)
+    vt1_steady_t = get_time_at_power(vt1_steady_w)
+    rcp_onset_t = get_time_at_power(rcp_onset_w)
+    rcp_steady_t = get_time_at_power(rcp_steady_w)
+    
+    # Zone colors
+    zone_colors = {
+        'z1': "rgba(100, 200, 100, 0.10)",   # Pure Aerobic - green
+        'z2': "rgba(255, 161, 90, 0.15)",     # Upper Aerobic - orange
+        'z3': "rgba(0, 204, 150, 0.15)",      # Heavy - teal
+        'z4': "rgba(239, 85, 59, 0.15)",      # Severe - red
+    }
+    
+    # Add zone rectangles FIRST (as background)
+    if vt1_onset_t is not None:
+        # Zone 1: Start to VT1_onset
+        fig_thresh.add_vrect(
+            x0=target_df['time'].min(), x1=vt1_onset_t,
+            fillcolor=zone_colors['z1'], layer="below", line_width=0
+        )
+    
+    if vt1_onset_t and vt1_steady_t:
+        # Zone 2: VT1_onset to VT1_steady
+        fig_thresh.add_vrect(
+            x0=vt1_onset_t, x1=vt1_steady_t,
+            fillcolor=zone_colors['z2'], layer="below", line_width=0
+        )
+    
+    if vt1_steady_t and rcp_onset_t:
+        # Zone 3: VT1_steady to RCP_onset
+        fig_thresh.add_vrect(
+            x0=vt1_steady_t, x1=rcp_onset_t,
+            fillcolor=zone_colors['z3'], layer="below", line_width=0
+        )
+    
+    if rcp_onset_t:
+        # Zone 4: RCP_onset to end
+        fig_thresh.add_vrect(
+            x0=rcp_onset_t, x1=target_df['time'].max(),
+            fillcolor=zone_colors['z4'], layer="below", line_width=0
+        )
+    
+    # Add 4 vertical lines with annotations
+    markers = [
+        ('vt1_onset', vt1_onset_w, vt1_onset_t, '#ffa15a', 'VT1_onset', 'vt1_hr', 1.0, 'top'),
+        ('vt1_steady', vt1_steady_w, vt1_steady_t, '#00cc96', 'VT1_steady', 'vt1_steady_hr', 0.85, 'top'),
+        ('rcp_onset', rcp_onset_w, rcp_onset_t, '#ef553b', 'RCP_onset', 'vt2_hr', 1.0, 'bottom'),
+        ('rcp_steady', rcp_steady_w, rcp_steady_t, '#ab63fa', 'RCP_steady', 'rcp_steady_hr', 0.85, 'bottom'),
+    ]
+    
+    # Check if VT1_steady is interpolated
+    is_vt1_steady_interpolated = cpet_result.get('vt1_steady_is_interpolated', False)
+    
+    for name, power, time, color, label, hr_key, y_pos, anchor in markers:
+        if time is not None and power is not None:
+            hr = get_hr_at_power(power, hr_key)
+            hr_str = f"{int(hr)}" if hr else "--"
             
-            # Fallback: get HR from target_df if not in cpet_result
-            chart_vt2_hr = vt2_hr
-            if chart_vt2_hr is None and 'hr' in target_df.columns:
-                hr_mask = (target_df['watts'] >= vt2_watts - 10) & (target_df['watts'] <= vt2_watts + 10)
-                if hr_mask.any():
-                    hr_val = target_df.loc[hr_mask, 'hr'].mean()
-                    if pd.notna(hr_val) and hr_val > 0:
-                        chart_vt2_hr = int(hr_val)
-            
-            hr_str = f"{int(chart_vt2_hr)}" if chart_vt2_hr else "--"
-            
-            fig_thresh.add_vline(
-                x=vt2_time,
-                line=dict(color="#ef553b", width=3, dash="dash"),
-                layer="above"
-            )
-            fig_thresh.add_annotation(
-                x=vt2_time, y=1, yref="paper",
-                text=f"<b>VT2</b><br>{int(vt2_watts)}W @ {hr_str} bpm",
-                showarrow=False, font=dict(color="white", size=11),
-                bgcolor="rgba(239, 85, 59, 0.8)", bordercolor="#ef553b",
-                borderwidth=2, borderpad=4, align="center",
-                xanchor="center", yanchor="bottom", yshift=-40
-            )
+            # Special handling for interpolated VT1_steady
+            if name == 'vt1_steady' and is_vt1_steady_interpolated:
+                # Dotted line, semi-transparent for interpolated
+                fig_thresh.add_vline(
+                    x=time,
+                    line=dict(color="#666", width=2, dash="dot"),
+                    layer="above"
+                )
+                fig_thresh.add_annotation(
+                    x=time, y=y_pos, yref="paper",
+                    text=f"<b>{label}</b><br>(interp.)<br>{int(power)}W",
+                    showarrow=False, font=dict(color="white", size=8),
+                    bgcolor="rgba(100, 100, 100, 0.7)",
+                    bordercolor="#666",
+                    borderwidth=1, borderpad=3, align="center",
+                    xanchor="center", yanchor=anchor
+                )
+            else:
+                # Normal solid-dash for detected points
+                fig_thresh.add_vline(
+                    x=time,
+                    line=dict(color=color, width=2, dash="dash"),
+                    layer="above"
+                )
+                
+                yshift = -35 if anchor == 'bottom' else 0
+                
+                fig_thresh.add_annotation(
+                    x=time, y=y_pos, yref="paper",
+                    text=f"<b>{label}</b><br>{int(power)}W @ {hr_str}",
+                    showarrow=False, font=dict(color="white", size=9),
+                    bgcolor=f"rgba({int(color[1:3], 16)}, {int(color[3:5], 16)}, {int(color[5:7], 16)}, 0.85)",
+                    bordercolor=color,
+                    borderwidth=1, borderpad=3, align="center",
+                    xanchor="center", yanchor=anchor, yshift=yshift
+                )
 
     fig_thresh.update_layout(
         title="Dynamika Wentylacji z Progami VT1/VT2",

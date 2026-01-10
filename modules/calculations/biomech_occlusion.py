@@ -246,8 +246,73 @@ def format_occlusion_for_report(profile: OcclusionProfile) -> Dict[str, Any]:
     }
 
 
+def minimal_safe_cadence(power: float, torque_threshold: float) -> float:
+    """
+    Calculate minimum safe cadence to avoid occlusion at given power.
+    
+    Formula: Torque = Power / (2π × Cadence)
+    Rearranged: Cadence = Power / (2π × Torque_threshold) × 60 [RPM]
+    
+    Args:
+        power: Power output [W]
+        torque_threshold: Maximum safe torque before occlusion [Nm]
+        
+    Returns:
+        Minimum safe cadence [RPM]
+    """
+    if torque_threshold <= 0 or power <= 0:
+        return 0.0
+    
+    # Cadence [RPM] = Power [W] / (2π × Torque [Nm]) × 60
+    # Note: Power = Torque × 2π × (Cadence/60), so Cadence/60 = Power / (2π × Torque)
+    cadence_rps = power / (2 * np.pi * torque_threshold)  # revolutions per second
+    cadence_rpm = cadence_rps * 60  # revolutions per minute
+    
+    return max(0.0, cadence_rpm)
+
+
+def calculate_power_zone_cadences(
+    power_zones: dict,
+    torque_at_minus_10: float,
+    torque_at_minus_20: float
+) -> list:
+    """
+    Calculate minimal safe cadence for each power zone.
+    
+    Args:
+        power_zones: Dict with zone names and (min, max) power tuples
+        torque_at_minus_10: Torque threshold at SmO2 -10% [Nm]
+        torque_at_minus_20: Torque threshold at SmO2 -20% [Nm]
+        
+    Returns:
+        List of dicts with zone info and cadence thresholds
+    """
+    results = []
+    
+    for zone_name, (power_min, power_max) in power_zones.items():
+        power_mid = (power_min + power_max) / 2
+        
+        # Calculate minimum cadence for moderate occlusion (-10%)
+        cad_moderate = minimal_safe_cadence(power_mid, torque_at_minus_10) if torque_at_minus_10 > 0 else 0
+        
+        # Calculate minimum cadence for critical occlusion (-20%)
+        cad_critical = minimal_safe_cadence(power_mid, torque_at_minus_20) if torque_at_minus_20 > 0 else 0
+        
+        results.append({
+            "zone": zone_name,
+            "power_range": f"{power_min}-{power_max} W",
+            "power_mid": power_mid,
+            "cadence_safe": round(cad_moderate, 0) if cad_moderate > 0 else "---",
+            "cadence_critical": round(cad_critical, 0) if cad_critical > 0 else "---",
+        })
+    
+    return results
+
+
 __all__ = [
     "OcclusionProfile",
     "analyze_biomech_occlusion",
     "format_occlusion_for_report",
+    "minimal_safe_cadence",
+    "calculate_power_zone_cadences",
 ]

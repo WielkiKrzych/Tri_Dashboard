@@ -162,3 +162,210 @@ def render_biomech_tab(df_plot, df_plot_resampled):
         **Praktyczny Wniosek (Scenario):** * Masz do wygenerowania 300W. Możesz to zrobić siłowo (70 RPM, wysoki moment) lub kadencyjnie (90 RPM, niższy moment).
         * Spójrz na wykres: Jeśli przy momencie odpowiadającym 70 RPM Twoje SmO2 spada do 30%, a przy momencie dla 90 RPM wynosi 50% -> **Wybierz wyższą kadencję!** Oszczędzasz nogi (glikogen) kosztem nieco wyższego tętna.
         """)
+
+    # =========================================================================
+    # NOWA SEKCJA: ANALIZA RYZYKA OKLUZJI (KADENCJA MINIMALNA)
+    # =========================================================================
+    st.divider()
+    st.subheader("🚨 Analiza Ryzyka Okluzji (Kadencja Minimalna)")
+    
+    _render_occlusion_cadence_analysis(df_plot)
+
+
+def _render_occlusion_cadence_analysis(df_plot):
+    """
+    Renderuje analizę minimalnej bezpiecznej kadencji dla uniknięcia okluzji.
+    
+    Na podstawie relacji: Torque = Power / (2π × Cadence)
+    i progów okluzji SmO2 (-10%, -20%)
+    """
+    import numpy as np
+    import pandas as pd
+    from modules.calculations.biomech_occlusion import (
+        analyze_biomech_occlusion, 
+        minimal_safe_cadence,
+        calculate_power_zone_cadences
+    )
+    
+    # Walidacja danych
+    if 'torque' not in df_plot.columns or 'smo2' not in df_plot.columns:
+        st.warning("⚠️ **Brak danych momentu obrotowego lub SmO2** — nie można przeprowadzić analizy okluzji kadencji.")
+        return
+    
+    # Przeprowadź analizę okluzji
+    torque = df_plot['torque'].values
+    smo2 = df_plot['smo2'].values
+    cadence = df_plot['cadence'].values if 'cadence' in df_plot.columns else None
+    
+    profile = analyze_biomech_occlusion(torque, smo2, cadence)
+    
+    if profile.data_points < 30:
+        st.warning("⚠️ **Za mało danych** do analizy okluzji kadencji.")
+        return
+    
+    # Definicja stref mocy (uproszczona, można rozszerzyć)
+    # Zakładamy typowe strefy dla kolarza ~280W CP
+    power_zones = {
+        "Z1 Recovery": (0, 100),
+        "Z2 Endurance": (100, 180),
+        "Z3 Tempo": (180, 220),
+        "Z4 Threshold": (220, 260),
+        "Z5 VO2max": (260, 320),
+        "Z6 Anaerobic": (320, 400),
+    }
+    
+    # Oblicz minimalne kadencje dla każdej strefy
+    zone_cadences = calculate_power_zone_cadences(
+        power_zones,
+        profile.torque_at_minus_10,
+        profile.torque_at_minus_20
+    )
+    
+    # === TABELA MINIMALNYCH KADENCJI ===
+    st.markdown("### 📊 Minimalna Kadencja dla Uniknięcia Okluzji")
+    
+    # Przygotowanie danych do tabeli
+    table_data = []
+    for zc in zone_cadences:
+        table_data.append({
+            "Strefa": zc["zone"],
+            "Zakres Mocy": zc["power_range"],
+            "Kadencja Bezpieczna (SmO2 -10%)": f"{zc['cadence_safe']:.0f} rpm" if isinstance(zc['cadence_safe'], float) else zc['cadence_safe'],
+            "Kadencja Krytyczna (SmO2 -20%)": f"{zc['cadence_critical']:.0f} rpm" if isinstance(zc['cadence_critical'], float) else zc['cadence_critical'],
+        })
+    
+    df_table = pd.DataFrame(table_data)
+    st.dataframe(df_table, use_container_width=True, hide_index=True)
+    
+    # === MAPA RYZYKA (Power × Cadence) ===
+    st.markdown("### 🌡️ Mapa Ryzyka Okluzji (Power × Cadence)")
+    
+    # Generuj heatmap
+    powers = np.arange(100, 401, 20)  # 100W to 400W
+    cadences = np.arange(50, 121, 5)   # 50 to 120 RPM
+    
+    risk_matrix = np.zeros((len(cadences), len(powers)))
+    
+    for i, cad in enumerate(cadences):
+        for j, pwr in enumerate(powers):
+            # Oblicz moment dla danej mocy i kadencji
+            if cad > 0:
+                torque_at_point = pwr / (2 * np.pi * (cad / 60))
+            else:
+                torque_at_point = 999
+            
+            # Klasyfikacja ryzyka na podstawie progów
+            if profile.torque_at_minus_20 > 0 and torque_at_point >= profile.torque_at_minus_20:
+                risk_matrix[i, j] = 3  # Krytyczne
+            elif profile.torque_at_minus_10 > 0 and torque_at_point >= profile.torque_at_minus_10:
+                risk_matrix[i, j] = 2  # Umiarkowane
+            else:
+                risk_matrix[i, j] = 1  # Niskie
+    
+    fig_heatmap = go.Figure(data=go.Heatmap(
+        z=risk_matrix,
+        x=powers,
+        y=cadences,
+        colorscale=[
+            [0, "#27AE60"],      # Niskie - zielony
+            [0.5, "#F39C12"],    # Umiarkowane - pomarańczowy
+            [1, "#E74C3C"]       # Krytyczne - czerwony
+        ],
+        showscale=False,
+        hovertemplate="Moc: %{x}W<br>Kadencja: %{y} rpm<br>Ryzyko: %{z}<extra></extra>"
+    ))
+    
+    fig_heatmap.update_layout(
+        template="plotly_dark",
+        title="Strefy Ryzyka Okluzji",
+        xaxis=dict(title="Moc [W]"),
+        yaxis=dict(title="Kadencja [RPM]"),
+        height=400,
+        margin=dict(l=10, r=10, t=40, b=10)
+    )
+    
+    # Dodaj legendę jako adnotacje
+    fig_heatmap.add_annotation(
+        x=0.02, y=0.98, xref="paper", yref="paper",
+        text="🟢 Niskie | 🟠 Umiarkowane | 🔴 Krytyczne",
+        showarrow=False, font=dict(size=12, color="white"),
+        bgcolor="rgba(0,0,0,0.5)", borderpad=4
+    )
+    
+    st.plotly_chart(fig_heatmap, use_container_width=True)
+    
+    # === WNIOSKI ===
+    st.markdown("### 📋 Wnioski")
+    
+    # Znajdź przykładowe punkty krytyczne
+    critical_examples = []
+    for zc in zone_cadences:
+        if isinstance(zc['cadence_critical'], float) and zc['cadence_critical'] > 0:
+            critical_examples.append(
+                f"**{zc['zone']}** ({zc['power_mid']:.0f}W): poniżej **{zc['cadence_critical']:.0f} rpm**"
+            )
+    
+    if critical_examples:
+        st.error(f"""
+        🔴 **Krytyczna okluzja występuje przy:**
+        
+        {chr(10).join(['- ' + ex for ex in critical_examples[:3]])}
+        
+        **Rekomendacja:** Utrzymuj kadencję powyżej progów krytycznych, szczególnie przy wysokich mocach.
+        """)
+    
+    # Próg ogólny
+    if profile.torque_at_minus_10 > 0:
+        st.warning(f"""
+        ⚠️ **Próg okluzji umiarkowanej (SmO2 -10%):** {profile.torque_at_minus_10:.0f} Nm
+        
+        Przy tym momencie obrotowym SmO2 spada o 10% poniżej baseline. Przekroczenie tego progu oznacza wejście w strefę ograniczonej perfuzji mięśniowej.
+        """)
+    
+    if profile.torque_at_minus_20 > 0:
+        st.error(f"""
+        🔴 **Próg okluzji krytycznej (SmO2 -20%):** {profile.torque_at_minus_20:.0f} Nm
+        
+        Poniżej tej kadencji następuje znacząca hipoksja mięśniowa. Praca w tej strefie prowadzi do szybkiej akumulacji mleczanu i przedwczesnego zmęczenia.
+        """)
+    
+    # Zielone światło jeśli niska okluzja
+    if profile.classification == "low":
+        st.success("""
+        ✅ **Profil niskiej okluzji:** Twoje mięśnie dobrze tolerują wysokie momenty obrotowe.
+        Możesz stosować zarówno styl siłowy jak i kadencyjny w zależności od terenu i taktyki.
+        """)
+    
+    # Teoria
+    with st.expander("📖 Wzory i metodologia", expanded=False):
+        st.markdown("""
+        ### Relacja Moment-Moc-Kadencja
+        
+        ```
+        Torque [Nm] = Power [W] / (2π × Cadence [RPS])
+        
+        gdzie RPS = RPM / 60
+        ```
+        
+        Przekształcając:
+        ```
+        Cadence_min [RPM] = Power [W] / (2π × Torque_threshold [Nm]) × 60
+        ```
+        
+        ---
+        
+        ### Progi Okluzji SmO2
+        
+        | Próg | Znaczenie |
+        |------|-----------|
+        | **-10% SmO2** | Początek ograniczonej perfuzji |
+        | **-20% SmO2** | Krytyczna hipoksja mięśniowa |
+        
+        ---
+        
+        ### Interpretacja Mapy Ryzyka
+        
+        - **🟢 Zielona strefa:** Bezpieczna kombinacja power × cadence
+        - **🟠 Pomarańczowa strefa:** Umiarkowane ryzyko okluzji
+        - **🔴 Czerwona strefa:** Krytyczne ryzyko okluzji — unikaj!
+        """)

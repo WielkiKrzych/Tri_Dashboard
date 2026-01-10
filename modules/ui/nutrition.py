@@ -219,3 +219,238 @@ def render_nutrition_tab(df_plot, cp_input, vt1_watts, vt2_watts):
             """)
     else:
         st.warning("Brak danych mocy (Watts) do obliczenia wydatku energetycznego.")
+
+    # =========================================================================
+    # MULTI-FACTOR GLYCOGEN MODEL (Cadence Comparison)
+    # =========================================================================
+    st.divider()
+    st.header("🧬 Model Zużycia Glikogenu (Multi-Factor)")
+    
+    _render_glycogen_model_section(df_plot, cp_input)
+
+
+def _render_glycogen_model_section(df_plot, cp_input):
+    """
+    Renderuje sekcję modelu zużycia glikogenu z wieloma czynnikami.
+    Porównuje zużycie przy różnych kadencjach (koszt metaboliczny okluzji).
+    """
+    import numpy as np
+    from modules.calculations.nutrition import (
+        calculate_glycogen_consumption,
+        compare_cadence_glycogen
+    )
+    
+    st.markdown("""
+    Model zużycia glikogenu uwzględniający wiele czynników fizjologicznych:
+    - **Moc (%CP)** — intensywność wysiłku
+    - **Temperatura rdzenia** — hiperthermia zwiększa zużycie CHO
+    - **VLaMax** — zdolność glikolotyczna
+    - **Indeks okluzji** — ograniczona perfuzja = więcej beztlenowo
+    - **Nachylenie SmO2** — desaturacja mięśniowa
+    """)
+    
+    # === PARAMETRY WEJŚCIOWE ===
+    st.subheader("📊 Parametry Symulacji")
+    
+    c1, c2, c3 = st.columns(3)
+    power_sim = c1.number_input("Moc [W]", min_value=100, max_value=1000, value=300, step=10)
+    cp_sim = c2.number_input("CP [W]", min_value=150, max_value=500, value=min(cp_input, 500.0) if cp_input > 0 else 280, step=10)
+    core_temp = c3.number_input("Temperatura rdzenia [°C]", min_value=36.0, max_value=41.0, value=37.5, step=0.1)
+    
+    c4, c5, c6 = st.columns(3)
+    vlamax = c4.number_input("VLaMax [mmol/L/s]", min_value=0.2, max_value=1.0, value=0.5, step=0.05)
+    occlusion_idx = c5.slider("Indeks okluzji", min_value=0.0, max_value=0.5, value=0.15, step=0.05)
+    smo2_slope = c6.slider("SmO2 slope [%/Nm]", min_value=-0.10, max_value=0.0, value=-0.02, step=0.01)
+    
+    # === OBLICZENIE DLA WYBRANEJ KADENCJI ===
+    st.subheader("📈 Wynik dla Pojedynczej Kadencji")
+    
+    cadence_single = st.slider("Kadencja [RPM]", min_value=50, max_value=120, value=90, step=5)
+    
+    result = calculate_glycogen_consumption(
+        power=power_sim,
+        cp=cp_sim,
+        core_temp=core_temp,
+        vlamax=vlamax,
+        occlusion_index=occlusion_idx,
+        smo2_slope=smo2_slope,
+        cadence=cadence_single
+    )
+    
+    # Główny wynik
+    st.markdown(f"""
+    <div style="padding:20px; border-radius:12px; border:3px solid #ff7f0e; background-color: #1a1a1a; text-align:center;">
+        <h2 style="margin:0; color: #ff7f0e;">CHO: {result['cho_g_per_hour']} g/h</h2>
+        <p style="margin:10px 0 0 0; color:#888; font-size:0.85em;">
+            Moc: {power_sim}W ({result['intensity_pct']:.0f}% CP) | Kadencja: {cadence_single} RPM
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Ostrzeżenia
+    for warning in result.get("warnings", []):
+        st.warning(warning)
+    
+    # Rozbicie modyfikatorów
+    with st.expander("📊 Rozbicie Modyfikatorów", expanded=False):
+        breakdown = result.get("breakdown", {})
+        c1, c2 = st.columns(2)
+        c1.metric("CHO bazowy", f"{result['cho_base']} g/h")
+        c2.metric("Modyfikator całkowity", f"×{result['total_modifier']:.3f}")
+        
+        st.markdown("| Czynnik | Modyfikator |")
+        st.markdown("|---------|-------------|")
+        for factor, value in breakdown.items():
+            delta = (value - 1) * 100
+            sign = "+" if delta >= 0 else ""
+            st.markdown(f"| {factor.capitalize()} | ×{value:.3f} ({sign}{delta:.1f}%) |")
+    
+    # === PORÓWNANIE KADENCJI (Koszt Okluzji) ===
+    st.divider()
+    st.subheader("⚔️ Porównanie: 300W @ 60 RPM vs 300W @ 95 RPM")
+    st.markdown("**Koszt metaboliczny okluzji** — jak kadencja wpływa na zużycie glikogenu?")
+    
+    c1, c2 = st.columns(2)
+    cad_low = c1.number_input("Kadencja niska [RPM]", min_value=40, max_value=80, value=60, step=5)
+    cad_high = c2.number_input("Kadencja wysoka [RPM]", min_value=80, max_value=120, value=95, step=5)
+    
+    # Zakładamy wyższą okluzję przy niskiej kadencji
+    occlusion_low = min(0.35, occlusion_idx + 0.20)  # +20% więcej okluzji
+    occlusion_high = max(0.05, occlusion_idx - 0.05)  # -5% mniej okluzji
+    
+    comparison = compare_cadence_glycogen(
+        power=power_sim,
+        cp=cp_sim,
+        cadence_low=cad_low,
+        cadence_high=cad_high,
+        core_temp=core_temp,
+        vlamax=vlamax,
+        occlusion_index_low=occlusion_low,
+        occlusion_index_high=occlusion_high,
+        smo2_slope=smo2_slope
+    )
+    
+    # Wyświetlanie porównania
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown(f"""
+        <div style="padding:15px; border-radius:8px; border:2px solid #ef553b; background-color: #222; text-align:center;">
+            <h3 style="margin:0; color: #ef553b;">🔴 Grinding ({cad_low:.0f} RPM)</h3>
+            <h2 style="margin:5px 0;">{comparison['low_cadence']['cho_g_per_hour']} g/h</h2>
+            <p style="margin:0; color:#aaa;">Moment: {comparison['low_cadence']['torque']:.0f} Nm</p>
+            <p style="margin:0; color:#aaa;">Okluzja: {comparison['low_cadence']['occlusion_index']:.2f}</p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col2:
+        st.markdown(f"""
+        <div style="padding:15px; border-radius:8px; border:2px solid #00cc96; background-color: #222; text-align:center;">
+            <h3 style="margin:0; color: #00cc96;">🟢 Spinning ({cad_high:.0f} RPM)</h3>
+            <h2 style="margin:5px 0;">{comparison['high_cadence']['cho_g_per_hour']} g/h</h2>
+            <p style="margin:0; color:#aaa;">Moment: {comparison['high_cadence']['torque']:.0f} Nm</p>
+            <p style="margin:0; color:#aaa;">Okluzja: {comparison['high_cadence']['occlusion_index']:.2f}</p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    # Delta
+    delta = comparison['delta_cho_g_per_hour']
+    delta_pct = comparison['delta_pct']
+    
+    if delta > 0:
+        st.error(f"""
+        🔴 **Koszt metaboliczny okluzji:** +{delta:.1f} g/h (+{delta_pct:.1f}%)
+        
+        Przy {cad_low:.0f} RPM zużywasz **{delta:.1f} g/h więcej węglowodanów** niż przy {cad_high:.0f} RPM dla tej samej mocy {power_sim}W.
+        
+        Na 3-godzinny wyścig to dodatkowe **{delta * 3:.0f} g glikogenu** — różnica między ukończeniem a "ścianą"!
+        """)
+    else:
+        st.success(f"""
+        ✅ Różnica w zużyciu CHO jest minimalna ({delta:.1f} g/h).
+        """)
+    
+    # Wykres porównawczy
+    st.markdown("### 📊 Δ Glikogen vs Kadencja")
+    
+    cadences = np.arange(50, 121, 5)
+    cho_values = []
+    
+    for cad in cadences:
+        # Occlusion scales with torque (inversely with cadence)
+        torque = power_sim / (2 * np.pi * (cad / 60))
+        occ = min(0.5, 0.05 + (torque / 100) * 0.3)  # Scale occlusion with torque
+        
+        res = calculate_glycogen_consumption(
+            power=power_sim,
+            cp=cp_sim,
+            core_temp=core_temp,
+            vlamax=vlamax,
+            occlusion_index=occ,
+            smo2_slope=smo2_slope,
+            cadence=cad
+        )
+        cho_values.append(res['cho_g_per_hour'])
+    
+    fig_delta = go.Figure()
+    
+    fig_delta.add_trace(go.Scatter(
+        x=cadences,
+        y=cho_values,
+        mode='lines+markers',
+        name='CHO [g/h]',
+        line=dict(color='#ff7f0e', width=3),
+        marker=dict(size=6),
+        hovertemplate="Kadencja: %{x} RPM<br>CHO: %{y:.1f} g/h<extra></extra>"
+    ))
+    
+    # Linia referencyjna dla 90 RPM
+    fig_delta.add_vline(x=90, line_dash="dash", line_color="green", annotation_text="90 RPM", annotation_position="top")
+    
+    fig_delta.update_layout(
+        template="plotly_dark",
+        title=f"Zużycie CHO vs Kadencja przy {power_sim}W",
+        xaxis=dict(title="Kadencja [RPM]"),
+        yaxis=dict(title="CHO [g/h]"),
+        height=400,
+        margin=dict(l=10, r=10, t=40, b=10)
+    )
+    
+    st.plotly_chart(fig_delta, use_container_width=True)
+    
+    # Teoria
+    with st.expander("📖 Model i Metodologia", expanded=False):
+        st.markdown("""
+        ### Wzory Modelu
+        
+        **Bazowe zużycie CHO:**
+        ```
+        CHO_base = f(power / CP) — krzywizna wykładnicza
+        ```
+        
+        **Modyfikatory:**
+        | Czynnik | Wpływ |
+        |---------|-------|
+        | Temperatura | +10% / °C powyżej 37.5°C |
+        | VLaMax | ±25% przy VLaMax ±0.5 od 0.5 |
+        | Okluzja | do +24% przy wysokiej okluzji |
+        | SmO2 slope | skalowanie z desaturacją |
+        | Kadencja | +1% / RPM poniżej 70 |
+        
+        **Wzór końcowy:**
+        ```
+        CHO_final = CHO_base × Π(modyfikatory)
+        ```
+        
+        ---
+        
+        ### Mechanizm Okluzji → CHO
+        
+        Przy niskiej kadencji (wysokim momencie obrotowym):
+        1. Ciśnienie wewnątrzmięśniowe rośnie
+        2. Perfuzja kapilarna jest ograniczona
+        3. Mięsień przechodzi w tryb beztlenowy
+        4. Glikoliza przyspiesza → więcej CHO zużyte
+        
+        **Praktyczna wskazówka:** Przy tej samej mocy, wyższa kadencja oszczędza glikogen!
+        """)

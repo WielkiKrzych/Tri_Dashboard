@@ -34,6 +34,29 @@ def render_summary_tab(
     # Normalize columns
     df_plot.columns = df_plot.columns.str.lower().str.strip()
 
+    # --- SHARED THRESHOLD DETECTION ---
+    # We perform detection once here to be used across multiple sections (5, 6, 7)
+    hr_col = None
+    for alias in ['hr', 'heartrate', 'heart_rate', 'bpm']:
+        if alias in df_plot.columns:
+            hr_col = alias
+            break
+
+    threshold_result = analyze_step_test(
+        df_plot,
+        power_column='watts',
+        ve_column='tymeventilation' if 'tymeventilation' in df_plot.columns else None,
+        smo2_column='smo2' if 'smo2' in df_plot.columns else None,
+        hr_column=hr_col,
+        time_column='time'
+    )
+
+    # Use detected values if parameters are 0
+    eff_vt1 = vt1_watts if vt1_watts > 0 else (threshold_result.vt1_watts if threshold_result.vt1_watts else 0)
+    eff_vt2 = vt2_watts if vt2_watts > 0 else (threshold_result.vt2_watts if threshold_result.vt2_watts else 0)
+    eff_lt1 = lt1_watts if lt1_watts > 0 else (threshold_result.smo2_1_watts if threshold_result.smo2_1_watts else 0)
+    eff_lt2 = lt2_watts if lt2_watts > 0 else (threshold_result.smo2_2_watts if threshold_result.smo2_2_watts else 0)
+
     # =========================================================================
     # 1. WYKRES PRZEBIEG TRENINGU
     # =========================================================================
@@ -176,7 +199,7 @@ def render_summary_tab(
     # 5. PROGI WENTYLACYJNE VT1/VT2
     # =========================================================================
     st.subheader("5️⃣ Progi Wentylacyjne (VT1/VT2)")
-    _render_vent_thresholds_summary(df_plot, cp_input, vt1_watts, vt2_watts)
+    _render_vent_thresholds_summary(df_plot, cp_input, eff_vt1, eff_vt2, threshold_result)
 
     st.markdown("---")
 
@@ -184,7 +207,23 @@ def render_summary_tab(
     # 6. PROGI SmO2 LT1/LT2
     # =========================================================================
     st.subheader("6️⃣ Progi SmO2 (LT1/LT2)")
-    _render_smo2_thresholds_summary(df_plot, cp_input, lt1_watts, lt2_watts)
+    _render_smo2_thresholds_summary(df_plot, cp_input, eff_lt1, eff_lt2, threshold_result)
+
+    st.markdown("---")
+
+    # =========================================================================
+    # 7. THRESHOLD DISCORDANCE INDEX (TDI)
+    # =========================================================================
+    st.subheader("7️⃣ Threshold Discordance Index (TDI)")
+    _render_tdi_analysis(eff_vt1, eff_lt1)
+
+    st.markdown("---")
+
+    # =========================================================================
+    # 8. VO2max UNCERTAINTY ESTIMATION (CI95%)
+    # =========================================================================
+    st.subheader("8️⃣ Estymacja VO2max z Niepewnością (CI95%)")
+    _render_vo2max_uncertainty(df_plot, rider_weight)
 
 
 # =============================================================================
@@ -425,7 +464,7 @@ def _render_smo2_thb_chart(df_plot):
     st.plotly_chart(fig_smo2_thb, use_container_width=True)
 
 
-def _render_vent_thresholds_summary(df_plot, cp_input, vt1_watts, vt2_watts):
+def _render_vent_thresholds_summary(df_plot, cp_input, vt1_watts, vt2_watts, threshold_result):
     """Renderowanie wykresu progów wentylacyjnych VT1/VT2."""
     if 'tymeventilation' not in df_plot.columns:
         st.info("Brak danych wentylacji do analizy progów VT.")
@@ -436,29 +475,17 @@ def _render_vent_thresholds_summary(df_plot, cp_input, vt1_watts, vt2_watts):
     if 'watts_smooth_5s' not in df_plot.columns and 'watts' in df_plot.columns:
         df_plot['watts_smooth_5s'] = df_plot['watts'].rolling(window=5, center=True).mean()
     
-    # Handle HR aliases
-    hr_col = None
-    for alias in ['hr', 'heartrate', 'heart_rate', 'bpm']:
-        if alias in df_plot.columns:
-            hr_col = alias
-            break
+    # Użyj wykrytych lub przekazanych wartości (już obsłużone w render_summary_tab, ale zachowujemy spójność z metrykami)
+    vt1_w = vt1_watts
+    vt2_w = vt2_watts
     
-    # Automatyczna detekcja progów
-    result = analyze_step_test(
-        df_plot,
-        power_column='watts',
-        ve_column='tymeventilation',
-        hr_column=hr_col,
-        time_column='time'
-    )
-    
-    # Użyj wykrytych lub przekazanych wartości
-    vt1_w = result.vt1_watts if result.vt1_watts else vt1_watts
-    vt2_w = result.vt2_watts if result.vt2_watts else vt2_watts
-    vt1_hr = result.vt1_hr if result.vt1_hr else 0
-    vt2_hr = result.vt2_hr if result.vt2_hr else 0
-    vt1_ve = result.vt1_ve if result.vt1_ve else 0
-    vt2_ve = result.vt2_ve if result.vt2_ve else 0
+    # Pobierz HR i VE dla wyświetlenia, jeśli dostępne w threshold_result
+    # Jeśli vt1_watts przekazane jako param (manual), HR i VE mogą być nieznane bez ponownej detekcji,
+    # ale threshold_result zawiera dane z auto-detekcji.
+    vt1_hr = threshold_result.vt1_hr if threshold_result.vt1_watts == vt1_w else 0
+    vt2_hr = threshold_result.vt2_hr if threshold_result.vt2_watts == vt2_w else 0
+    vt1_ve = threshold_result.vt1_ve if threshold_result.vt1_watts == vt1_w else 0
+    vt2_ve = threshold_result.vt2_ve if threshold_result.vt2_watts == vt2_w else 0
     
     # Wykres
     fig_vent = go.Figure()
@@ -480,14 +507,14 @@ def _render_vent_thresholds_summary(df_plot, cp_input, vt1_watts, vt2_watts):
         ))
     
     # Markery VT1/VT2
-    if vt1_w and result.step_ve_analysis:
-        for step in result.step_ve_analysis:
+    if vt1_w and threshold_result.step_ve_analysis:
+        for step in threshold_result.step_ve_analysis:
             if step.get('is_vt1'):
                 marker_time = step.get('end_time', 0)
                 fig_vent.add_vline(x=marker_time, line=dict(color="#ffa15a", width=3, dash="dash"))
     
-    if vt2_w and result.step_ve_analysis:
-        for step in result.step_ve_analysis:
+    if vt2_w and threshold_result.step_ve_analysis:
+        for step in threshold_result.step_ve_analysis:
             if step.get('is_vt2'):
                 marker_time = step.get('end_time', 0)
                 fig_vent.add_vline(x=marker_time, line=dict(color="#ef553b", width=3, dash="dash"))
@@ -535,7 +562,7 @@ def _render_vent_thresholds_summary(df_plot, cp_input, vt1_watts, vt2_watts):
             st.info("VT2: Nie wykryto")
 
 
-def _render_smo2_thresholds_summary(df_plot, cp_input, lt1_watts, lt2_watts):
+def _render_smo2_thresholds_summary(df_plot, cp_input, lt1_watts, lt2_watts, threshold_result):
     """Renderowanie wykresu progów SmO2 LT1/LT2."""
     if 'smo2' not in df_plot.columns:
         st.info("Brak danych SmO2 do analizy progów LT.")
@@ -546,30 +573,13 @@ def _render_smo2_thresholds_summary(df_plot, cp_input, lt1_watts, lt2_watts):
     if 'watts_smooth_5s' not in df_plot.columns and 'watts' in df_plot.columns:
         df_plot['watts_smooth_5s'] = df_plot['watts'].rolling(window=5, center=True).mean()
     
-    # Handle HR aliases
-    hr_col = None
-    for alias in ['hr', 'heartrate', 'heart_rate', 'bpm']:
-        if alias in df_plot.columns:
-            hr_col = alias
-            break
-    
-    # Automatyczna detekcja progów
-    result = analyze_step_test(
-        df_plot,
-        power_column='watts',
-        ve_column='tymeventilation' if 'tymeventilation' in df_plot.columns else None,
-        smo2_column='smo2',
-        hr_column=hr_col,
-        time_column='time'
-    )
-    
     # Użyj wykrytych lub przekazanych wartości
-    lt1_w = result.smo2_1_watts if result.smo2_1_watts else lt1_watts
-    lt2_w = result.smo2_2_watts if result.smo2_2_watts else lt2_watts
-    lt1_hr = result.smo2_1_hr if result.smo2_1_hr else 0
-    lt2_hr = result.smo2_2_hr if result.smo2_2_hr else 0
-    lt1_smo2 = result.smo2_1_value if result.smo2_1_value else 0
-    lt2_smo2 = result.smo2_2_value if result.smo2_2_value else 0
+    lt1_w = lt1_watts
+    lt2_w = lt2_watts
+    lt1_hr = threshold_result.smo2_1_hr if threshold_result.smo2_1_watts == lt1_w else 0
+    lt2_hr = threshold_result.smo2_2_hr if threshold_result.smo2_2_watts == lt2_w else 0
+    lt1_smo2 = threshold_result.smo2_1_value if threshold_result.smo2_1_watts == lt1_w else 0
+    lt2_smo2 = threshold_result.smo2_2_value if threshold_result.smo2_2_watts == lt2_w else 0
     
     # Wykres
     fig_smo2 = go.Figure()
@@ -652,3 +662,289 @@ def _render_smo2_thresholds_summary(df_plot, cp_input, lt1_watts, lt2_watts):
                 st.caption(f"~{(lt2_w/cp_input)*100:.0f}% CP")
         else:
             st.info("LT2: Nie wykryto")
+
+
+
+def _render_tdi_analysis(vt1_watts: int, lt1_watts: int):
+    """
+    Renderowanie analizy TDI porównującej VT1 (wentylacyjny) z LT1 (SmO2).
+    
+    TDI = |VT1_VE - LT1_SmO2| / VT1_VE * 100 [%]
+    
+    Klasyfikacja:
+    - <5% = system zgodny
+    - 5-10% = heterogeniczna adaptacja
+    - >10% = konflikt centralno-obwodowy / okluzja / perfuzja
+    """
+    
+    # Walidacja danych
+    if not vt1_watts or vt1_watts <= 0:
+        st.warning("⚠️ **Brak danych VT1 (wentylacyjny)** — nie można obliczyć TDI.")
+        return
+    
+    if not lt1_watts or lt1_watts <= 0:
+        st.warning("⚠️ **Brak danych LT1 (SmO2)** — nie można obliczyć TDI.")
+        return
+    
+    # Obliczenie TDI
+    tdi = abs(vt1_watts - lt1_watts) / vt1_watts * 100
+    delta = lt1_watts - vt1_watts  # Dodatnia = SmO2 wyżej niż VE
+    
+    # Klasyfikacja
+    if tdi < 5:
+        classification = "ZGODNY"
+        color = "#00cc96"  # Green
+        alert_type = "success"
+        interpretation = "System tlenowy i obwodowy są zsynchronizowane. Optymalna koordynacja między wentylacją a perfuzją mięśniową."
+        recommendation = "✅ **Trening:** Możesz trenować w pełnym zakresie intensywności. System transportu tlenu działa harmonijnie."
+    elif tdi <= 10:
+        classification = "HETEROGENICZNY"
+        color = "#ffa15a"  # Orange
+        alert_type = "warning"
+        interpretation = "Wykryto niewielką rozbieżność między progiem wentylacyjnym a progiem SmO2. Może wskazywać na różne tempo adaptacji systemów centralnego i obwodowego."
+        if delta > 0:
+            recommendation = "⚡ **Trening:** Skup się na treningach tempo (Sweet Spot) aby wyrównać adaptację obwodową. SmO2 wskazuje wyższy próg niż VE — mięśnie adaptują się szybciej niż układ oddechowy."
+        else:
+            recommendation = "🫁 **Trening:** Zwiększ udział treningów Z2 i długich wyjazdów. VE wskazuje wyższy próg niż SmO2 — układ oddechowy wyprzedza adaptację mięśniową."
+    else:
+        classification = "KONFLIKT"
+        color = "#ef553b"  # Red
+        alert_type = "error"
+        interpretation = "Znacząca rozbieżność między systemem centralnym (wentylacja) a obwodowym (perfuzja mięśniowa). Możliwe przyczyny: okluzja naczyniowa, zaburzenia mikrokrążenia, lub błąd pomiaru sensora NIRS."
+        if delta > 0:
+            recommendation = "🔴 **Uwaga:** SmO2 znacząco wyżej niż VE. Sprawdź: (1) pozycję sensora NIRS, (2) grubość tkanki tłuszczowej, (3) okluzję podczas pedałowania. Rozważ konsultację z fizjologiem."
+        else:
+            recommendation = "🔴 **Uwaga:** VE znacząco wyżej niż SmO2. Sprawdź: (1) kalibrację sensora wentylacyjnego, (2) możliwą hiperperfuzję centralną, (3) ograniczenia mikrokrążenia obwodowego."
+    
+    # Wyświetlanie
+    st.markdown(f"""
+    <div style="padding:20px; border-radius:12px; border:3px solid {color}; background-color: #1a1a1a; text-align:center;">
+        <h2 style="margin:0; color: {color};">TDI: {tdi:.1f}%</h2>
+        <p style="margin:5px 0; font-size:1.2em; color: {color}; font-weight:bold;">{classification}</p>
+        <p style="margin:10px 0 0 0; color:#888; font-size:0.85em;">
+            VT1 (VE): <b>{vt1_watts:.0f} W</b> | LT1 (SmO2): <b>{lt1_watts:.0f} W</b> | Δ = {delta:+.0f} W
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Alert
+    if alert_type == "success":
+        st.success(f"✅ **Interpretacja:** {interpretation}")
+    elif alert_type == "warning":
+        st.warning(f"⚠️ **Interpretacja:** {interpretation}")
+    else:
+        st.error(f"🔴 **Interpretacja:** {interpretation}")
+    
+    # Rekomendacja treningowa
+    st.info(recommendation)
+    
+    # Teoria
+    with st.expander("📖 Co to jest TDI?", expanded=False):
+        st.markdown("""
+        ### Threshold Discordance Index (TDI)
+        
+        TDI mierzy **rozbieżność** między dwoma kluczowymi progami metabolicznymi:
+        
+        | Próg | Źródło | Mechanizm |
+        |------|--------|-----------|
+        | **VT1 (Ventilatory)** | Wentylacja (VE) | Punkt, w którym układ oddechowy zaczyna kompensować narastającą kwasicę |
+        | **LT1 (SmO2)** | Oksygenacja mięśniowa | Punkt, w którym ekstrakcja tlenu w mięśniu zaczyna przewyższać dostawę |
+        
+        ---
+        
+        #### Wzór
+        ```
+        TDI = |VT1 - LT1| / VT1 × 100%
+        ```
+        
+        #### Interpretacja kliniczna
+        
+        | TDI | Stan | Znaczenie |
+        |-----|------|-----------|
+        | **< 5%** | Zgodny | Systemy centralny i obwodowy doskonale zsynchronizowane |
+        | **5–10%** | Heterogeniczny | Różny tempo adaptacji — centralny vs obwodowy |
+        | **> 10%** | Konflikt | Potencjalny problem z transportem O2 lub błąd pomiaru |
+        
+        #### Przyczyny rozbieżności
+        
+        1. **LT1 > VT1** (SmO2 wyżej):
+           - Mięśnie dobrze ukrwione, ale wentylacja za wolna
+           - Częste u osób z wysokim VO2max ale niską wydolnością oddechową
+        
+        2. **VT1 > LT1** (VE wyżej):
+           - Układ oddechowy sprawny, ale perfuzja mięśniowa ograniczona
+           - Może wskazywać na problemy z mikrokrążeniem lub niedopasowanie kadencji
+        
+        ---
+        
+        *Źródło: Adaptacja modelu NIRS-CPET integration (Feldmann et al., 2020)*
+        """)
+
+
+def _render_vo2max_uncertainty(df_plot: pd.DataFrame, rider_weight: float):
+    """
+    Estymacja VO2max z przedziałem ufności 95% (CI95%).
+    
+    Wzór ACSM: VO2max = (10.8 * P_5min / kg) + 7
+    
+    CI95% oparta na:
+    - Zmienności mocy w ostatnich 5 minutach rampy (SD)
+    - Stabilności odpowiedzi HR (CV)
+    """
+    
+    # Walidacja danych
+    if 'watts' not in df_plot.columns:
+        st.warning("⚠️ **Brak danych mocy** — nie można estymować VO2max.")
+        return
+    
+    if rider_weight <= 0:
+        st.warning("⚠️ **Nieprawidłowa waga zawodnika** — nie można estymować VO2max.")
+        return
+    
+    # Pobierz ostatnie 5 minut danych (300 sekund)
+    last_5min_samples = min(300, len(df_plot))
+    df_last5 = df_plot.tail(last_5min_samples)
+    
+    if len(df_last5) < 60:
+        st.warning("⚠️ **Za mało danych** (wymagane min. 1 minuta) — nie można estymować VO2max.")
+        return
+    
+    # Obliczenia mocy
+    power_mean = df_last5['watts'].mean()
+    power_sd = df_last5['watts'].std()
+    power_cv = (power_sd / power_mean * 100) if power_mean > 0 else 0
+    n = len(df_last5)
+    
+    # Estymacja VO2max (ACSM)
+    vo2max = (10.8 * power_mean / rider_weight) + 7
+    
+    # Obliczenie SE i CI95% dla VO2max
+    # Propagacja błędu: SE_vo2 = 10.8 / kg * SE_power
+    se_power = power_sd / np.sqrt(n)
+    se_vo2 = 10.8 * se_power / rider_weight
+    ci95_vo2 = 1.96 * se_vo2
+    
+    # Dodatkowa niepewność z HR response (jeśli dostępne)
+    hr_penalty = 0
+    hr_col = None
+    for alias in ['hr', 'heartrate', 'heart_rate', 'bpm']:
+        if alias in df_last5.columns:
+            hr_col = alias
+            break
+    
+    if hr_col:
+        hr_mean = df_last5[hr_col].mean()
+        hr_sd = df_last5[hr_col].std()
+        hr_cv = (hr_sd / hr_mean * 100) if hr_mean > 0 else 0
+        # Wysoki CV HR = większa niepewność
+        if hr_cv > 5:
+            hr_penalty = ci95_vo2 * 0.2  # +20% CI za niestabilne HR
+    
+    ci95_total = ci95_vo2 + hr_penalty
+    
+    # Confidence Weight: im mniejszy CI względem VO2max, tym wyższa waga
+    confidence_weight = 1 / (1 + ci95_total / vo2max) if vo2max > 0 else 0
+    confidence_pct = confidence_weight * 100
+    
+    # Klasyfikacja pewności
+    if confidence_pct >= 80:
+        conf_color = "#00cc96"
+        conf_label = "WYSOKA"
+    elif confidence_pct >= 60:
+        conf_color = "#ffa15a"
+        conf_label = "UMIARKOWANA"
+    else:
+        conf_color = "#ef553b"
+        conf_label = "NISKA"
+    
+    # Wyświetlanie głównego wyniku
+    st.markdown(f"""
+    <div style="padding:20px; border-radius:12px; border:3px solid #17a2b8; background-color: #1a1a1a; text-align:center;">
+        <h2 style="margin:0; color: #17a2b8;">VO₂max = {vo2max:.1f} ± {ci95_total:.1f} ml/kg/min</h2>
+        <p style="margin:10px 0 0 0; color:#888; font-size:0.85em;">
+            (CI95%: {vo2max - ci95_total:.1f} – {vo2max + ci95_total:.1f} ml/kg/min)
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Źródło disclaimer
+    st.caption("📌 **Źródło:** Estymacja modelowa (ACSM power-time), nie pomiar bezpośredni. Używać orientacyjnie.")
+    
+    # Confidence Weight
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        st.markdown(f"""
+        <div style="padding:15px; border-radius:8px; border:2px solid {conf_color}; background-color: #222; text-align:center;">
+            <p style="margin:0; color:#aaa; font-size:0.9em;">Waga Pewności (Confidence Weight)</p>
+            <h3 style="margin:5px 0; color: {conf_color};">{confidence_pct:.0f}% — {conf_label}</h3>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    # Szczegóły obliczeń
+    with st.expander("📊 Szczegóły obliczeń", expanded=False):
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Średnia moc (5 min)", f"{power_mean:.0f} W")
+        c2.metric("SD mocy", f"{power_sd:.1f} W")
+        c3.metric("CV mocy", f"{power_cv:.1f}%")
+        
+        if hr_col:
+            c1, c2, c3 = st.columns(3)
+            c1.metric("Średnie HR", f"{hr_mean:.0f} bpm")
+            c2.metric("SD HR", f"{hr_sd:.1f} bpm")
+            c3.metric("CV HR", f"{hr_cv:.1f}%")
+        
+        st.markdown(f"""
+        | Parametr | Wartość |
+        |----------|---------|
+        | SE mocy | {se_power:.2f} W |
+        | SE VO₂max | {se_vo2:.2f} ml/kg/min |
+        | CI95% (moc) | ±{ci95_vo2:.2f} ml/kg/min |
+        | Korekta HR | +{hr_penalty:.2f} ml/kg/min |
+        | **CI95% całkowity** | **±{ci95_total:.2f} ml/kg/min** |
+        """)
+    
+    # Teoria
+    with st.expander("📖 Metodologia estymacji VO2max", expanded=False):
+        st.markdown("""
+        ### Formuła ACSM
+        
+        ```
+        VO₂max = (10.8 × P / kg) + 7
+        ```
+        
+        Gdzie:
+        - `P` = średnia moc w ostatnich 5 minutach rampy [W]
+        - `kg` = masa ciała zawodnika [kg]
+        
+        ---
+        
+        ### Przedział ufności (CI95%)
+        
+        CI95% jest obliczany na podstawie:
+        
+        1. **Zmienność mocy (SD):**
+           - Wysoka zmienność = większa niepewność estymacji
+           - SE = SD / √n
+           - CI = 1.96 × SE × 10.8 / kg
+        
+        2. **Stabilność HR:**
+           - CV HR > 5% → dodatkowa korekta +20% CI
+           - Niestabilne HR może wskazywać na nieustalony stan metaboliczny
+        
+        ---
+        
+        ### Waga Pewności (Confidence Weight)
+        
+        ```
+        Weight = 1 / (1 + CI/VO₂max)
+        ```
+        
+        Używana do skalowania pewności wniosków centralnych:
+        - **≥80%** = Wysoka pewność, wyniki wiarygodne
+        - **60-80%** = Umiarkowana pewność, interpretować ostrożnie
+        - **<60%** = Niska pewność, traktować orientacyjnie
+        
+        ---
+        
+        *Uwaga: Jest to estymacja modelowa, nie zastępuje bezpośredniego pomiaru VO₂max w laboratorium.*
+        """)

@@ -103,3 +103,129 @@ def calculate_thermal_decay(df_pl: Union[pd.DataFrame, Any]) -> dict:
         'is_significant': r2 > 0.3 and decay_pct < 0,
         'message': f"Spadek o {abs(decay_pct):.1f}% na każdy +1°C" if decay_pct < 0 else "Stabilna termoregulacja"
     }
+
+
+def predict_thermal_performance(
+    cp: float,
+    ftp: float,
+    w_prime: float,
+    baseline_hr: float,
+    target_temp: float,
+    decay_pct_per_c: float = -3.0,
+    hr_increase_per_c: float = 3.0,
+    baseline_temp: float = 37.5
+) -> dict:
+    """
+    Predict performance degradation at a given core temperature.
+    
+    Based on:
+    - dEF/dT: Efficiency Factor decay per degree Celsius
+    - dHR/dT: HR increase per degree Celsius
+    - HSI: Heat Strain Index (derived from temp and HR)
+    
+    Args:
+        cp: Critical Power [W]
+        ftp: Functional Threshold Power [W]
+        w_prime: W' anaerobic capacity [kJ]
+        baseline_hr: Baseline heart rate at threshold [bpm]
+        target_temp: Target core temperature [°C]
+        decay_pct_per_c: Efficiency decay % per °C (default -3.0%)
+        hr_increase_per_c: HR increase per °C [bpm] (default 3.0)
+        baseline_temp: Baseline core temperature [°C] (default 37.5)
+        
+    Returns:
+        dict with predictions: CP, FTP, W' at target temp, HR cost, TTE reduction
+    """
+    
+    # Calculate temperature delta
+    temp_delta = max(0, target_temp - baseline_temp)
+    
+    # === CP/FTP DEGRADATION ===
+    # Power drops by decay_pct_per_c for each degree above baseline
+    decay_factor = 1 + (decay_pct_per_c / 100) * temp_delta
+    decay_factor = max(0.5, min(1.0, decay_factor))  # Clamp to 50-100%
+    
+    cp_degraded = cp * decay_factor
+    ftp_degraded = ftp * decay_factor
+    
+    # === W' DEGRADATION ===
+    # W' degrades faster than CP in heat (glycolytic cost increases)
+    # Assume 1.5x the decay rate for W'
+    w_prime_decay_factor = 1 + (decay_pct_per_c * 1.5 / 100) * temp_delta
+    w_prime_decay_factor = max(0.3, min(1.0, w_prime_decay_factor))
+    w_prime_degraded = w_prime * w_prime_decay_factor
+    
+    # === HR COST INCREASE ===
+    # HR increases by hr_increase_per_c per degree
+    hr_cost_increase = hr_increase_per_c * temp_delta
+    hr_at_threshold = baseline_hr + hr_cost_increase
+    
+    # === TIME TO EXHAUSTION (TTE) REDUCTION ===
+    # At threshold power, TTE is theoretically infinite (at CP)
+    # But in practice, heat reduces sustainable time
+    # Model: TTE_reduction = temp_delta * 5% per degree
+    tte_reduction_pct = temp_delta * 5.0  # 5% per degree
+    
+    # For a 60-minute effort at FTP, calculate reduced time
+    base_tte_min = 60.0
+    tte_degraded_min = base_tte_min * (1 - tte_reduction_pct / 100)
+    tte_degraded_min = max(20.0, tte_degraded_min)  # Min 20 min
+    
+    # === HSI ESTIMATE ===
+    # HSI = f(temp, HR) - simplified
+    hsi_estimated = min(10, max(0, (target_temp - 37.0) / 2.5 * 5 + (hr_at_threshold - 100) / 100 * 5))
+    
+    # === CLASSIFICATION ===
+    if temp_delta < 1.0:
+        risk_level = "low"
+        risk_color = "#27AE60"
+        risk_label = "Niskie"
+    elif temp_delta < 2.0:
+        risk_level = "moderate"
+        risk_color = "#F39C12"
+        risk_label = "Umiarkowane"
+    else:
+        risk_level = "high"
+        risk_color = "#E74C3C"
+        risk_label = "Wysokie"
+    
+    return {
+        "target_temp": target_temp,
+        "temp_delta": round(temp_delta, 1),
+        "baseline_temp": baseline_temp,
+        
+        # Power degradation
+        "cp_baseline": cp,
+        "cp_degraded": round(cp_degraded, 0),
+        "cp_loss_pct": round((1 - decay_factor) * 100, 1),
+        
+        "ftp_baseline": ftp,
+        "ftp_degraded": round(ftp_degraded, 0),
+        "ftp_loss_pct": round((1 - decay_factor) * 100, 1),
+        
+        "w_prime_baseline": w_prime,
+        "w_prime_degraded": round(w_prime_degraded, 1),
+        "w_prime_loss_pct": round((1 - w_prime_decay_factor) * 100, 1),
+        
+        # HR cost
+        "hr_baseline": baseline_hr,
+        "hr_at_threshold": round(hr_at_threshold, 0),
+        "hr_cost_increase": round(hr_cost_increase, 1),
+        
+        # TTE
+        "tte_baseline_min": base_tte_min,
+        "tte_degraded_min": round(tte_degraded_min, 0),
+        "tte_reduction_pct": round(tte_reduction_pct, 1),
+        
+        # HSI
+        "hsi_estimated": round(hsi_estimated, 1),
+        
+        # Risk
+        "risk_level": risk_level,
+        "risk_color": risk_color,
+        "risk_label": risk_label,
+        
+        # Decay parameters used
+        "decay_pct_per_c": decay_pct_per_c,
+        "hr_increase_per_c": hr_increase_per_c
+    }

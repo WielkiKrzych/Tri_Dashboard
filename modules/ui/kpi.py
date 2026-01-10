@@ -1,6 +1,5 @@
 import streamlit as st
 import plotly.graph_objects as go
-import pandas as pd
 from modules.config import Config
 from modules.calculations import calculate_vo2max, calculate_trend
 

@@ -1,7 +1,6 @@
 import streamlit as st
 import plotly.graph_objects as go
 import pandas as pd
-from scipy import stats
 from modules.calculations.thresholds import analyze_step_test
 from modules.calculations.ventilatory import detect_vt_vslope_savgol
 from modules.calculations.quality import check_step_test_protocol
@@ -149,7 +148,6 @@ def render_manual_thresholds_tab(target_df, training_notes, uploaded_file_name, 
         """)
         
         with st.spinner("Przeliczanie gradientów..."):
-            import numpy as np
             vslope_res = detect_vt_vslope_savgol(target_df, result.step_range, 'watts', 'tymeventilation', 'time')
             
         if 'error' in vslope_res:

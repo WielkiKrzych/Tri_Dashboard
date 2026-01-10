@@ -12,14 +12,12 @@ Chart shows:
 - Footer with test_id and method version
 """
 import matplotlib.pyplot as plt
-import matplotlib.patches as mpatches
 from typing import Dict, Any, Optional
 
 from .common import (
     apply_common_style, 
     save_figure,
     create_empty_figure,
-    COLORS,
     get_color
 )
 

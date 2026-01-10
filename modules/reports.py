@@ -1,15 +1,11 @@
 from docx import Document
-from docx.shared import Inches, Pt, RGBColor
+from docx.shared import Pt, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 import zipfile
-import io
 from io import BytesIO
 import numpy as np
 import pandas as pd
-import plotly.graph_objects as go
-from scipy import stats
 from datetime import datetime
-from .plots import add_stats_to_legend
 
 def generate_docx_report(metrics, df_plot, df_plot_resampled, uploaded_file, cp_input, 
                         vt1_watts, vt2_watts, rider_weight, vt1_vent, vt2_vent, w_prime_input):

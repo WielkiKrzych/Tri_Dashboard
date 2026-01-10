@@ -15,7 +15,6 @@ from modules.power_duration import (
     fit_critical_power,
     detect_personal_records,
     interpolate_to_1hz,
-    PersonalRecord,
 )
 
 

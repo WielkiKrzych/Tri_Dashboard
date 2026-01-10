@@ -2,7 +2,6 @@
 import pandas as pd
 import numpy as np
 import sys
-import os
 
 # Add project root to path
 sys.path.append('/Users/wielkikrzych/Desktop/Tri_Dashboard')

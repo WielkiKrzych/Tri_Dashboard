@@ -3,7 +3,6 @@ Tests for Data Validation Rules.
 """
 import pytest
 import pandas as pd
-import numpy as np
 from services.data_validation import validate_dataframe
 from modules.config import Config
 

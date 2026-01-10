@@ -6,7 +6,7 @@ Enables automatic discovery and registration of UI components.
 """
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Optional, Callable, Any
+from typing import Optional, Callable
 import pandas as pd
 
 

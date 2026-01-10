@@ -16,7 +16,6 @@ import numpy as np
 import pandas as pd
 from typing import Dict, Any, Optional, Tuple, List
 from dataclasses import dataclass, field
-from scipy import stats
 import logging
 
 logger = logging.getLogger("Tri_Dashboard.CardioAdvanced")

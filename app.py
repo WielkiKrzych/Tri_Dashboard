@@ -1,5 +1,4 @@
 import streamlit as st
-import io
 from io import BytesIO
 import os
 
@@ -10,31 +9,18 @@ from modules.frontend.layout import AppLayout
 from modules.frontend.components import UIComponents
 
 # --- MODULE IMPORTS ---
-from modules.config import Config
 from modules.utils import load_data
-from modules.calculations import (
-    calculate_w_prime_balance,
-    calculate_metrics,
-    calculate_advanced_kpi,
-    calculate_z2_drift,
-    calculate_heat_strain_index,
-)
 from modules.ml_logic import (
     MLX_AVAILABLE, predict_only, MODEL_FILE
 )
 from modules.notes import TrainingNotes
 from modules.reports import generate_docx_report, export_all_charts_as_png
 from modules.db import SessionStore, SessionRecord
-from modules.health_alerts import HealthMonitor
 from modules.reporting.persistence import check_git_tracking
 
 # --- SERVICES IMPORTS ---
 from services import (
     calculate_header_metrics,
-    calculate_extended_metrics,
-    apply_smo2_smoothing,
-    resample_dataframe,
-    validate_dataframe,
     prepare_session_record,
     prepare_sticky_header_data
 )
@@ -142,7 +128,7 @@ if uploaded_file is not None:
             # --- SESSION TYPE CLASSIFICATION (MUST run first) ---
             from modules.domain import (
                 SessionType, classify_session_type, 
-                classify_ramp_test, RAMP_CONFIDENCE_THRESHOLD
+                classify_ramp_test
             )
             session_type = classify_session_type(df_raw, uploaded_file.name)
             st.session_state['session_type'] = session_type
@@ -215,7 +201,7 @@ if uploaded_file is not None:
     ramp_classification = st.session_state.get('ramp_classification')
     
     if session_type:
-        from modules.domain import SessionType, RAMP_CONFIDENCE_THRESHOLD
+        from modules.domain import SessionType
         
         # Build display message based on session type
         if session_type == SessionType.RAMP_TEST and ramp_classification:

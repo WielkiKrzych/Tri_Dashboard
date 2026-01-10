@@ -1,12 +1,10 @@
 """Tests for system robustness and edge cases."""
-import pytest
 import pandas as pd
 import numpy as np
 from modules.calculations import (
     calculate_normalized_power,
     calculate_metrics,
-    estimate_carbs_burned,
-    calculate_pulse_power_stats
+    estimate_carbs_burned
 )
 from services.data_validation import validate_dataframe
 

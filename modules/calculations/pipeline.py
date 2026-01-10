@@ -14,16 +14,15 @@ NO OPTIMIZATION - explicit, readable, debuggable.
 """
 import pandas as pd
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
 from models.results import (
     TestValidity, ValidityLevel, SignalQuality,
     ThresholdRange, ConflictReport, SignalConflict,
-    ConflictType, ConflictSeverity, ConfidenceLevel,
-    RampTestResult
+    ConflictType, ConflictSeverity, RampTestResult
 )
 from modules.calculations.threshold_types import (
-    TransitionZone, StepTestRange, StepVTResult, StepSmO2Result
+    StepTestRange, StepVTResult, StepSmO2Result
 )
 from modules.calculations.step_detection import detect_step_test_range
 from modules.calculations.ventilatory import detect_vt_from_steps

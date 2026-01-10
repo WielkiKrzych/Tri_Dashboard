@@ -3,7 +3,7 @@ Step and Phase Detection for Workout Sessions.
 """
 import numpy as np
 import pandas as pd
-from typing import Optional, List, Tuple
+from typing import Optional, Tuple
 from .threshold_types import DetectedStep, StepTestRange
 
 def detect_step_test_range(

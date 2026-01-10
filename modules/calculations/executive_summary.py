@@ -5,7 +5,7 @@ Generates commercial-grade, decision-oriented summary data for Ramp Test reports
 Designed to match INSCYD/WKO5/WHOOP quality standards.
 """
 from typing import Dict, Any, List, Optional
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 import logging
 
 logger = logging.getLogger("Tri_Dashboard.ExecutiveSummary")

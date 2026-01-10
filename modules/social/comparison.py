@@ -7,12 +7,9 @@ Enables anonymous comparison with other athletes:
 - Community leaderboards
 """
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Any
-from datetime import datetime
+from typing import List
 import hashlib
-import json
 import pandas as pd
-import numpy as np
 
 
 @dataclass

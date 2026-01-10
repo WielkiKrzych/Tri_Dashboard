@@ -7,7 +7,7 @@ Each object represents a physiological concept with quality awareness.
 NO LOGIC IMPLEMENTED — structure only.
 """
 from dataclasses import dataclass, field
-from typing import List, Optional, Tuple, Dict
+from typing import List, Optional, Dict
 from enum import Enum
 from datetime import datetime
 

@@ -1,12 +1,12 @@
 """
 SRP: Moduł odpowiedzialny za analizę HRV i DFA Alpha-1.
 """
-from typing import Union, Any, Optional, Tuple, List
+from typing import Optional, Tuple, List
 import numpy as np
 import pandas as pd
 from numba import jit
 
-from .common import ensure_pandas, MIN_SAMPLES_HRV
+from .common import ensure_pandas
 
 
 @jit(nopython=True)

@@ -6,11 +6,9 @@ import streamlit as st
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import pandas as pd
-from datetime import datetime, timedelta
-from typing import List, Optional
+from datetime import datetime
 
-from modules.training_load import TrainingLoadManager, TrainingLoadMetrics
-from modules.db import SessionStore
+from modules.training_load import TrainingLoadManager
 
 
 def render_training_load_tab():

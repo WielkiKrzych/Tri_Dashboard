@@ -10,7 +10,6 @@ from datetime import date
 from typing import Dict, Any, Optional, Tuple
 
 from .session_analysis import (
-    calculate_header_metrics,
     calculate_extended_metrics,
     apply_smo2_smoothing,
     resample_dataframe,

@@ -1,6 +1,5 @@
 
 import sys
-import os
 
 # Add project root to path
 sys.path.append('/Users/wielkikrzych/Desktop/Tri_Dashboard')

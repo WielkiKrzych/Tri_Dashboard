@@ -2,12 +2,11 @@
 import pandas as pd
 import numpy as np
 import sys
-import os
 
 # Add project root to path
 sys.path.append('/Users/wielkikrzych/Desktop/Tri_Dashboard')
 
-from modules.calculations.thresholds import detect_vt_transition_zone, TransitionZone
+from modules.calculations.thresholds import detect_vt_transition_zone
 
 def create_mock_data():
     """Create mock data simulating a ramp test (Trend + Low Noise)"""

@@ -3,9 +3,7 @@ import plotly.graph_objects as go
 import pandas as pd
 import numpy as np
 from scipy import stats
-from modules.config import Config
 from modules.intervals import detect_intervals
-from modules.plots import apply_chart_style
 
 def render_intervals_tab(df_plot, df_plot_resampled, cp_input, rider_weight, rider_age, is_male):
     st.header("⏱️ Automatyczna Detekcja Interwałów")

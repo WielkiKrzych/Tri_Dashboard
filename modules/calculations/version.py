@@ -5,7 +5,6 @@ Defines the current version of the analysis algorithm.
 Used by persistence and reporting modules to ensure traceability.
 """
 import json
-import os
 from pathlib import Path
 from typing import Dict, Any
 

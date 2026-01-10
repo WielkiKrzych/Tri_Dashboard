@@ -3,15 +3,13 @@ Historical Training Importer.
 
 Batch import of CSV files from the 'treningi_csv' folder into training_history.db.
 """
-import os
 from pathlib import Path
 from datetime import datetime
 from typing import List, Tuple, Optional
-import pandas as pd
 import re
 
 from modules.db import SessionStore, SessionRecord
-from modules.utils import load_data, normalize_columns_pandas
+from modules.utils import load_data
 from modules.calculations import process_data, calculate_metrics, calculate_normalized_power
 from services.data_validation import validate_dataframe
 

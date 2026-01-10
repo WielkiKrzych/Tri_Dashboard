@@ -13,9 +13,7 @@ from typing import Dict, Any, Optional
 from .common import (
     apply_common_style, 
     save_figure,
-    create_empty_figure,
-    COLORS,
-    get_color
+    create_empty_figure
 )
 
 def _find_column(df: pd.DataFrame, aliases: list) -> Optional[str]:

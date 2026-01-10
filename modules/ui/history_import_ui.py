@@ -4,8 +4,6 @@ History Import UI.
 UI for importing historical training files from 'treningi_csv' folder.
 """
 import streamlit as st
-from pathlib import Path
-from typing import Optional
 
 from modules.history_import import (
     import_training_folder, 

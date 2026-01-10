@@ -1,5 +1,3 @@
-import json
-import os
 import streamlit as st
 
 SETTINGS_FILE = 'user_settings.json'

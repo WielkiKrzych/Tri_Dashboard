@@ -5,7 +5,6 @@ Display genetic profile analysis and personalized recommendations.
 """
 import streamlit as st
 import plotly.graph_objects as go
-from typing import Optional
 
 from modules.genetics import GeneticAnalyzer, GeneticProfile
 

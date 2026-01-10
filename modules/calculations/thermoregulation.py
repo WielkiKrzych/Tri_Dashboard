@@ -10,7 +10,7 @@ Key metrics:
 - Peak HSI (Heat Strain Index)
 """
 from dataclasses import dataclass, field
-from typing import Dict, Any, Optional, List, Tuple
+from typing import Dict, Any, Optional, List
 import numpy as np
 import logging
 

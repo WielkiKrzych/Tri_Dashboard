@@ -1,7 +1,6 @@
 import streamlit as st
 import plotly.graph_objects as go
 import pandas as pd
-import numpy as np
 
 def render_limiters_tab(df_plot, cp_input, vt2_vent):
     st.header("Analiza Limiterów Fizjologicznych (INSCYD-style)")

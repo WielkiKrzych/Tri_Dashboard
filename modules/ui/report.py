@@ -3,8 +3,7 @@ import plotly.graph_objects as go
 import pandas as pd
 import numpy as np
 from modules.config import Config
-from modules.calculations import calculate_vo2max
-from typing import Dict, Optional
+from typing import Dict
 
 # ============================================================
 # OPTIMIZATION: Pre-computed constants to avoid recalculation

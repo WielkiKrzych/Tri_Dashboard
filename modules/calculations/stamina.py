@@ -3,7 +3,6 @@ Stamina Score Module.
 
 Implements composite endurance metrics inspired by INSCYD/UCI methodologies.
 """
-import numpy as np
 from typing import Optional, Dict
 
 
@@ -234,7 +233,6 @@ def calculate_durability_index(df, min_duration_min: int = 30) -> tuple:
         Tuple of (durability_index, first_half_avg, second_half_avg)
         Returns (None, None, None) if insufficient data
     """
-    import pandas as pd
     
     if df is None or 'watts' not in df.columns:
         return None, None, None

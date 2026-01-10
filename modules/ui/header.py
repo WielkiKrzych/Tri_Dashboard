@@ -116,7 +116,6 @@ def show_breadcrumb(group: str, section: str = None) -> None:
 
 # DEPRECATED: Moved to services.session_analysis
 # Re-exported for backward compatibility
-from services.session_analysis import calculate_header_metrics
 
 
 def extract_header_data(df: pd.DataFrame, metrics: Dict[str, Any]) -> Dict[str, float]:

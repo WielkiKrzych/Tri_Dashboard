@@ -12,7 +12,7 @@ NO STREAMLIT OR UI DEPENDENCIES ALLOWED.
 """
 
 from dataclasses import dataclass, field
-from typing import List, Optional, Tuple, Dict
+from typing import List, Optional, Dict
 from enum import Enum
 import numpy as np
 import pandas as pd

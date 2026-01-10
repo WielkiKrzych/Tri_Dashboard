@@ -8,8 +8,7 @@ Key Metrics:
 - Reproducibility Classification: Excellent (<3%), Good (<6%), Moderate (<10%), Unstable (>10%).
 """
 import numpy as np
-import pandas as pd
-from typing import List, Dict, Optional, Union
+from typing import List, Dict, Union
 
 def calculate_cv(values: List[float]) -> float:
     """Calculate Coefficient of Variation (%)."""

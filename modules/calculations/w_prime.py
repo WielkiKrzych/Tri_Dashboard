@@ -1,13 +1,12 @@
 """
 SRP: Moduł odpowiedzialny za obliczenia W' Balance (Skarbiec Beztlenowy).
 """
-from typing import Union, Any
+from typing import Union
 import numpy as np
 import pandas as pd
 import io
 from numba import jit
 
-from .common import ensure_pandas
 from ..utils import _serialize_df_to_parquet_bytes
 
 

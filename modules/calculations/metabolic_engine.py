@@ -13,8 +13,7 @@ Analyzes metabolic profile and generates periodized training blocks:
 - 6-8 week training block design
 - KPI monitoring recommendations
 """
-import numpy as np
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, List
 from dataclasses import dataclass, field
 import logging
 

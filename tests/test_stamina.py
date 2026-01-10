@@ -1,8 +1,6 @@
 """
 Unit tests for Stamina Score and VLamax estimation.
 """
-import pytest
-import numpy as np
 from modules.calculations import (
     calculate_stamina_score,
     estimate_vlamax_from_pdc,

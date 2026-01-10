@@ -5,7 +5,6 @@ Display weather conditions and TSS corrections.
 """
 import streamlit as st
 from datetime import datetime
-from typing import Optional
 
 from modules.environment import EnvironmentService, WeatherData
 

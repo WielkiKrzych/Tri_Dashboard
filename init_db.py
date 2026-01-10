@@ -8,7 +8,6 @@ Usage:
 """
 import sys
 import argparse
-from pathlib import Path
 from modules.config import Config
 from modules.db.session_store import SessionStore
 

@@ -8,7 +8,7 @@ Implements checks for:
 """
 import pandas as pd
 import numpy as np
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, Tuple
 from scipy import stats
 
 def check_signal_quality(

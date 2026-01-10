@@ -1,5 +1,4 @@
 """Tests for TTE (Time-to-Exhaustion) detection module."""
-import pytest
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
@@ -8,7 +7,6 @@ from modules.tte import (
     compute_tte,
     compute_tte_result,
     rolling_tte,
-    compute_trend_data,
     format_tte,
     TTEResult
 )

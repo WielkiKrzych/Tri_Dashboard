@@ -4,10 +4,8 @@ SQLite-based persistent storage for historical data.
 """
 import sqlite3
 from pathlib import Path
-from datetime import datetime, date
-from typing import List, Optional, Dict, Any
-from dataclasses import dataclass, asdict
-import json
+from typing import List, Optional
+from dataclasses import dataclass
 from modules.config import Config
 
 

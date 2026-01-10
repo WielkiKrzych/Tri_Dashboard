@@ -10,12 +10,10 @@ Provides:
 import streamlit as st
 import plotly.graph_objects as go
 import pandas as pd
-from typing import Optional
 
 from modules.calculations.thresholds import (
     analyze_step_test,
-    calculate_training_zones_from_thresholds,
-    StepTestResult
+    calculate_training_zones_from_thresholds
 )
 
 

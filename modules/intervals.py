@@ -1,6 +1,4 @@
 import pandas as pd
-import numpy as np
-import streamlit as st
 
 def detect_intervals(df, cp, min_duration=30, min_power_pct=0.9, recovery_time_limit=30):
     """

@@ -10,7 +10,6 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import List, Optional, Tuple
 import pandas as pd
-import numpy as np
 
 from .db import SessionStore
 

@@ -10,9 +10,7 @@ Per specification: methodology/ramp_test/10_pdf_layout.md
 from reportlab.platypus import (
     Paragraph, Spacer, Table, Image, PageBreak, KeepTogether, TableStyle
 )
-from reportlab.platypus.tableofcontents import TableOfContents
 from reportlab.lib.units import mm
-from reportlab.lib.enums import TA_CENTER
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.colors import HexColor
 import os
@@ -21,8 +19,7 @@ from typing import Dict, Any, List, Optional
 
 from .styles import (
     COLORS, PAGE_WIDTH, MARGIN,
-    create_styles, get_table_style, get_card_style,
-    FONT_FAMILY, FONT_FAMILY_BOLD, FONT_FAMILY_ITALIC, FONT_SIZE_BODY,
+    get_table_style, FONT_FAMILY, FONT_FAMILY_BOLD, FONT_FAMILY_ITALIC,
 )
 
 # Setup logger
@@ -371,7 +368,6 @@ def build_table_of_contents(styles: Dict, section_titles: List[Dict[str, Any]]) 
     Returns:
         List of reportlab flowables
     """
-    from reportlab.lib.colors import HexColor
     
     elements = []
     
@@ -484,7 +480,6 @@ def build_page_executive_summary(
     - Training Decision Cards
     """
     from reportlab.lib.colors import HexColor
-    from reportlab.lib.enums import TA_LEFT
     
     elements = []
     
@@ -680,7 +675,6 @@ def build_page_executive_summary(
     # ==========================================================================
     # 5. TRAINING DECISION CARDS - na osobnej stronie dla spójności
     # ==========================================================================
-    from reportlab.platypus import KeepTogether
     
     # PageBreak przed sekcją DECYZJE TRENINGOWE aby karty były na tej samej stronie co nagłówek
     elements.append(PageBreak())

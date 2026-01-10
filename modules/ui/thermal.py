@@ -1,8 +1,6 @@
 import streamlit as st
 import plotly.graph_objects as go
 import plotly.express as px
-import pandas as pd
-import numpy as np
 from modules.calculations import calculate_thermal_decay
 
 def render_thermal_tab(df_plot):

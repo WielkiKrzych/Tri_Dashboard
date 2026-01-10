@@ -10,15 +10,13 @@ This module DETECTS and DESCRIBES conflicts.
 It does NOT attempt to resolve them.
 """
 import pandas as pd
-from dataclasses import dataclass, field
-from typing import List, Optional, Tuple
+from typing import List, Optional
 
 from models.results import (
-    ConflictReport, SignalConflict, ConflictType, ConflictSeverity,
-    ThresholdRange, SignalQuality
+    ConflictReport, SignalConflict, ConflictType, ConflictSeverity
 )
 from modules.calculations.threshold_types import (
-    StepVTResult, StepSmO2Result, StepTestRange, TransitionZone
+    StepVTResult, StepSmO2Result
 )
 
 

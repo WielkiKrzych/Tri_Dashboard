@@ -8,7 +8,6 @@ Tests cover:
 """
 import numpy as np
 import pandas as pd
-import pytest
 
 from modules.physio_maps import (
     scatter_power_hr,

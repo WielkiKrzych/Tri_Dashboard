@@ -7,10 +7,10 @@ Provides centralized access to all available tabs.
 import importlib
 import logging
 from pathlib import Path
-from typing import Dict, List, Optional, Type
+from typing import Dict, List, Optional
 import pandas as pd
 
-from .base import UITabPlugin, TabConfig, TAB_GROUPS, UIGroupConfig
+from .base import UITabPlugin
 
 logger = logging.getLogger(__name__)
 

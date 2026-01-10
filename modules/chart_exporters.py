@@ -15,7 +15,7 @@ Użycie:
 """
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import List, Optional, Any
+from typing import List, Optional
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go

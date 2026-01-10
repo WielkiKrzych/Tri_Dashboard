@@ -5,7 +5,7 @@ Independent of UI or FigureConfig class.
 import matplotlib.pyplot as plt
 import os
 from io import BytesIO
-from typing import Dict, Any, Optional
+from typing import Optional
 
 DPI = 150
 

@@ -1,6 +1,5 @@
 import streamlit as st
 import plotly.graph_objects as go
-import pandas as pd
 import numpy as np
 from modules.calculations import calculate_dynamic_dfa_v2
 import importlib

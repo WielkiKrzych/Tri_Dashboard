@@ -10,7 +10,7 @@ Per methodology/ramp_test/07_report_structure.md:
 This module generates human-readable reports from RampTestResult.
 """
 from dataclasses import dataclass, field
-from typing import List, Optional, Dict
+from typing import List, Optional
 
 from models.results import (
     RampTestResult, ThresholdRange, ValidityLevel, ConfidenceLevel,

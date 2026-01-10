@@ -4,7 +4,6 @@ Metabolic Threshold Detection (SmO2/LT).
 IMPORTANT: SmO₂ is a LOCAL/REGIONAL signal - see limitations below.
 """
 import pandas as pd
-from typing import List  # Optional removed - was only used by deleted legacy function
 from .threshold_types import StepSmO2Result, StepTestRange, TransitionZone
 from .ventilatory import calculate_slope
 

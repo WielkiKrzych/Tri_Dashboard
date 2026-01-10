@@ -4,7 +4,7 @@ Frontend Layout Manager.
 Handles the main application shell, sidebar, and high-level routing.
 """
 import streamlit as st
-from typing import Optional, Tuple, Any
+from typing import Tuple, Any
 
 from modules.config import Config
 from .state import StateManager

@@ -5,7 +5,6 @@ Handles DataFrame validation logic for uploaded training files.
 """
 
 import pandas as pd
-import numpy as np
 from typing import Tuple
 from modules.config import Config
 

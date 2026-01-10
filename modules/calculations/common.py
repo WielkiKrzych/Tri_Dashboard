@@ -3,7 +3,6 @@ Moduł pomocniczy - wspólne funkcje i stałe dla pakietu calculations.
 """
 from typing import Union, Any
 import pandas as pd
-import numpy as np
 
 # Stałe używane w wielu modułach (przeniesione z constants.py dla izolacji)
 MIN_SAMPLES_HRV = 100

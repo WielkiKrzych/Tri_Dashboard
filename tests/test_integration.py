@@ -3,10 +3,8 @@ Integration tests for Tri_Dashboard.
 
 Tests that verify end-to-end functionality with real-like data.
 """
-import pytest
 import numpy as np
 import pandas as pd
-from pathlib import Path
 
 
 class TestIntervalDetectionIntegration:

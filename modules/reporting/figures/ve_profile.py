@@ -16,10 +16,8 @@ from typing import Dict, Any, Optional
 import pandas as pd
 
 from .common import (
-    apply_common_style, 
     save_figure,
     create_empty_figure,
-    COLORS,
     get_color
 )
 

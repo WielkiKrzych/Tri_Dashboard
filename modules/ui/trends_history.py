@@ -12,10 +12,8 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import pandas as pd
 import numpy as np
-from datetime import datetime, timedelta
-from typing import List, Optional
 
-from modules.db import SessionStore, SessionRecord
+from modules.db import SessionStore
 
 
 def render_trends_history_tab():

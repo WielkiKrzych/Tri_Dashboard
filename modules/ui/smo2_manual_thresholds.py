@@ -1,7 +1,6 @@
 import streamlit as st
 import plotly.graph_objects as go
 import pandas as pd
-from scipy import stats
 from modules.calculations.thresholds import analyze_step_test
 from modules.calculations.quality import check_step_test_protocol
 

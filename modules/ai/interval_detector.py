@@ -6,12 +6,11 @@ Automatically detects and classifies training intervals:
 - Classification of interval types (Sprint, VO2max, Threshold, Tempo, Endurance)
 - Quality scoring (target vs actual)
 """
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
-from typing import List, Optional, Tuple
+from typing import List, Optional
 import pandas as pd
 import numpy as np
-from scipy import signal
 from scipy.ndimage import uniform_filter1d
 
 

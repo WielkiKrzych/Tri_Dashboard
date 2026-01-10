@@ -12,7 +12,6 @@ from io import BytesIO
 from datetime import datetime, timedelta
 from typing import Optional, List
 import pandas as pd
-import numpy as np
 
 
 # FIT Protocol constants

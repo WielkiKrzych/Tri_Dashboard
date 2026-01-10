@@ -13,7 +13,7 @@ Key metrics:
 - Drift type: cardiac, thermal, metabolic
 """
 from dataclasses import dataclass, field
-from typing import Dict, Any, Optional, List, Tuple
+from typing import Dict, Any, Optional, List
 import numpy as np
 from scipy import stats
 import logging

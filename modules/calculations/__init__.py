@@ -108,6 +108,9 @@ from .thresholds import (
     detect_vt_transition_zone,
     analyze_step_test,
     calculate_training_zones_from_thresholds,
+)
+
+from .threshold_types import (
     TransitionZone,
     ThresholdResult,
     StepTestResult,

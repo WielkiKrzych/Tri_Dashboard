@@ -6,11 +6,9 @@ Displays TTE analysis for the current session and historical trends.
 import streamlit as st
 import plotly.graph_objects as go
 import pandas as pd
-from typing import Dict, List, Optional
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from modules.tte import (
-    compute_tte,
     compute_tte_result,
     format_tte,
     export_tte_json,

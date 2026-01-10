@@ -10,7 +10,6 @@ import pandas as pd
 import numpy as np
 from scipy import stats
 from modules.config import Config
-from modules.calculations import calculate_vo2max
 from modules.calculations.thresholds import analyze_step_test
 
 

@@ -7,7 +7,6 @@ Tests for:
 - Match Burns counting
 - Power zones time
 """
-import pytest
 import numpy as np
 import pandas as pd
 from modules.calculations import (
@@ -16,7 +15,6 @@ from modules.calculations import (
     count_match_burns,
     calculate_power_zones_time,
     get_fri_interpretation,
-    DEFAULT_PDC_DURATIONS,
 )
 
 

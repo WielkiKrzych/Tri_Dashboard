@@ -7,7 +7,7 @@ Provides scatter plots and drift analysis for Power-HR-SmO2 relationships:
 - Constant-power segment detection
 - HR and SmO2 drift analysis at constant power
 """
-from typing import Dict, List, Optional, Tuple, Any
+from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass
 import logging
 

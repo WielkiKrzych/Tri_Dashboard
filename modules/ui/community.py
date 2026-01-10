@@ -8,10 +8,8 @@ Displays anonymized comparisons with other athletes:
 """
 import streamlit as st
 import plotly.graph_objects as go
-import plotly.express as px
-from typing import Dict
 
-from modules.social.comparison import ComparisonService, DataAnonymizer
+from modules.social.comparison import ComparisonService
 
 
 def render_community_tab(

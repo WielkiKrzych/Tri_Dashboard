@@ -10,9 +10,7 @@ Automatically detects physiological anomalies and provides warnings:
 """
 from dataclasses import dataclass
 from typing import List, Optional, Literal
-from datetime import datetime
 import pandas as pd
-import numpy as np
 
 
 @dataclass

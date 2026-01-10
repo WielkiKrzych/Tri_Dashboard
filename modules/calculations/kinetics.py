@@ -11,7 +11,7 @@ Includes State-Based Physiological Modeling.
 """
 import numpy as np
 import pandas as pd
-from typing import Optional, Tuple, Dict, List
+from typing import Optional, Dict, List
 from scipy.optimize import curve_fit
 from scipy import stats, signal
 

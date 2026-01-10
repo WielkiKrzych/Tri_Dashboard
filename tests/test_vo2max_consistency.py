@@ -7,7 +7,6 @@ using the same calculation method (rolling_300s_mean_max).
 import pytest
 import pandas as pd
 import numpy as np
-from typing import Dict, Any
 
 
 class TestVO2maxConsistency:

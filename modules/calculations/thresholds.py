@@ -3,15 +3,12 @@ Threshold Detection Facade.
 Orchestrates step detection, ventilatory, and metabolic threshold analysis.
 """
 import pandas as pd
-from typing import Optional, List, Any
 
 from .threshold_types import (
-    TransitionZone, ThresholdResult, HysteresisResult, 
-    SensitivityResult, StepTestResult, DetectedStep, 
-    StepTestRange
+    HysteresisResult, 
+    StepTestResult
 )
 from .ventilatory import (
-    calculate_slope, detect_vt1_peaks_heuristic, 
     detect_vt_from_steps, detect_vt_transition_zone, 
     run_sensitivity_analysis
 )

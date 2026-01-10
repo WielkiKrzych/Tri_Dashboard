@@ -14,7 +14,6 @@ from .common import (
     apply_common_style, 
     save_figure,
     create_empty_figure,
-    COLORS,
     get_color
 )
 

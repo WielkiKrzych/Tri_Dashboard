@@ -1,6 +1,5 @@
 import streamlit as st
 import plotly.graph_objects as go
-import pandas as pd
 
 def render_biomech_tab(df_plot, df_plot_resampled):
     st.header("Biomechaniczny Stres")

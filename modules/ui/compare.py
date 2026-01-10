@@ -1,10 +1,8 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
 from modules.calculations.repeatability import (
     calculate_repeatability_metrics,
-    compare_session_to_baseline,
-    classify_reproducibility
+    compare_session_to_baseline
 )
 
 def render_comparison_tab(target_analysis_result: dict = None):

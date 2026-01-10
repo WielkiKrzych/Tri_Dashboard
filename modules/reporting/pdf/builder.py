@@ -20,10 +20,10 @@ from datetime import datetime
 import logging
 from typing import Dict, Any, Optional, List
 
-from reportlab.platypus import SimpleDocTemplate, PageBreak, Spacer, Paragraph
+from reportlab.platypus import SimpleDocTemplate, PageBreak
 from reportlab.lib.units import mm
 
-from .styles import PDFConfig, create_styles, PAGE_SIZE, MARGIN, COLORS, FONT_FAMILY
+from .styles import PDFConfig, create_styles, PAGE_SIZE, COLORS, FONT_FAMILY
 from .layout import (
     build_page_cover,
     build_page_thresholds,
@@ -34,7 +34,6 @@ from .layout import (
     build_page_smo2,
     build_page_theory,
     build_page_thermal,
-    build_page_extra,
     build_page_executive_summary,
     build_page_executive_verdict,
     build_page_cardiovascular,

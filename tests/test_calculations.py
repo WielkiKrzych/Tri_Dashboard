@@ -1,13 +1,10 @@
 """Unit tests for modules/calculations.py"""
-import pytest
-import numpy as np
 import pandas as pd
 from modules.calculations import (
     ensure_pandas,
     calculate_normalized_power,
     estimate_carbs_burned,
     calculate_advanced_kpi,
-    calculate_z2_drift,
     calculate_metrics,
     calculate_pulse_power_stats,
 )

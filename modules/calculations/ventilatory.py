@@ -771,76 +771,131 @@ def detect_vt_cpet(
         except:
             df_steps['ve_smooth'] = df_steps['ve'].rolling(3, center=True, min_periods=1).mean()
         
-        # Calculate FIRST derivative: VE slope (dVE/dPower)
+        # =====================================================================
+        # CALCULATE KEY METRICS FOR VT DETECTION
+        # =====================================================================
+        
+        # 1. VE slope (first derivative: dVE/dPower)
         ve_slope = np.gradient(df_steps['ve_smooth'].values, df_steps['power'].values)
         df_steps['ve_slope'] = ve_slope
         
-        # Calculate SECOND derivative: VE acceleration (d²VE/dPower²)
-        # This is where slope CHANGES - the key for breakpoint detection
+        # 2. VE acceleration (second derivative: d²VE/dPower²)
         ve_acceleration = np.gradient(ve_slope, df_steps['power'].values)
         df_steps['ve_acceleration'] = ve_acceleration
         
-        # Smooth the acceleration to reduce noise
+        # 3. VE/Power ratio (ventilatory efficiency)
+        df_steps['ve_power_ratio'] = df_steps['ve_smooth'] / df_steps['power']
+        
+        # 4. Slope of VE/Power ratio (to detect plateau)
+        ve_ratio_slope = np.gradient(df_steps['ve_power_ratio'].values, df_steps['power'].values)
+        df_steps['ve_ratio_slope'] = ve_ratio_slope
+        
+        # 5. HR slope (for decoupling detection) - if HR available
+        has_hr = 'hr' in df_steps.columns and df_steps['hr'].notna().sum() > 3
+        if has_hr:
+            hr_slope = np.gradient(df_steps['hr'].values, df_steps['power'].values)
+            df_steps['hr_slope'] = hr_slope
+            # HR/Power decoupling: ratio of HR slope to baseline
+            baseline_hr_slope = np.mean(hr_slope[:min(4, len(hr_slope))])
+            if baseline_hr_slope > 0:
+                df_steps['hr_decoupling'] = hr_slope / baseline_hr_slope
+            else:
+                df_steps['hr_decoupling'] = hr_slope
+        
+        # Smooth the metrics
         if len(df_steps) >= 3:
             df_steps['ve_accel_smooth'] = df_steps['ve_acceleration'].rolling(3, center=True, min_periods=1).mean()
+            df_steps['ve_ratio_slope_smooth'] = df_steps['ve_ratio_slope'].rolling(3, center=True, min_periods=1).mean()
         else:
             df_steps['ve_accel_smooth'] = df_steps['ve_acceleration']
+            df_steps['ve_ratio_slope_smooth'] = df_steps['ve_ratio_slope']
         
-        # VT1: First significant positive acceleration (slope starts increasing faster)
-        # Find where acceleration exceeds threshold (mean + 1 std of baseline)
-        baseline_accel = df_steps['ve_accel_smooth'].iloc[:min(4, len(df_steps))]
-        accel_threshold_vt1 = baseline_accel.mean() + baseline_accel.std() * 1.5
+        # =====================================================================
+        # VT1 DETECTION: VE gradient rises + VE/Power ratio plateau
+        # =====================================================================
+        # VT1 = first point where:
+        #   1. VE slope starts increasing (positive acceleration)
+        #   2. VE/Power ratio slope stabilizes (approaches zero = plateau)
+        
+        baseline_slope = np.mean(df_steps['ve_slope'].iloc[:min(4, len(df_steps))])
+        baseline_ratio_slope = np.mean(df_steps['ve_ratio_slope_smooth'].iloc[:min(4, len(df_steps))])
         
         vt1_found = False
         for i in range(3, len(df_steps) - 2):
-            # VT1: acceleration becomes significantly positive AND sustained
-            if df_steps['ve_accel_smooth'].iloc[i] > accel_threshold_vt1:
-                # Check if sustained (next point also elevated)
-                if df_steps['ve_accel_smooth'].iloc[i + 1] > accel_threshold_vt1 * 0.7:
-                    result['vt1_watts'] = int(df_steps.loc[df_steps.index[i], 'power'])
-                    result['vt1_ve'] = round(df_steps.loc[df_steps.index[i], 've'], 1)
-                    result['vt1_step'] = int(df_steps.loc[df_steps.index[i], 'step'])
+            # Condition 1: VE slope is increasing (rising gradient)
+            slope_increasing = df_steps['ve_slope'].iloc[i] > baseline_slope * 1.15
+            
+            # Condition 2: VE/Power ratio is plateauing (slope approaching zero or positive)
+            # After initial decrease, ratio stabilizes
+            ratio_plateau = abs(df_steps['ve_ratio_slope_smooth'].iloc[i]) < abs(baseline_ratio_slope) * 0.5
+            
+            # Alternative: ratio slope changes from negative to less negative or positive
+            if i > 0:
+                ratio_improving = df_steps['ve_ratio_slope_smooth'].iloc[i] > df_steps['ve_ratio_slope_smooth'].iloc[i-1]
+            else:
+                ratio_improving = False
+            
+            if slope_increasing and (ratio_plateau or ratio_improving):
+                # Verify it's sustained
+                if df_steps['ve_slope'].iloc[i + 1] >= df_steps['ve_slope'].iloc[i] * 0.95:
+                    result['vt1_watts'] = int(df_steps.iloc[i]['power'])
+                    result['vt1_ve'] = round(df_steps.iloc[i]['ve'], 1)
+                    result['vt1_step'] = int(df_steps.iloc[i]['step'])
                     if 'hr' in df_steps.columns and pd.notna(df_steps.iloc[i]['hr']):
                         result['vt1_hr'] = int(df_steps.iloc[i]['hr'])
                     if 'br' in df_steps.columns and pd.notna(df_steps.iloc[i]['br']):
                         result['vt1_br'] = int(df_steps.iloc[i]['br'])
                     result['analysis_notes'].append(
-                        f"VT1: Slope acceleration detected at step {result['vt1_step']} ({result['vt1_watts']}W)"
+                        f"VT1: VE gradient + VE/Power plateau at step {result['vt1_step']} ({result['vt1_watts']}W)"
                     )
                     vt1_found = True
                     break
         
-        # VT2: Second major acceleration peak (much higher than VT1)
+        # =====================================================================
+        # VT2 DETECTION: Max VE acceleration + HR decoupling
+        # =====================================================================
+        # VT2 = point where:
+        #   1. VE second derivative (acceleration) reaches maximum
+        #   2. HR starts drifting faster than power (decoupling)
+        
         if vt1_found and result['vt1_watts']:
             vt1_power = result['vt1_watts']
-            # Search for VT2 only after VT1
-            vt2_search_start = df_steps[df_steps['power'] > vt1_power].index
+            vt2_search_df = df_steps[df_steps['power'] > vt1_power + 20].copy()  # At least 20W above VT1
             
-            if len(vt2_search_start) > 2:
-                # VT2 threshold: higher acceleration than at VT1
-                accel_at_vt1 = df_steps.loc[df_steps['power'] == vt1_power, 've_accel_smooth'].values
-                if len(accel_at_vt1) > 0:
-                    accel_threshold_vt2 = accel_at_vt1[0] * 1.5  # 50% higher than VT1
-                else:
-                    accel_threshold_vt2 = accel_threshold_vt1 * 2
+            if len(vt2_search_df) >= 3:
+                # Find maximum acceleration point
+                max_accel_idx = vt2_search_df['ve_accel_smooth'].idxmax()
+                max_accel_value = vt2_search_df.loc[max_accel_idx, 've_accel_smooth']
                 
-                for idx in vt2_search_start[2:]:  # Skip first 2 steps after VT1
-                    if df_steps.loc[idx, 've_accel_smooth'] > accel_threshold_vt2:
-                        # Check if this is a sustained acceleration
-                        next_idx = df_steps.index.get_loc(idx) + 1
-                        if next_idx < len(df_steps):
-                            if df_steps.iloc[next_idx]['ve_accel_smooth'] > accel_threshold_vt2 * 0.7:
-                                result['vt2_watts'] = int(df_steps.loc[idx, 'power'])
-                                result['vt2_ve'] = round(df_steps.loc[idx, 've'], 1)
-                                result['vt2_step'] = int(df_steps.loc[idx, 'step'])
-                                if 'hr' in df_steps.columns and pd.notna(df_steps.loc[idx, 'hr']):
-                                    result['vt2_hr'] = int(df_steps.loc[idx, 'hr'])
-                                if 'br' in df_steps.columns and pd.notna(df_steps.loc[idx, 'br']):
-                                    result['vt2_br'] = int(df_steps.loc[idx, 'br'])
-                                result['analysis_notes'].append(
-                                    f"VT2: Second acceleration peak at step {result['vt2_step']} ({result['vt2_watts']}W)"
-                                )
+                # Check HR decoupling if available
+                hr_decoupling_confirmed = True  # Default to true if no HR data
+                if has_hr and 'hr_decoupling' in df_steps.columns:
+                    hr_decouple = df_steps.loc[max_accel_idx, 'hr_decoupling']
+                    # HR decoupling: HR slope increases significantly (>1.3x baseline)
+                    hr_decoupling_confirmed = hr_decouple > 1.3
+                    
+                    # If HR not decoupling at max accel, search nearby
+                    if not hr_decoupling_confirmed:
+                        for idx in vt2_search_df.index:
+                            if (df_steps.loc[idx, 've_accel_smooth'] > max_accel_value * 0.7 and
+                                df_steps.loc[idx, 'hr_decoupling'] > 1.3):
+                                max_accel_idx = idx
+                                hr_decoupling_confirmed = True
                                 break
+                
+                if hr_decoupling_confirmed or not has_hr:
+                    result['vt2_watts'] = int(df_steps.loc[max_accel_idx, 'power'])
+                    result['vt2_ve'] = round(df_steps.loc[max_accel_idx, 've'], 1)
+                    result['vt2_step'] = int(df_steps.loc[max_accel_idx, 'step'])
+                    if 'hr' in df_steps.columns and pd.notna(df_steps.loc[max_accel_idx, 'hr']):
+                        result['vt2_hr'] = int(df_steps.loc[max_accel_idx, 'hr'])
+                    if 'br' in df_steps.columns and pd.notna(df_steps.loc[max_accel_idx, 'br']):
+                        result['vt2_br'] = int(df_steps.loc[max_accel_idx, 'br'])
+                    
+                    note = f"VT2: Max VE acceleration at step {result['vt2_step']} ({result['vt2_watts']}W)"
+                    if has_hr and hr_decoupling_confirmed:
+                        note += " + HR decoupling confirmed"
+                    result['analysis_notes'].append(note)
     
     # =========================================================================
     # 6. FALLBACK DEFAULTS

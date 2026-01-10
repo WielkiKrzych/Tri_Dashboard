@@ -618,7 +618,17 @@ def render_vent_thresholds_tab(target_df, training_notes, uploaded_file_name, cp
         vt2_mask = target_df['watts'] >= vt2_watts
         if vt2_mask.any():
             vt2_time = target_df.loc[vt2_mask, 'time'].iloc[0]
-            hr_str = f"{int(vt2_hr)}" if vt2_hr else "--"
+            
+            # Fallback: get HR from target_df if not in cpet_result
+            chart_vt2_hr = vt2_hr
+            if chart_vt2_hr is None and 'hr' in target_df.columns:
+                hr_mask = (target_df['watts'] >= vt2_watts - 10) & (target_df['watts'] <= vt2_watts + 10)
+                if hr_mask.any():
+                    hr_val = target_df.loc[hr_mask, 'hr'].mean()
+                    if pd.notna(hr_val) and hr_val > 0:
+                        chart_vt2_hr = int(hr_val)
+            
+            hr_str = f"{int(chart_vt2_hr)}" if chart_vt2_hr else "--"
             
             fig_thresh.add_vline(
                 x=vt2_time,

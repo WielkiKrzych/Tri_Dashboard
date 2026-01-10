@@ -213,31 +213,7 @@ def render_hrv_tab(df_clean_pl):
         else:
             st.warning("Brak surowych danych R-R do wygenerowania wykresu Poincaré.")    
 
-        # --- DETEKCJA PROGÓW ---
-        st.subheader("🏁 Wykryte Progi HRV")
-        c1, c2 = st.columns(2)
-        
-        # VT1 Detection (0.75)
-        mask_vt1 = (df_dfa['time_min'] > 3) & (df_dfa['alpha1'] <= 0.75)
-        if mask_vt1.any():
-            row_vt1 = df_dfa[mask_vt1].iloc[0]
-            c1.success(f"**Estymowane VT1 (Aerobowe)**")
-            c1.write(f"Moc: **{row_vt1['watts']:.0f} W**")
-            c1.write(f"Tętno: **{row_vt1['hr']:.0f} bpm**")
-            c1.caption(f"Wykryte w {row_vt1['time_min']:.1f} min (alfa-1 = {row_vt1['alpha1']:.2f})")
-        else:
-            c1.info("Nie wykryto progu VT1 (0.75).")
 
-        # VT2 Detection (0.50)
-        mask_vt2 = (df_dfa['time_min'] > 3) & (df_dfa['alpha1'] <= 0.50)
-        if mask_vt2.any():
-            row_vt2 = df_dfa[mask_vt2].iloc[0]
-            c2.error(f"**Estymowane VT2 (Beztlenowe)**")
-            c2.write(f"Moc: **{row_vt2['watts']:.0f} W**")
-            c2.write(f"Tętno: **{row_vt2['hr']:.0f} bpm**")
-            c2.caption(f"Wykryte w {row_vt2['time_min']:.1f} min (alfa-1 = {row_vt2['alpha1']:.2f})")
-        else:
-            c2.info("Nie wykryto progu VT2 (0.50).")
 
         # --- TEORIA ---
         with st.expander("🧠 O co chodzi z DFA Alpha-1?", expanded=True):

@@ -435,11 +435,7 @@ def render_vent_thresholds_tab(target_df, training_notes, uploaded_file_name, cp
         if interp:
             st.warning(f"📋 **Interpretacja:** {interp}")
         
-        # Zone descriptions in expander
-        with st.expander("📖 Opisy stref fizjologicznych"):
-            for z in zones:
-                prefix = "⚠️ " if z.get('is_interpolated') else ""
-                st.markdown(f"**{prefix}{z['name']}:** {z['description']}")
+
     
     # =========================================================================
     # ANALYSIS NOTES

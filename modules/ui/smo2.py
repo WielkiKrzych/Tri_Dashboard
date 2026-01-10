@@ -85,30 +85,7 @@ def render_smo2_tab(target_df, training_notes, uploaded_file_name):
 
     st.markdown("---")
 
-    # ===== STATE TIMELINE GANTT (Advanced) =====
-    with st.expander("📊 Oś Czasu Stanów Fizjologicznych (State Timeline)", expanded=False):
-        timeline = generate_state_timeline(target_df, window_size_sec=30, step_sec=10)
-        
-        if timeline:
-            fig_gantt = go.Figure()
-            color_map = {
-                "RECOVERY": "green", "STEADY_STATE": "blue", "NON_STEADY": "orange",
-                "FATIGUE": "red", "RAMP_UP": "purple", "UNKNOWN": "grey"
-            }
-            for segment in timeline:
-                fig_gantt.add_trace(go.Bar(
-                    x=[segment['end'] - segment['start']], y=["State"], base=[segment['start']],
-                    orientation='h', marker=dict(color=color_map.get(segment['state'], 'grey')),
-                    name=segment['state'],
-                    hovertemplate=f"<b>{segment['state']}</b><br>Conf: {segment['confidence']:.2f}<extra></extra>",
-                    showlegend=False
-                ))
-            for state, color in color_map.items():
-                 fig_gantt.add_trace(go.Bar(x=[0], y=["State"], marker=dict(color=color), name=state, visible='legendonly'))
-            fig_gantt.update_layout(title="Przebieg Treningu", xaxis_title="Czas (s)", barmode='stack', height=150, margin=dict(l=20, r=20, t=30, b=20), showlegend=True)
-            st.plotly_chart(fig_gantt, use_container_width=True)
 
-    st.markdown("---")
     
     # ===== ANALIZA MANUALNA (jak w Wentylacji) =====
     st.info("💡 **ANALIZA MANUALNA:** Zaznacz obszar na wykresie poniżej (kliknij i przeciągnij), aby sprawdzić nachylenie lokalne.")

@@ -124,15 +124,15 @@ def create_styles() -> Dict[str, ParagraphStyle]:
         alignment=TA_LEFT,
     )
     
-    # Subheading style
+    # Subheading style (made bolder and more prominent)
     styles["subheading"] = ParagraphStyle(
         "Subheading",
         parent=base_styles["Heading3"],
         fontName=FONT_FAMILY_BOLD,
-        fontSize=12,
+        fontSize=13,
         textColor=COLORS["text"],
-        spaceBefore=4 * mm,
-        spaceAfter=2 * mm,
+        spaceBefore=5 * mm,
+        spaceAfter=3 * mm,
         alignment=TA_LEFT,
     )
     

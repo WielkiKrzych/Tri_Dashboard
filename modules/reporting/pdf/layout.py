@@ -1265,7 +1265,9 @@ def build_page_cover(
     confidence: Dict[str, Any],
     figure_paths: Dict[str, str],
     styles: Dict,
-    is_conditional: bool = False
+    is_conditional: bool = False,
+    vt1_onset_watts: Optional[int] = None,
+    rcp_onset_watts: Optional[int] = None
 ) -> List:
     """Build Page 1: Cover / Summary.
     
@@ -1320,17 +1322,17 @@ def build_page_cover(
     w_prime_kj = cp_model.get("w_prime_kj", "brak danych")
     pmax = metadata.get("pmax_watts", "brak danych")
     
-    # Calculate VT1-VT2 range
-    if vt1_watts != "brak danych" and vt2_watts != "brak danych":
-        vt_range = f"{vt1_watts}–{vt2_watts}"
+    # Calculate Upper Aerobic range (VT1_onset to RCP_onset) with W unit
+    if vt1_onset_watts and rcp_onset_watts:
+        upper_aerobic_range = f"{int(vt1_onset_watts)}–{int(rcp_onset_watts)} W"
     else:
-        vt_range = "brak danych"
+        upper_aerobic_range = "brak danych"
     
     data = [
         ["Parametr", "Wartość", "Interpretacja"],
         ["VT1 (Próg tlenowy)", f"{vt1_watts} W", "Strefa komfortowa"],
         ["VT2 (Próg beztlenowy)", f"{vt2_watts} W", "Strefa wysiłku"],
-        ["Zakres VT1–VT2", vt_range, "Strefa tempo/threshold"],
+        ["Zakres Upper Aerobic", upper_aerobic_range, "Strefa tempo/threshold"],
         ["Critical Power (CP)", f"{cp_watts} W", "Moc progowa"],
         ["W' (Rezerwa)", f"{w_prime_kj} kJ", "Rezerwa anaerobowa"]
     ]

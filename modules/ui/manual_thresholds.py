@@ -35,6 +35,11 @@ def render_manual_thresholds_tab(target_df, training_notes, uploaded_file_name, 
     target_df['ve_smooth'] = target_df['tymeventilation'].rolling(window=10, center=True).mean()
     target_df['time_str'] = pd.to_datetime(target_df['time'], unit='s').dt.strftime('%H:%M:%S')
 
+    # Check for watts column before analysis
+    if 'watts' not in target_df.columns:
+        st.error("Brak kolumny mocy ('watts') w danych. Upewnij się, że plik zawiera dane mocy.")
+        st.stop()
+
     # --- Quality Check: Protocol Compliance ---
     st.subheader("📋 Weryfikacja Protokołu")
     

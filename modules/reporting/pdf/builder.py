@@ -375,6 +375,17 @@ def map_ramp_json_to_pdf_data(report_json: Dict[str, Any], manual_overrides: Opt
     # Update mapped_smo2 with overridden advanced_metrics
     mapped_smo2["advanced_metrics"] = smo2_advanced_data
 
+    # === CPET 4-point analysis data (VT1_onset, RCP_onset for Upper Aerobic range) ===
+    cpet = report_json.get("cpet_analysis", {})
+    vt1_onset_watts = cpet.get("vt1_onset_watts")
+    rcp_onset_watts = cpet.get("rcp_onset_watts")
+    
+    # Manual override for Upper Aerobic range
+    if manual_overrides.get("vt1_onset_watts"):
+        vt1_onset_watts = manual_overrides["vt1_onset_watts"]
+    if manual_overrides.get("rcp_onset_watts"):
+        rcp_onset_watts = manual_overrides["rcp_onset_watts"]
+    
     return {
         "metadata": mapped_meta,
         "thresholds": mapped_thresholds,
@@ -391,6 +402,9 @@ def map_ramp_json_to_pdf_data(report_json: Dict[str, Any], manual_overrides: Opt
         "biomech_occlusion": report_json.get("biomech_occlusion", {}),
         "thermo_analysis": report_json.get("thermo_analysis", {}),
         "limiter_analysis": report_json.get("limiter_analysis", {}),
+        # CPET 4-point data for Upper Aerobic range
+        "vt1_onset_watts": vt1_onset_watts,
+        "rcp_onset_watts": rcp_onset_watts,
         "executive_summary": generate_executive_summary(
             thresholds=mapped_thresholds,
             smo2_manual=mapped_smo2_manual,
@@ -461,7 +475,7 @@ def build_ramp_pdf(
             try:
                 # Draw watermark as semi-transparent image in center
                 canvas.saveState()
-                canvas.setFillAlpha(0.06)  # Very low opacity for subtle effect
+                canvas.setFillAlpha(0.12)  # Semi-transparent watermark
                 
                 # Center of page
                 page_width, page_height = PAGE_SIZE
@@ -567,7 +581,9 @@ def build_ramp_pdf(
         confidence=confidence,
         figure_paths=figure_paths,
         styles=styles,
-        is_conditional=config.is_conditional
+        is_conditional=config.is_conditional,
+        vt1_onset_watts=pdf_data.get("vt1_onset_watts"),
+        rcp_onset_watts=pdf_data.get("rcp_onset_watts")
     ))
     story.append(PageBreak())
     

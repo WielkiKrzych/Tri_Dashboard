@@ -186,6 +186,9 @@ def render_ramp_archive():
                     if st.button("⚡ Generuj z wartościami manualnymi", key=f"regen_manual_{session_id}", type="secondary"):
                         from modules.reporting.persistence import generate_ramp_test_pdf
                         
+                        # Get CPET result for Upper Aerobic range
+                        cpet_result = st.session_state.get('cpet_vt_result', {})
+                        
                         # Collect manual overrides from session_state
                         manual_overrides = {
                             # VT1/VT2 from Manual Thresholds tab
@@ -212,6 +215,9 @@ def render_ramp_archive():
                             "test_start_power": st.session_state.get("test_start_power", 0),
                             "test_end_power": st.session_state.get("test_end_power", 0),
                             "test_duration": st.session_state.get("test_duration", ""),
+                            # ======= CPET 4-point data for Upper Aerobic range =======
+                            "vt1_onset_watts": cpet_result.get('vt1_onset_watts') or cpet_result.get('vt1_watts'),
+                            "rcp_onset_watts": cpet_result.get('rcp_onset_watts') or cpet_result.get('vt2_watts'),
                             # ======= Metryka Dokumentu fields =======
                             "test_date_override": str(edited_test_date) if edited_test_date else None,
                             "subject_name": subject_name if subject_name else "",

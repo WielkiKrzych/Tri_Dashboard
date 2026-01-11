@@ -76,20 +76,7 @@ class AppLayout:
         params['crank_length'] = st.sidebar.number_input(
             "Długość korby [mm]", key="crank", on_change=self.state.save_settings_callback
         )
-        
-        # New Feature: Comparison Mode
-        params['compare_mode'] = st.sidebar.toggle("⚔️ Tryb Porównania (Beta)", value=False)
-        
-        uploaded_file = None
-        if params['compare_mode']:
-            file1 = st.sidebar.file_uploader("Wgraj Plik A (CSV)", type=['csv'])
-            file2 = st.sidebar.file_uploader("Wgraj Plik B (CSV)", type=['csv'])
-            if file1 and file2:
-                uploaded_file = (file1, file2) # Return tuple for comparison
-            else:
-                st.sidebar.info("Wgraj dwa pliki.")
-        else:
-            uploaded_file = st.sidebar.file_uploader("Wgraj plik (CSV / TXT)", type=['csv', 'txt'])
+        uploaded_file = st.sidebar.file_uploader("Wgraj plik (CSV / TXT)", type=['csv', 'txt'])
             
         return uploaded_file, params
 

@@ -2,15 +2,13 @@
 Ramp Test Archive UI.
 
 Displays a list of executed Ramp Tests from the CSV index.
-Allows downloading reports in HTML format.
+Allows downloading reports in PDF format.
 """
 import streamlit as st
 import pandas as pd
 import os
-from pathlib import Path
 
 from modules.reporting.persistence import load_ramp_test_report
-from modules.reporting.html_generator import generate_html_report
 
 def render_ramp_archive():
     """Render the Ramp Test Archive view."""
@@ -161,20 +159,19 @@ def render_ramp_archive():
         
         st.divider()
 
-        # 5. Download buttons
-        btn_col1, btn_col2, btn_col3 = st.columns(3)
+        # 5. Download buttons (PDF only)
+        raw_path = record.get('pdf_path', '')
+        pdf_path = str(raw_path).strip() if raw_path and str(raw_path).lower() != 'nan' else ""
+        pdf_exists = os.path.exists(pdf_path) if pdf_path else False
         
-        # PDF Generation & Download
-        with btn_col1:
-            raw_path = record.get('pdf_path', '')
-            pdf_path = str(raw_path).strip() if raw_path and str(raw_path).lower() != 'nan' else ""
-            pdf_exists = os.path.exists(pdf_path) if pdf_path else False
-            
-            if pdf_path and pdf_exists:
-                try:
-                    with open(pdf_path, 'rb') as f:
-                        pdf_data = f.read()
-                    
+        if pdf_path and pdf_exists:
+            try:
+                with open(pdf_path, 'rb') as f:
+                    pdf_data = f.read()
+                
+                btn_col1, btn_col2 = st.columns(2)
+                
+                with btn_col1:
                     st.download_button(
                         label="📕 Pobierz PDF",
                         data=pdf_data,
@@ -183,14 +180,8 @@ def render_ramp_archive():
                         type="primary",
                         key=f"pdf_dl_{session_id}"
                     )
-                    
-                    # Simple regeneration (uses saved JSON values)
-                    if st.button("🔄 Wygeneruj PDF ponownie", key=f"regen_pdf_{session_id}"):
-                        from modules.reporting.persistence import generate_ramp_test_pdf
-                        with st.spinner("Generowanie..."):
-                            generate_ramp_test_pdf(session_id)
-                            st.rerun()
-                    
+                
+                with btn_col2:
                     # Force regeneration with CURRENT MANUAL VALUES from session_state
                     if st.button("⚡ Generuj z wartościami manualnymi", key=f"regen_manual_{session_id}", type="secondary"):
                         from modules.reporting.persistence import generate_ramp_test_pdf
@@ -231,94 +222,11 @@ def render_ramp_archive():
                             generate_ramp_test_pdf(session_id, manual_overrides=manual_overrides)
                             st.success("✅ PDF wygenerowany z wartościami manualnymi!")
                             st.rerun()
-                except Exception as e:
-                    st.error(f"Błąd PDF: {e}")
-            else:
-                if st.button("📕 Wygeneruj PDF", key=f"gen_pdf_{session_id}", type="primary"):
-                    from modules.reporting.persistence import generate_ramp_test_pdf
-                    with st.spinner("Generowanie..."):
-                        generate_ramp_test_pdf(session_id)
-                        st.rerun()
-
-        # DOCX Download / Generate
-        with btn_col2:
-            docx_path = ""
-            if pdf_path:
-                docx_path = str(Path(pdf_path).with_suffix(".docx"))
-            
-            docx_exists = os.path.exists(docx_path) if docx_path else False
-            
-            if docx_path and docx_exists:
-                try:
-                    with open(docx_path, 'rb') as f:
-                        docx_data = f.read()
-                        
-                    st.download_button(
-                        label="📝 Pobierz DOCX",
-                        data=docx_data,
-                        file_name=f"raport_ramp_{record['test_date'].date()}.docx",
-                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                        key=f"docx_btn_{session_id}"
-                    )
-                except Exception as e:
-                    st.error(f"Błąd DOCX: {e}")
-            
-            # Generate DOCX button (always visible)
-            if st.button("📝 Generuj DOCX", key=f"gen_docx_{session_id}", type="secondary"):
-                from modules.reporting.docx_builder import build_ramp_docx
-                
-                with st.spinner("Generowanie DOCX..."):
-                    try:
-                        # Generate DOCX path  
-                        if pdf_path:
-                            docx_output = str(Path(pdf_path).with_suffix(".docx"))
-                        else:
-                            docx_dir = f"reports/ramp_tests/{session_id}"
-                            os.makedirs(docx_dir, exist_ok=True)
-                            docx_output = f"{docx_dir}/raport.docx"
-                        
-                        # Get figure paths from session directory
-                        session_dir = str(Path(json_path).parent)
-                        figure_paths_docx = {}
-                        for fig_name in ["ramp_profile", "ve_profile", "smo2_power", "pdc_curve", 
-                                         "biomech_summary", "biomech_torque_smo2", "limiters_radar",
-                                         "drift_heatmap_hr", "drift_heatmap_smo2", 
-                                         "thermal_hsi", "thermal_efficiency"]:
-                            fig_path = os.path.join(session_dir, f"{fig_name}.png")
-                            if os.path.exists(fig_path):
-                                figure_paths_docx[fig_name] = fig_path
-                        
-                        result = build_ramp_docx(
-                            report_data=report_data,
-                            figure_paths=figure_paths_docx,
-                            output_path=docx_output
-                        )
-                        
-                        if result:
-                            st.success("✅ DOCX wygenerowany!")
-                            st.rerun()
-                        else:
-                            st.error("Błąd generowania DOCX")
-                    except Exception as e:
-                        st.error(f"Błąd: {e}")
-                        import traceback
-                        st.code(traceback.format_exc())
-
-        # HTML Generation
-        with btn_col3:
-            if st.button("📄 Wygeneruj HTML", key=f"html_btn_{session_id}"):
+            except Exception as e:
+                st.error(f"Błąd PDF: {e}")
+        else:
+            if st.button("📕 Wygeneruj PDF", key=f"gen_pdf_{session_id}", type="primary"):
+                from modules.reporting.persistence import generate_ramp_test_pdf
                 with st.spinner("Generowanie..."):
-                    html_content = generate_html_report(report_data)
-                    
-                    st.download_button(
-                        label="⬇️ Pobierz HTML",
-                        data=html_content,
-                        file_name=f"raport_ramp_{record['test_date'].date()}.html",
-                        mime="text/html",
-                        key=f"html_dl_{session_id}"
-                    )
-        
-        # Preview (in expander)
-        with st.expander("📋 Podgląd danych JSON"):
-            st.json(report_data)
-
+                    generate_ramp_test_pdf(session_id)
+                    st.rerun()

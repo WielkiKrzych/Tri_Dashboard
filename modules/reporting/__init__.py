@@ -10,7 +10,6 @@ from .persistence import (
     generate_and_save_pdf,
     update_index_pdf_path,
 )
-from .html_generator import generate_html_report
 from .pdf import generate_ramp_pdf, PDFConfig
 from .figures import (
     generate_ramp_profile_chart,
@@ -26,8 +25,6 @@ __all__ = [
     "check_git_tracking",
     "generate_and_save_pdf",
     "update_index_pdf_path",
-    # HTML
-    "generate_html_report",
     # PDF
     "generate_ramp_pdf",
     "PDFConfig",

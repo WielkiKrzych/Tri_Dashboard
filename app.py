@@ -106,13 +106,6 @@ is_male = params.get('is_male', True)
 
 layout.render_header()
 
-if params.get('compare_mode'):
-    if isinstance(uploaded_file, tuple):
-        from modules.comparison import render_compare_dashboard
-        render_compare_dashboard(uploaded_file[0], uploaded_file[1], cp_input)
-        st.stop()
-    else:
-        st.stop()
 
 if rider_weight <= 0 or cp_input <= 0:
     st.error("Błąd: Waga i CP muszą być większe od zera.")

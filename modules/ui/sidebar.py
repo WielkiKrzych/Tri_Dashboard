@@ -80,14 +80,14 @@ def _create_save_callback(settings_manager: SettingsManager):
     return save_settings_callback
 
 
-def render_sidebar(settings_manager: SettingsManager) -> Tuple[RiderSettings, bool, Optional[object]]:
+def render_sidebar(settings_manager: SettingsManager) -> Tuple[RiderSettings, Optional[object]]:
     """Render the sidebar with all rider settings.
     
     Args:
         settings_manager: SettingsManager instance
         
     Returns:
-        Tuple of (RiderSettings, compare_mode, uploaded_file)
+        Tuple of (RiderSettings, uploaded_file)
     """
     save_callback = _create_save_callback(settings_manager)
     
@@ -173,15 +173,11 @@ def render_sidebar(settings_manager: SettingsManager) -> Tuple[RiderSettings, bo
         on_change=save_callback
     )
     
-    compare_mode = st.sidebar.toggle("⚔️ Tryb Porównania (Beta)", value=False)
-    
     # File upload
-    uploaded_file = None
-    if not compare_mode:
-        uploaded_file = st.sidebar.file_uploader(
-            "Wgraj plik (CSV / TXT)", 
-            type=['csv', 'txt']
-        )
+    uploaded_file = st.sidebar.file_uploader(
+        "Wgraj plik (CSV / TXT)", 
+        type=['csv', 'txt']
+    )
     
     settings = RiderSettings(
         weight=rider_weight,
@@ -197,18 +193,9 @@ def render_sidebar(settings_manager: SettingsManager) -> Tuple[RiderSettings, bo
         crank_length=crank_length
     )
     
-    return settings, compare_mode, uploaded_file
+    return settings, uploaded_file
 
 
-def render_compare_mode_upload() -> Tuple[Optional[object], Optional[object]]:
-    """Render file uploaders for comparison mode.
-    
-    Returns:
-        Tuple of (file1, file2)
-    """
-    file1 = st.sidebar.file_uploader("Wgraj Plik A (CSV)", type=['csv'])
-    file2 = st.sidebar.file_uploader("Wgraj Plik B (CSV)", type=['csv'])
-    return file1, file2
 
 
 def render_export_section(

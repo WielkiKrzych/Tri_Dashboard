@@ -465,9 +465,13 @@ def build_ramp_pdf(
     method_version = metadata.get("method_version", "1.0.0")
     
     def add_page_footer(canvas, doc):
-        """Add footer and watermark to each page."""
+        """Add footer, watermark, and page bookmark to each page."""
         import os
         canvas.saveState()
+        
+        # === PAGE BOOKMARK for TOC navigation ===
+        page_num = doc.page
+        canvas.bookmarkPage(f"page_{page_num}")
         
         # === WATERMARK (subtle, centered) ===
         watermark_path = os.path.join(os.path.dirname(__file__), "..", "..", "..", "assets", "watermark.jpg")
@@ -491,7 +495,6 @@ def build_ramp_pdf(
                 pass  # Silently skip if watermark fails
         
         # === FOOTER TEXT ===
-        page_num = doc.page
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
         footer_text = f"Strona {page_num}"
         

@@ -364,7 +364,7 @@ def build_contact_footer(styles: Dict) -> List:
 # ============================================================================
 
 def build_table_of_contents(styles: Dict, section_titles: List[Dict[str, Any]]) -> List:
-    """Build hierarchical Table of Contents page.
+    """Build hierarchical Table of Contents page with clickable hyperlinks.
     
     Args:
         styles: PDF styles dictionary
@@ -384,7 +384,7 @@ def build_table_of_contents(styles: Dict, section_titles: List[Dict[str, Any]]) 
     ))
     elements.append(Spacer(1, 8 * mm))
     
-    # Table of Contents entries with hierarchy
+    # Table of Contents entries with hierarchy and hyperlinks
     # We need to track row heights to add spacing before chapters
     toc_data = []
     row_heights = []  # Track heights for each row
@@ -393,6 +393,10 @@ def build_table_of_contents(styles: Dict, section_titles: List[Dict[str, Any]]) 
         title = section.get("title", "---")
         page = section.get("page", "---")
         level = section.get("level", 1)  # 0=chapter, 1=subchapter
+        
+        # Create anchor name from page number for internal linking
+        # ReportLab uses <a href="#page_X"> format for internal links
+        anchor_name = f"page_{page}"
         
         # Check if this is a chapter (level=0) and not the first entry
         # If so, check if the previous entry was a subchapter (level=1)
@@ -403,23 +407,23 @@ def build_table_of_contents(styles: Dict, section_titles: List[Dict[str, Any]]) 
                 is_chapter_after_subchapter = True
         
         if level == 0:
-            # Main chapter - bold, larger, dark blue background
+            # Main chapter - bold, larger, dark blue background with hyperlink
             title_para = Paragraph(
-                f"<font color='#1A5276' size='11'><b>{title}</b></font>",
+                f"<a href='#{anchor_name}' color='#1A5276'><font size='11'><b>{title}</b></font></a>",
                 styles["body"]
             )
             page_para = Paragraph(
-                f"<font color='#1A5276' size='11'><b>{page}</b></font>",
+                f"<a href='#{anchor_name}' color='#1A5276'><font size='11'><b>{page}</b></font></a>",
                 styles["body"]
             )
         else:
-            # Subchapter - indented with bullet
+            # Subchapter - indented with bullet and hyperlink
             title_para = Paragraph(
-                f"<font color='#555555' size='9'>    • {title}</font>",
+                f"<a href='#{anchor_name}' color='#555555'><font size='9'>    • {title}</font></a>",
                 styles["body"]
             )
             page_para = Paragraph(
-                f"<font color='#7F8C8D' size='9'>{page}</font>",
+                f"<a href='#{anchor_name}' color='#7F8C8D'><font size='9'>{page}</font></a>",
                 styles["body"]
             )
         

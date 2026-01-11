@@ -43,6 +43,7 @@ from .layout import (
     build_table_of_contents,
     build_title_page,
     build_contact_footer,
+    build_page_test_profile,
 )
 from ...calculations.executive_summary import generate_executive_summary
 
@@ -128,6 +129,10 @@ def map_ramp_json_to_pdf_data(report_json: Dict[str, Any], manual_overrides: Opt
         # NEW: Metryka Dokumentu fields (default empty)
         "subject_name": "",
         "subject_anthropometry": "",
+        # NEW: Test Protocol fields for section 1.2
+        "test_start_power": "---",
+        "test_end_power": pmax_val,  # default to pmax
+        "test_duration": "---",
     }
     
     # === METADATA OVERRIDES from Ramp Archive editor ===
@@ -142,6 +147,19 @@ def map_ramp_json_to_pdf_data(report_json: Dict[str, Any], manual_overrides: Opt
     if manual_overrides.get("subject_anthropometry"):
         mapped_meta["subject_anthropometry"] = manual_overrides["subject_anthropometry"]
         logger.info(f"PDF: subject_anthropometry set to '{mapped_meta['subject_anthropometry']}' (manual)")
+    
+    # === TEST PROTOCOL OVERRIDES from Vent - Progi Manuals ===
+    if manual_overrides.get("test_start_power") is not None and manual_overrides["test_start_power"] > 0:
+        mapped_meta["test_start_power"] = str(manual_overrides["test_start_power"])
+        logger.info(f"PDF: test_start_power set to {mapped_meta['test_start_power']}W (manual)")
+    
+    if manual_overrides.get("test_end_power") is not None and manual_overrides["test_end_power"] > 0:
+        mapped_meta["test_end_power"] = str(manual_overrides["test_end_power"])
+        logger.info(f"PDF: test_end_power set to {mapped_meta['test_end_power']}W (manual)")
+        
+    if manual_overrides.get("test_duration") and manual_overrides["test_duration"] != "45:00":  # Check not default
+        mapped_meta["test_duration"] = manual_overrides["test_duration"]
+        logger.info(f"PDF: test_duration set to {mapped_meta['test_duration']} (manual)")
 
     # 2. Thresholds (midpoints and ranges)
     thresholds = report_json.get("thresholds", {})
@@ -328,8 +346,19 @@ def map_ramp_json_to_pdf_data(report_json: Dict[str, Any], manual_overrides: Opt
     # === MANUAL OVERRIDE: CCI Breakpoint ===
     cardio_advanced_data = report_json.get("cardio_advanced", {}).copy()
     if manual_overrides.get("cci_breakpoint_manual") and manual_overrides["cci_breakpoint_manual"] > 0:
-        cardio_advanced_data["cci_breakpoint_watts"] = float(manual_overrides["cci_breakpoint_manual"])
+        manual_cci_bp = float(manual_overrides["cci_breakpoint_manual"])
+        cardio_advanced_data["cci_breakpoint_watts"] = manual_cci_bp
         logger.info(f"PDF: CCI breakpoint overridden to {cardio_advanced_data['cci_breakpoint_watts']} W (manual)")
+        
+        # Also fix interpretation text to use the manual breakpoint value
+        interp = cardio_advanced_data.get("interpretation", "")
+        if interp and "przy" in interp.lower():
+            import re
+            # Replace "CCI przy XXW" or "CCI przy XX W" with the manual value
+            interp = re.sub(r'CCI przy \d+W', f'CCI przy {int(manual_cci_bp)}W', interp)
+            interp = re.sub(r'CCI przy \d+ W', f'CCI przy {int(manual_cci_bp)} W', interp)
+            cardio_advanced_data["interpretation"] = interp
+            logger.info(f"PDF: CCI interpretation updated to use manual breakpoint {manual_cci_bp}W")
     
     # === MANUAL OVERRIDE: VE Breakpoint ===
     vent_advanced_data = report_json.get("vent_advanced", {}).copy()
@@ -450,7 +479,7 @@ def build_ramp_pdf(
         # === FOOTER TEXT ===
         page_num = doc.page
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
-        footer_text = f"Strona {page_num} | ID: {session_id} | v{method_version} | {timestamp} | Tri_Dashboard"
+        footer_text = f"Strona {page_num}"
         
         canvas.setFont(FONT_FAMILY, 8)
         canvas.setFillColor(COLORS["text_light"])
@@ -487,7 +516,7 @@ def build_ramp_pdf(
         # === ROZDZIAŁ 1: PODSUMOWANIE WYKONAWCZE ===
         {"title": "1. PODSUMOWANIE WYKONAWCZE", "page": "3", "level": 0},
         {"title": "1.1 Raport potestowy", "page": "3", "level": 1},
-        {"title": "1.2 Strefy treningowe", "page": "4", "level": 1},
+        {"title": "1.2 Przebieg testu", "page": "4", "level": 1},
         
         # === ROZDZIAŁ 2: PROGI METABOLICZNE ===
         {"title": "2. PROGI METABOLICZNE", "page": "5", "level": 0},
@@ -542,9 +571,10 @@ def build_ramp_pdf(
     ))
     story.append(PageBreak())
     
-    # === 1.2 STREFY TRENINGOWE ===
-    story.extend(build_page_zones(
-        thresholds=thresholds,
+    # === 1.2 PRZEBIEG TESTU ===
+    story.extend(build_page_test_profile(
+        metadata=metadata,
+        figure_paths=figure_paths,
         styles=styles
     ))
     story.append(PageBreak())

@@ -53,6 +53,11 @@ class ManualOverrides:
     vt2_ve: Optional[float] = None
     vt1_br: Optional[int] = None
     vt2_br: Optional[int] = None
+    
+    # Test Protocol (for PDF section 1.2)
+    test_start_power: Optional[int] = None
+    test_end_power: Optional[int] = None
+    test_duration: Optional[str] = None
 
 
 def get_manual_overrides() -> ManualOverrides:
@@ -106,6 +111,11 @@ def get_manual_overrides() -> ManualOverrides:
         vt2_ve=_get("vt2_ve"),
         vt1_br=_get("vt1_br"),
         vt2_br=_get("vt2_br"),
+        
+        # Test Protocol
+        test_start_power=_get("test_start_power"),
+        test_end_power=_get("test_end_power"),
+        test_duration=st.session_state.get("test_duration"),
     )
 
 
@@ -160,4 +170,9 @@ def to_dict(overrides: ManualOverrides) -> Dict[str, Any]:
         "reoxy_halftime_manual": overrides.reoxy_halftime,
         "cci_breakpoint_manual": overrides.cci_breakpoint,
         "ve_breakpoint_manual": overrides.ve_breakpoint,
+        
+        # Test Protocol (for PDF section 1.2)
+        "test_start_power": overrides.test_start_power,
+        "test_end_power": overrides.test_end_power,
+        "test_duration": overrides.test_duration,
     }

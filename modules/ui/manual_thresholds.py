@@ -135,6 +135,40 @@ def render_manual_thresholds_tab(target_df, training_notes, uploaded_file_name, 
         key="ve_breakpoint_manual",
         help="Moc przy której wentylacja zaczyna rosnąć nieliniowo. Wartość 0 = użyj automatycznie wykrytego."
     )
+    
+    # === TEST PROTOCOL PARAMETERS FOR PDF REPORT ===
+    st.markdown("---")
+    st.subheader("📝 Protokół Testu (dla raportu PDF)")
+    st.caption("Wprowadź parametry testu, które pojawią się w sekcji 1.2 Przebieg Testu:")
+    
+    col_proto1, col_proto2, col_proto3 = st.columns(3)
+    with col_proto1:
+        test_start_power = st.number_input(
+            "Początek testu (W)",
+            min_value=0,
+            max_value=500,
+            value=st.session_state.get("test_start_power", 100),
+            step=10,
+            key="test_start_power",
+            help="Moc początkowa testu"
+        )
+    with col_proto2:
+        test_end_power = st.number_input(
+            "Koniec testu (W)",
+            min_value=0,
+            max_value=800,
+            value=st.session_state.get("test_end_power", 400),
+            step=10,
+            key="test_end_power",
+            help="Moc przy której nastąpiła odmowa"
+        )
+    with col_proto3:
+        test_duration = st.text_input(
+            "Czas trwania (mm:ss)",
+            value=st.session_state.get("test_duration", "45:00"),
+            key="test_duration",
+            help="Całkowity czas testu w formacie mm:ss"
+        )
 
     st.markdown("---")
     st.subheader("🎯 Wybrane Progi (Manualne)")

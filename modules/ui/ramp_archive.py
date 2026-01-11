@@ -217,7 +217,11 @@ def render_ramp_archive():
                             "ve_breakpoint_manual": st.session_state.get("ve_breakpoint_manual", 0),
                             # Reoxy Half-Time from SmO2 Manual tab
                             "reoxy_halftime_manual": st.session_state.get("reoxy_halftime_manual", 0),
-                            # ======= NEW: Metryka Dokumentu fields =======
+                            # ======= TEST PROTOCOL fields from Manual Thresholds tab =======
+                            "test_start_power": st.session_state.get("test_start_power", 0),
+                            "test_end_power": st.session_state.get("test_end_power", 0),
+                            "test_duration": st.session_state.get("test_duration", ""),
+                            # ======= Metryka Dokumentu fields =======
                             "test_date_override": str(edited_test_date) if edited_test_date else None,
                             "subject_name": subject_name if subject_name else "",
                             "subject_anthropometry": subject_anthropometry if subject_anthropometry else "",

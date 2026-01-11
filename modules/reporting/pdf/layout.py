@@ -181,8 +181,8 @@ def build_title_page(metadata: Dict[str, Any], styles: Dict) -> List:
         elements.append(Spacer(1, 30 * mm))
         _add_fallback_title(elements, styles)
     
-    # Spacer before metadata (reduced to fit on one page)
-    elements.append(Spacer(1, 10 * mm))
+    # Spacer before metadata (balanced to show watermark and fit on one page)
+    elements.append(Spacer(1, 15 * mm))
     
     # === METRYKA DOKUMENTU (CENTERED) ===
     elements.append(Paragraph(
@@ -379,11 +379,22 @@ def build_table_of_contents(styles: Dict, section_titles: List[Dict[str, Any]]) 
     elements.append(Spacer(1, 8 * mm))
     
     # Table of Contents entries with hierarchy
+    # We need to track row heights to add spacing before chapters
     toc_data = []
-    for section in section_titles:
+    row_heights = []  # Track heights for each row
+    
+    for i, section in enumerate(section_titles):
         title = section.get("title", "---")
         page = section.get("page", "---")
         level = section.get("level", 1)  # 0=chapter, 1=subchapter
+        
+        # Check if this is a chapter (level=0) and not the first entry
+        # If so, check if the previous entry was a subchapter (level=1)
+        is_chapter_after_subchapter = False
+        if level == 0 and i > 0:
+            prev_level = section_titles[i - 1].get("level", 1)
+            if prev_level == 1:
+                is_chapter_after_subchapter = True
         
         if level == 0:
             # Main chapter - bold, larger, dark blue background
@@ -407,9 +418,14 @@ def build_table_of_contents(styles: Dict, section_titles: List[Dict[str, Any]]) 
             )
         
         toc_data.append([title_para, page_para])
+        # Add extra height for chapters that follow subchapters (half-line, ~6mm extra)
+        if is_chapter_after_subchapter:
+            row_heights.append(14 * mm)  # Normal row ~8mm + extra 6mm
+        else:
+            row_heights.append(None)  # Auto height
     
     if toc_data:
-        toc_table = Table(toc_data, colWidths=[150 * mm, 20 * mm])
+        toc_table = Table(toc_data, colWidths=[150 * mm, 20 * mm], rowHeights=row_heights)
         toc_table.setStyle(TableStyle([
             ('ALIGN', (0, 0), (0, -1), 'LEFT'),
             ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
@@ -500,7 +516,7 @@ def build_page_executive_summary(
     
     # Title row
     elements.append(Paragraph(
-        "<font size='12'>5.2 PODSUMOWANIE FIZJOLOGICZNE</font>",
+        "<font size='14'>5.2 PODSUMOWANIE FIZJOLOGICZNE</font>",
         styles["center"]
     ))
     
@@ -508,8 +524,8 @@ def build_page_executive_summary(
     status_text = f"{limiter_icon} {limiter_name}"
     header_table = Table([
         [
-            Paragraph(f"<font color='{limiter.get('color', '#7F8C8D')}'><b>{status_text}</b></font>", styles["heading"]),
-            Paragraph(f"<font size='10'>Data testu: <b>{test_date}</b></font>", styles["body"])
+            Paragraph("", styles["body"]),  # Removed duplicate CENTRALNY header
+            Paragraph("", styles["body"])  # Removed Data testu line
         ]
     ], colWidths=[100 * mm, 70 * mm])
     header_table.setStyle(TableStyle([
@@ -581,8 +597,12 @@ def build_page_executive_summary(
             bg_color = HexColor("#FADBD8")
             status_label = "✗ CONFLICT"
         
+        # Use text-only icons for PDF compatibility
+        icon_map = {"🫁": "VE", "🩸": "O2", "♥": "HR", "💪": "SMO2", "❓": "?"}
+        display_icon = icon_map.get(icon, icon[:2] if len(icon) > 2 else icon)
+        
         tile_content = [
-            Paragraph(f"<font size='16'>{icon}</font>", styles["center"]),
+            Paragraph(f"<font size='14'>{display_icon}</font>", styles["center"]),
             Paragraph(f"<b>{name}</b>", styles["center"]),
             Paragraph(f"<font size='8'>{status_label}</font>", styles["center"]),
         ]
@@ -846,7 +866,7 @@ def build_page_executive_verdict(
     # A. HERO BOX - MAIN VERDICT
     # ==========================================================================
     
-    elements.append(Paragraph("<font size='12'>5.3 WERDYKT FIZJOLOGICZNY</font>", styles["center"]))
+    elements.append(Paragraph("<font size='14'>5.3 WERDYKT FIZJOLOGICZNY</font>", styles["center"]))
     elements.append(Paragraph(
         "<font size='10' color='#7F8C8D'>Decyzyjne podsumowanie całego raportu fizjologicznego</font>",
         styles["center"]
@@ -1252,10 +1272,7 @@ def build_page_cover(
     method_version = metadata.get("method_version", "1.0.0")
     
     elements.append(Paragraph("1. PODSUMOWANIE WYKONAWCZE", styles["title"]))
-    elements.append(Paragraph("<font size='12'>1.1 RAPORT POTESTOWY</font>", styles["center"]))
-    
-    meta_text = f"Data: <b>{test_date}</b> | ID: {session_id} | v{method_version}"
-    elements.append(Paragraph(meta_text, styles["center"]))
+    elements.append(Paragraph("<font size='14'>1.1 RAPORT POTESTOWY</font>", styles["center"]))
     elements.append(Spacer(1, 8 * mm))
     
     # === CONFIDENCE BADGE REMOVED per user request ===
@@ -1311,9 +1328,101 @@ def build_page_cover(
     elements.append(table)
     elements.append(Spacer(1, 8 * mm))
     
+    # === ZONES TABLE (integrated into 1.1) ===
+    elements.append(Paragraph("Strefy Treningowe", styles["heading"]))
+    elements.append(Spacer(1, 3 * mm))
+    
+    vt1_raw = thresholds.get("vt1_watts", "brak danych")
+    vt2_raw = thresholds.get("vt2_watts", "brak danych")
+    
+    # Parse numbers for zone calculation
+    try:
+        vt1 = float(vt1_raw) if vt1_raw != "brak danych" else 0
+        vt2 = float(vt2_raw) if vt2_raw != "brak danych" else 0
+    except (ValueError, TypeError):
+        vt1 = 0
+        vt2 = 0
+    
+    # Calculate zones
+    if vt1 and vt2:
+        z1_max = int(vt1 * 0.8)
+        z2_min = z1_max
+        z2_max = int(vt1)
+        z3_min = z2_max
+        z3_max = int(vt2)
+        z4_min = z3_max
+        z4_max = int(vt2 * 1.05)
+        z5_min = z4_max
+        
+        zones_data = [
+            ["Strefa", "Zakres [W]", "Opis", "Cel treningowy"],
+            ["Z1 Recovery", f"< {z1_max}", "Bardzo łatwy", "Regeneracja"],
+            ["Z2 Endurance", f"{z2_min}–{z2_max}", "Komfortowy", "Baza tlenowa"],
+            ["Z3 Tempo", f"{z3_min}–{z3_max}", "Umiarkowany", "Próg"],
+            ["Z4 Threshold", f"{z4_min}–{z4_max}", "Ciężki", "Wytrzymałość"],
+            ["Z5 VO₂max", f"> {z5_min}", "Maksymalny", "Kapacytacja"],
+        ]
+    else:
+        zones_data = [
+            ["Strefa", "Zakres [W]", "Opis", "Cel treningowy"],
+            ["Z1 Recovery", "-", "Bardzo łatwy", "Regeneracja"],
+            ["Z2 Endurance", "-", "Komfortowy", "Baza tlenowa"],
+            ["Z3 Tempo", "-", "Umiarkowany", "Próg"],
+            ["Z4 Threshold", "-", "Ciężki", "Wytrzymałość"],
+            ["Z5 VO₂max", "-", "Maksymalny", "Kapacytacja"],
+        ]
+    
+    zones_table = Table(zones_data, colWidths=[35 * mm, 35 * mm, 35 * mm, 40 * mm])
+    zones_table.setStyle(get_table_style())
+    elements.append(zones_table)
+    elements.append(Spacer(1, 4 * mm))
+    
+    elements.append(Paragraph(
+        "Powyższe strefy są obliczone automatycznie na podstawie wykrytych progów VT1 i VT2. "
+        "Przed zastosowaniem skonsultuj je z trenerem, który może dostosować je do Twoich celów.",
+        styles["small"]
+    ))
+    
+    return elements
+
+
+def build_page_test_profile(
+    metadata: Dict[str, Any],
+    figure_paths: Dict[str, str],
+    styles: Dict
+) -> List:
+    """Build Page 1.2: Test Profile (chart and protocol description).
+    
+    Contains:
+    - Ramp profile chart
+    - Test protocol description
+    """
+    elements = []
+    
+    elements.append(Paragraph("<font size='14'>1.2 PRZEBIEG TESTU</font>", styles["center"]))
+    elements.append(Spacer(1, 6 * mm))
+    
     # === RAMP PROFILE CHART ===
     if figure_paths and "ramp_profile" in figure_paths:
-        elements.extend(_build_chart(figure_paths["ramp_profile"], "Przebieg Testu", styles))
+        elements.extend(_build_chart(figure_paths["ramp_profile"], "", styles))
+        elements.append(Spacer(1, 4 * mm))
+    
+    # === TEST PROTOCOL DESCRIPTION ===
+    # Extract protocol info from metadata (populated from UI manual inputs)
+    test_start_power = metadata.get("test_start_power", "---")
+    test_end_power = metadata.get("test_end_power", metadata.get("pmax_watts", "---"))
+    test_duration = metadata.get("test_duration", "---")
+    
+    elements.append(Paragraph(
+        "<font size='8' color='#7F8C8D'>"
+        "Test wykonywany do odmowy, każdy interwał trwał 3 minuty. "
+        "Zwiększenie obciążenia w każdym interwale +30W. "
+        f"Początek testu rozpoczął się od wartości {test_start_power} W, "
+        f"koniec testu nastąpił na wartości {test_end_power} W. "
+        f"Test trwał łącznie {test_duration}."
+        "</font>",
+        styles["center"]
+    ))
     
     return elements
 
@@ -1339,7 +1448,7 @@ def build_page_thresholds(
     elements = []
     
     elements.append(Paragraph("2. PROGI METABOLICZNE", styles["title"]))
-    elements.append(Paragraph("<font size='12'>2.1 SZCZEGÓŁY VT1 / VT2</font>", styles["center"]))
+    elements.append(Paragraph("<font size='14'>2.1 SZCZEGÓŁY VT1 / VT2</font>", styles["center"]))
     elements.append(Spacer(1, 6 * mm))
     
     # === EXPLANATION ===
@@ -1421,7 +1530,7 @@ def build_page_smo2(smo2_data, smo2_manual, figure_paths, styles):
     # HEADER
     # ==========================================================================
     elements.append(Paragraph(
-        "<font size='12'>3.3 OKSYGENACJA MIĘŚNIOWA (SmO₂)</font>",
+        "<font size='14'>3.3 OKSYGENACJA MIĘŚNIOWA (SmO₂)</font>",
         styles['center']
     ))
     elements.append(Paragraph(
@@ -1690,7 +1799,7 @@ def build_page_pdc(
     """
     elements = []
     
-    elements.append(Paragraph("<font size='12'>2.5 KRZYWA MOCY (PDC)</font>", styles["center"]))
+    elements.append(Paragraph("<font size='14'>2.5 KRZYWA MOCY (PDC)</font>", styles["center"]))
     elements.append(Spacer(1, 6 * mm))
     
     # === EXPLANATION ===
@@ -1797,7 +1906,7 @@ def build_page_interpretation(
     """
     elements = []
     
-    elements.append(Paragraph("<font size='12'>2.2 CO OZNACZAJĄ TE WYNIKI?</font>", styles["center"]))
+    elements.append(Paragraph("<font size='14'>2.2 CO OZNACZAJĄ TE WYNIKI?</font>", styles["center"]))
     elements.append(Spacer(1, 6 * mm))
     
     vt1_watts_raw = thresholds.get("vt1_watts", "brak danych")
@@ -1828,7 +1937,7 @@ def build_page_interpretation(
     # === VT1 ===
     elements.append(Paragraph("Próg tlenowy (VT1)", styles["heading"]))
     elements.append(Paragraph(
-        f"Twój próg tlenowy wynosi <b>{vt1_watts} W</b>. "
+        f"Twój próg tlenowy wynosi około <b>{vt1_watts} W</b>. "
         "To moc, przy której możesz jechać komfortowo przez wiele godzin. "
         "Oddychasz spokojnie, możesz swobodnie rozmawiać. "
         "Treningi poniżej VT1 budują bazę tlenową i służą regeneracji.",
@@ -1853,7 +1962,7 @@ def build_page_interpretation(
     # === VT2 ===
     elements.append(Paragraph("Próg beztlenowy (VT2)", styles["heading"]))
     elements.append(Paragraph(
-        f"Twój próg beztlenowy wynosi <b>{vt2_watts} W</b>. "
+        f"Twój próg beztlenowy wynosi około <b>{vt2_watts} W</b>. "
         "Powyżej tej mocy wysiłek staje się bardzo wymagający. "
         "Oddychasz ciężko, nie możesz swobodnie mówić. "
         "Treningi powyżej VT2 rozwijają VO₂max, ale wymagają pełnej regeneracji.",
@@ -1944,7 +2053,7 @@ def build_page_cardiovascular(cardio_data: Dict[str, Any], styles: Dict) -> List
     # HEADER
     # ==========================================================================
     elements.append(Paragraph(
-        "<font size='12'>3.2 UKŁAD SERCOWO-NACZYNIOWY</font>",
+        "<font size='14'>3.2 UKŁAD SERCOWO-NACZYNIOWY</font>",
         styles['center']
     ))
     elements.append(Paragraph(
@@ -2123,7 +2232,7 @@ def build_page_ventilation(vent_data: Dict[str, Any], styles: Dict) -> List:
         styles['title']
     ))
     elements.append(Paragraph(
-        "<font size='12'>3.1 KONTROLA ODDYCHANIA</font>",
+        "<font size='14'>3.1 KONTROLA ODDYCHANIA</font>",
         styles['center']
     ))
     elements.append(Paragraph(
@@ -2308,7 +2417,7 @@ def build_page_metabolic_engine(metabolic_data: Dict[str, Any], styles: Dict) ->
     # HEADER
     # ==========================================================================
     elements.append(Paragraph(
-        "<font size='12'>2.4 SILNIK METABOLICZNY</font>",
+        "<font size='14'>2.4 SILNIK METABOLICZNY</font>",
         styles['center']
     ))
     elements.append(Paragraph(
@@ -2345,6 +2454,7 @@ def build_page_metabolic_engine(metabolic_data: Dict[str, Any], styles: Dict) ->
             ('BACKGROUND', (0, 0), (-1, -1), HexColor("#F8F9FA")),
             ('BOX', (0, 0), (-1, -1), 1, HexColor(color)),
             ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
             ('TOPPADDING', (0, 0), (-1, -1), 6),
             ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
         ]))
@@ -2364,7 +2474,7 @@ def build_page_metabolic_engine(metabolic_data: Dict[str, Any], styles: Dict) ->
     
     vla_color = "#2ECC71" if vlamax < 0.4 else ("#F39C12" if vlamax < 0.6 else "#E74C3C")
     card2 = build_metric_card("VLaMax", f"{vlamax:.2f}", "mmol/L/s", vla_color, "estymowany")
-    card3 = build_metric_card("CP / FTP", f"{cp:.0f}", "W", "#3498DB")
+    card3 = build_metric_card("CP / FTP", f"{cp:.0f}", "W", "#3498DB", "obliczone")
     
     # Ratio card - show n/a if insufficient data
     if ratio and ratio > 0 and vo2max > 0:
@@ -2373,7 +2483,7 @@ def build_page_metabolic_engine(metabolic_data: Dict[str, Any], styles: Dict) ->
     else:
         ratio_color = "#7F8C8D"
         ratio_val = "n/a"
-    card4 = build_metric_card("VO₂/VLa RATIO", ratio_val, "", ratio_color)
+    card4 = build_metric_card("VO₂/VLa RATIO", ratio_val, "", ratio_color, "oszacowane")
     
     cards_row = Table([[card1, card2, card3, card4]], colWidths=[44 * mm] * 4)
     cards_row.setStyle(TableStyle([('ALIGN', (0, 0), (-1, -1), 'CENTER')]))
@@ -2434,7 +2544,7 @@ def build_page_metabolic_engine(metabolic_data: Dict[str, Any], styles: Dict) ->
     elements.append(Spacer(1, 2 * mm))
     
     target_colors = {"increase_vo2max": "#E74C3C", "lower_vlamax": "#27AE60", "maintain_balance": "#3498DB"}
-    target_names = {"increase_vo2max": "🔺 ZWIĘKSZ VO₂max", "lower_vlamax": "🔻 OBNIŻ VLaMax", "maintain_balance": "⚖️ UTRZYMAJ BALANS"}
+    target_names = {"increase_vo2max": "↑ ZWIĘKSZ VO₂max", "lower_vlamax": "↓ OBNIŻ VLaMax", "maintain_balance": "↔ UTRZYMAJ BALANS"}
     
     target_badge = Paragraph(
         f"<font color='white'><b>{target_names.get(target, target.upper())}</b></font>",
@@ -2450,7 +2560,9 @@ def build_page_metabolic_engine(metabolic_data: Dict[str, Any], styles: Dict) ->
     elements.append(Spacer(1, 3 * mm))
     
     if strategy_interp:
-        for line in strategy_interp.split('\n')[:3]:
+        # Skip first line which duplicates target name in badge above
+        lines = strategy_interp.split('\n')
+        for line in lines[1:4]:  # Start from line 2, take up to 3 lines
             elements.append(Paragraph(line, styles["body"]))
     elements.append(Spacer(1, 6 * mm))
     
@@ -2515,6 +2627,7 @@ def build_page_metabolic_engine(metabolic_data: Dict[str, Any], styles: Dict) ->
         
         # Regress KPIs
         if kpi_regress:
+            elements.append(Spacer(1, 4 * mm))  # Extra spacing before regress section
             elements.append(Paragraph("<font color='#E74C3C'><b>✗ Sygnały regresu / overreaching:</b></font>", styles["body"]))
             for kpi in kpi_regress[:3]:
                 elements.append(Paragraph(f"<font size='9'>• {kpi}</font>", styles["body"]))
@@ -2544,7 +2657,7 @@ def build_page_limiter_radar(
     
     # Title
     elements.append(Paragraph("4. LIMITERY I OBCIĄŻENIE CIEPLNE", styles["title"]))
-    elements.append(Paragraph("<font size='12'>4.1 RADAR OBCIĄŻENIA SYSTEMÓW</font>", styles["center"]))
+    elements.append(Paragraph("<font size='14'>4.1 RADAR OBCIĄŻENIA SYSTEMÓW</font>", styles["center"]))
     elements.append(Paragraph(
         "<font size='10' color='#7F8C8D'>Analiza limiterów fizjologicznych dla 20 min (FTP)</font>",
         styles["center"]
@@ -2678,7 +2791,7 @@ def build_page_zones(
     """
     elements = []
     
-    elements.append(Paragraph("<font size='12'>1.2 STREFY TRENINGOWE</font>", styles["center"]))
+    elements.append(Paragraph("<font size='14'>1.2 STREFY TRENINGOWE</font>", styles["center"]))
     elements.append(Spacer(1, 6 * mm))
     
     vt1_raw = thresholds.get("vt1_watts", "brak danych")
@@ -2752,7 +2865,7 @@ def build_page_limitations(
     """
     elements = []
     
-    elements.append(Paragraph("<font size='12'>5.5 OGRANICZENIA INTERPRETACJI</font>", styles["center"]))
+    elements.append(Paragraph("<font size='14'>5.5 OGRANICZENIA INTERPRETACJI</font>", styles["center"]))
     elements.append(Spacer(1, 6 * mm))
     
     limitations = [
@@ -2903,7 +3016,7 @@ def build_page_theory(styles: Dict) -> List:
     from reportlab.platypus import TableStyle
     elements = []
     
-    elements.append(Paragraph("<font size='12'>2.3 MODEL METABOLICZNY</font>", styles["center"]))
+    elements.append(Paragraph("<font size='14'>2.3 MODEL METABOLICZNY</font>", styles["center"]))
     elements.append(Spacer(1, 6 * mm))
     
     # Intro
@@ -2915,7 +3028,7 @@ def build_page_theory(styles: Dict) -> List:
     elements.append(Spacer(1, 4 * mm))
     
     # VO2max
-    elements.append(Paragraph("1. VO₂max (System Tlenowy)", styles["heading"]))
+    elements.append(Paragraph("VO₂max (System Tlenowy)", styles["heading"]))
     elements.append(Paragraph(
         "Maksymalna ilość tlenu, jaką Twój organizm może przyswoić. "
         "Jest to Twój „silnik diesla” – odpowiada za moc na długim dystansie. "
@@ -2924,7 +3037,7 @@ def build_page_theory(styles: Dict) -> List:
     ))
     
     # VLaMax
-    elements.append(Paragraph("2. VLaMax (System Glikolityczny)", styles["heading"]))
+    elements.append(Paragraph("VLaMax (System Glikolityczny)", styles["heading"]))
     elements.append(Paragraph(
         "Maksymalne tempo produkcji mleczanu. To Twój „dopalacz turbo”. "
         "Wysokie VLaMax daje świetny sprint i ataki, ale powoduje szybkie zużycie węglowodanów (niskie FatMax) i obniża próg FTP. "
@@ -2987,7 +3100,7 @@ def build_page_protocol(
     """Build Page for Signal Hierarchy and Protocol information."""
     elements = []
     
-    elements.append(Paragraph("<font size='12'>5.4 PROTOKÓŁ TESTU</font>", styles["center"]))
+    elements.append(Paragraph("<font size='14'>5.4 PROTOKÓŁ TESTU</font>", styles["center"]))
     elements.append(Spacer(1, 8 * mm))
     
     # Extensive Theory Section
@@ -3046,7 +3159,7 @@ def build_page_thermal(
     
     elements = []
     
-    elements.append(Paragraph("<font size='12'>4.3 TERMOREGULACJA</font>", styles["center"]))
+    elements.append(Paragraph("<font size='14'>4.3 TERMOREGULACJA</font>", styles["center"]))
     elements.append(Paragraph("<font size='10' color='#7F8C8D'>Dynamika temperatury, tolerancja cieplna, rekomendacje</font>", styles["body"]))
     elements.append(Spacer(1, 6 * mm))
     
@@ -3357,7 +3470,7 @@ def build_page_thermal(
     # === CLASSIFICATION VERDICT BOX ===
     if has_drift_data:
         mechanism = drift_interp.get("mechanism", "")
-        verdict_text = f"<b>{drift_level.upper()} DRYF {drift_type.upper()}</b><br/><br/>{mechanism}"
+        verdict_text = f"{mechanism}"  # Removed duplicate title, just show mechanism
     else:
         verdict_text = "<b>BRAK DANYCH DRYFU</b><br/>Analiza drift wymaga danych EF (power/HR)."
         drift_color = "#808080"
@@ -3427,7 +3540,7 @@ def build_page_thermal(
     
     # Chart: EF vs Time/Temp
     if figure_paths and "thermal_efficiency" in figure_paths:
-        elements.extend(_build_chart(figure_paths["thermal_efficiency"], "Efektywnosc vs Czas/Temperatura", styles))
+        elements.extend(_build_chart(figure_paths["thermal_efficiency"], "Efektywność vs Czas/Temperatura", styles))
         elements.append(Spacer(1, 4 * mm))
     
     
@@ -3495,7 +3608,7 @@ def build_page_biomech(
     
     elements = []
     
-    elements.append(Paragraph("<font size='12'>3.4 BIOMECHANIKA</font>", styles["center"]))
+    elements.append(Paragraph("<font size='14'>3.4 BIOMECHANIKA</font>", styles["center"]))
     elements.append(Paragraph("<font size='10' color='#7F8C8D'>Fizjologia okluzji i relacja siła–tlen</font>", styles["body"]))
     elements.append(Spacer(1, 6 * mm))
     
@@ -3615,9 +3728,9 @@ def build_page_biomech(
         # Collapse verdict
         collapse_point = torque_20 if torque_20 else (torque_10 if torque_10 else 0)
         if collapse_point:
-            collapse_text = f"<b>Werdykt:</b> Efektywna dostawa tlenowa załamuje się powyżej {collapse_point:.0f} Nm."
+            collapse_text = f"Efektywna dostawa tlenowa załamuje się powyżej {collapse_point:.0f} Nm."
         else:
-            collapse_text = "<b>Werdykt:</b> Progi momentu obrotowego niedostępne dla oceny okluzji."
+            collapse_text = "Progi momentu obrotowego niedostępne dla oceny okluzji."
         elements.append(Paragraph(collapse_text, styles["body"]))
         elements.append(Spacer(1, 6 * mm))
         
@@ -3725,7 +3838,7 @@ def build_page_drift(
     """Build Physiological Drift page (heatmaps only, no KPI table)."""
     elements = []
     
-    elements.append(Paragraph("<font size='12'>4.2 DRYF FIZJOLOGICZNY</font>", styles["center"]))
+    elements.append(Paragraph("<font size='14'>4.2 DRYF FIZJOLOGICZNY</font>", styles["center"]))
     elements.append(Spacer(1, 6 * mm))
     
     # Heatmaps
@@ -3793,7 +3906,7 @@ def build_page_kpi_dashboard(
     elements = []
     
     elements.append(Paragraph("5. PODSUMOWANIE", styles["title"]))
-    elements.append(Paragraph("<font size='12'>5.1 WSKAŹNIKI KPI</font>", styles["center"]))
+    elements.append(Paragraph("<font size='14'>5.1 WSKAŹNIKI KPI</font>", styles["center"]))
     elements.append(Paragraph("<font size='10' color='#7F8C8D'>Dashboard stabilności układu krążenia i kosztu energetycznego</font>", styles["body"]))
     elements.append(Spacer(1, 8 * mm))
     

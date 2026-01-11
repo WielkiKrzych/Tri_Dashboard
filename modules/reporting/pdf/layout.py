@@ -349,6 +349,12 @@ def build_contact_footer(styles: Dict) -> List:
         "<font size='11' color='#1A5276'>kubiczk@icloud.com</font>",
         styles["center"]
     ))
+    elements.append(Spacer(1, 3 * mm))
+    elements.append(Paragraph(
+        "<font size='9' color='#7F8C8D'>Kontakt, pytania, konsultacje oraz umówienie się na ponowne badanie - "
+        "wiadomość mailowa lub tekstowa na nr tel.: 453 330 419</font>",
+        styles["center"]
+    ))
     
     return elements
 
@@ -597,9 +603,15 @@ def build_page_executive_summary(
             bg_color = HexColor("#FADBD8")
             status_label = "✗ CONFLICT"
         
-        # Use text-only icons for PDF compatibility
-        icon_map = {"🫁": "VE", "🩸": "O2", "♥": "HR", "💪": "SMO2", "❓": "?"}
-        display_icon = icon_map.get(icon, icon[:2] if len(icon) > 2 else icon)
+        # Use simple pictogram symbols for PDF compatibility
+        icon_map = {
+            "🫁": "~",      # VE - wave for ventilation
+            "🩸": "O₂",     # O2 - oxygen symbol  
+            "♥": "♥",       # HR - heart (standard character)
+            "💪": "O₂",     # SmO2 - oxygen symbol
+            "❓": "?"
+        }
+        display_icon = icon_map.get(icon, "•")
         
         tile_content = [
             Paragraph(f"<font size='14'>{display_icon}</font>", styles["center"]),
@@ -1358,18 +1370,18 @@ def build_page_cover(
             ["Strefa", "Zakres [W]", "Opis", "Cel treningowy"],
             ["Z1 Recovery", f"< {z1_max}", "Bardzo łatwy", "Regeneracja"],
             ["Z2 Endurance", f"{z2_min}–{z2_max}", "Komfortowy", "Baza tlenowa"],
-            ["Z3 Tempo", f"{z3_min}–{z3_max}", "Umiarkowany", "Próg"],
-            ["Z4 Threshold", f"{z4_min}–{z4_max}", "Ciężki", "Wytrzymałość"],
-            ["Z5 VO₂max", f"> {z5_min}", "Maksymalny", "Kapacytacja"],
+            ["Z3 Tempo", f"{z3_min}–{z3_max}", "Umiarkowany", "Wytrzymałość"],
+            ["Z4 Threshold", f"{z4_min}–{z4_max}", "Ciężki", "Próg"],
+            ["Z5 VO₂max", f"> {z5_min}", "Maksymalny", "Pułap Tlenowy"],
         ]
     else:
         zones_data = [
             ["Strefa", "Zakres [W]", "Opis", "Cel treningowy"],
             ["Z1 Recovery", "-", "Bardzo łatwy", "Regeneracja"],
             ["Z2 Endurance", "-", "Komfortowy", "Baza tlenowa"],
-            ["Z3 Tempo", "-", "Umiarkowany", "Próg"],
-            ["Z4 Threshold", "-", "Ciężki", "Wytrzymałość"],
-            ["Z5 VO₂max", "-", "Maksymalny", "Kapacytacja"],
+            ["Z3 Tempo", "-", "Umiarkowany", "Wytrzymałość"],
+            ["Z4 Threshold", "-", "Ciężki", "Próg"],
+            ["Z5 VO₂max", "-", "Maksymalny", "Pułap Tlenowy"],
         ]
     
     zones_table = Table(zones_data, colWidths=[35 * mm, 35 * mm, 35 * mm, 40 * mm])
@@ -1703,10 +1715,10 @@ def build_page_smo2(smo2_data, smo2_manual, figure_paths, styles):
     # Interpret metrics for benchmark
     slope_interp_full = "Typowe dla limitu centralnego" if slope < -4 else ("Umiarkowane - balans C/P" if slope < -2 else "Stabilne - limit lokalny")
     if halftime:
-        ht_interp_full = "Elite (<25s)" if halftime < 25 else ("OK ale nie elite" if halftime < 50 else "Wolna - priorytet interwaly")
+        ht_interp_full = "Elite (<25s)" if halftime < 25 else ("OK ale nie elite" if halftime < 50 else "Wolna - priorytet interwały")
     else:
         ht_interp_full = "Brak danych"
-    coup_interp_full = "Silna dominacja serca (centralny)" if abs(coupling) > 0.6 else ("Zrownowazona" if abs(coupling) > 0.3 else "Dominacja obwodowa (lokalna)")
+    coup_interp_full = "Silna dominacja serca (centralny)" if abs(coupling) > 0.6 else ("Zrównoważona" if abs(coupling) > 0.3 else "Dominacja obwodowa (lokalna)")
     
     bench_data = [
         ["Metryka", "Twoja wartość", "Interpretacja kliniczna"],
@@ -1744,14 +1756,14 @@ def build_page_smo2(smo2_data, smo2_manual, figure_paths, styles):
     # Generate conclusive statement based on limiter type
     if limiter_type == "central":
         conclusion = (
-            "<b>WNIOSEK:</b> Poprawa VO2max da realny wzrost mocy tylko jesli utrzymasz "
-            "niska okluzje mechaniczna. Priorytet: treningi Z2/Z3 + interwaly <95% HR max."
+            "<b>WNIOSEK:</b> Poprawa VO2max da realny wzrost mocy tylko jeśli utrzymasz "
+            "niską okluzję mechaniczną. Priorytet: treningi Z2/Z3 + interwały <95% HR max."
         )
         conclusion_color = "#E74C3C"
     elif limiter_type == "local":
         conclusion = (
-            "<b>WNIOSEK:</b> Perfuzja miesniowa jest limitujaca - poprawa sily lub kadencji "
-            "moze zredukowac okluzje i zwolnic desaturacje. Priorytet: Strength Endurance."
+            "<b>WNIOSEK:</b> Perfuzja mięśniowa jest limitująca - poprawa siły lub kadencji "
+            "może zredukować okluzję i zwolnić desaturację. Priorytet: Strength Endurance."
         )
         conclusion_color = "#3498DB"
     else:
@@ -1864,22 +1876,22 @@ def build_page_pdc(
         styles
     ))
     
-    # Additional theory - FACT / INTERPRETATION / ACTION structure
+    # Additional theory - FAKT / INTERPRETACJA / AKCJA structure
     elements.append(Spacer(1, 4 * mm))
     elements.append(Paragraph(
-        "<font color='#3498DB'><b>● FACT:</b></font> Każdy skok powyżej CP kosztuje konkretną ilość dżuli z W'. "
+        "<font color='#3498DB'><b>● FAKT:</b></font> Każdy skok powyżej CP kosztuje konkretną ilość dżuli z W'. "
         "Przy W'=15kJ i mocy 50W powyżej CP, wystarczy na ~5 min powyżej progu.",
         styles["body"]
     ))
     elements.append(Spacer(1, 2 * mm))
     elements.append(Paragraph(
-        "<font color='#9B59B6'><b>● INTERPRETATION:</b></font> Regeneracja W' zachodzi TYLKO poniżej CP. "
+        "<font color='#9B59B6'><b>● INTERPRETACJA:</b></font> Regeneracja W' zachodzi TYLKO poniżej CP. "
         "Im głębiej poniżej CP, tym szybsza regeneracja (ok. 1-2% W'/s przy głębokim Z2).",
         styles["body"]
     ))
     elements.append(Spacer(1, 2 * mm))
     elements.append(Paragraph(
-        "<font color='#27AE60'><b>● ACTION:</b></font> W ataku kalkuluj koszt: krótki intensywny atak (30s @ +100W) kosztuje ~3kJ. "
+        "<font color='#27AE60'><b>● AKCJA:</b></font> W ataku kalkuluj koszt: krótki intensywny atak (30s @ +100W) kosztuje ~3kJ. "
         "Czy masz rezerwę? Decyduj na podstawie danych, nie intuicji.",
         styles["body"]
     ))
@@ -2483,10 +2495,13 @@ def build_page_metabolic_engine(metabolic_data: Dict[str, Any], styles: Dict) ->
     else:
         ratio_color = "#7F8C8D"
         ratio_val = "n/a"
-    card4 = build_metric_card("VO₂/VLa RATIO", ratio_val, "", ratio_color, "oszacowane")
+    card4 = build_metric_card("VO₂/VLa RATIO", ratio_val, "(ratio)", ratio_color, "oszacowane")
     
     cards_row = Table([[card1, card2, card3, card4]], colWidths=[44 * mm] * 4)
-    cards_row.setStyle(TableStyle([('ALIGN', (0, 0), (-1, -1), 'CENTER')]))
+    cards_row.setStyle(TableStyle([
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),  # Align cards to top for consistent height
+    ]))
     elements.append(cards_row)
     elements.append(Spacer(1, 3 * mm))
     
@@ -2820,18 +2835,18 @@ def build_page_zones(
             ["Strefa", "Zakres [W]", "Opis", "Cel treningowy"],
             ["Z1 Recovery", f"< {z1_max}", "Bardzo łatwy", "Regeneracja"],
             ["Z2 Endurance", f"{z2_min}–{z2_max}", "Komfortowy", "Baza tlenowa"],
-            ["Z3 Tempo", f"{z3_min}–{z3_max}", "Umiarkowany", "Próg"],
-            ["Z4 Threshold", f"{z4_min}–{z4_max}", "Ciężki", "Wytrzymałość"],
-            ["Z5 VO₂max", f"> {z5_min}", "Maksymalny", "Kapacytacja"],
+            ["Z3 Tempo", f"{z3_min}–{z3_max}", "Umiarkowany", "Wytrzymałość"],
+            ["Z4 Threshold", f"{z4_min}–{z4_max}", "Ciężki", "Próg"],
+            ["Z5 VO₂max", f"> {z5_min}", "Maksymalny", "Pułap Tlenowy"],
         ]
     else:
         data = [
             ["Strefa", "Zakres [W]", "Opis", "Cel treningowy"],
             ["Z1 Recovery", "-", "Bardzo łatwy", "Regeneracja"],
             ["Z2 Endurance", "-", "Komfortowy", "Baza tlenowa"],
-            ["Z3 Tempo", "-", "Umiarkowany", "Próg"],
-            ["Z4 Threshold", "-", "Ciężki", "Wytrzymałość"],
-            ["Z5 VO₂max", "-", "Maksymalny", "Kapacytacja"],
+            ["Z3 Tempo", "-", "Umiarkowany", "Wytrzymałość"],
+            ["Z4 Threshold", "-", "Ciężki", "Próg"],
+            ["Z5 VO₂max", "-", "Maksymalny", "Pułap Tlenowy"],
         ]
     
     table = Table(data, colWidths=[35 * mm, 35 * mm, 35 * mm, 40 * mm])
@@ -2981,7 +2996,7 @@ def _build_education_block(title: str, content: str, styles: Dict) -> List:
     elements = []
     
     # Label
-    label = Paragraph("<b>Część edukacyjna – do zrozumienia wyników</b>", styles["small"])
+    label = Paragraph("", styles["small"])  # Removed educational label
     elements.append(label)
     
     # Title & Text in a subtle box
@@ -3067,10 +3082,10 @@ def build_page_theory(styles: Dict) -> List:
     elements.append(Paragraph("Typy Zawodników i Strategie", styles["heading"]))
     data = [
         ["Typ", "VO2max", "VLaMax", "Charakterystyka"],
-        ["Sprinter", "Sredni", "Wysoki", "Dynamika, punch, sprinty"],
-        ["Climber", "Wysoki", "Niski", "Dlugie wspinaczki, tempo"],
-        ["Time Trialist", "Wysoki", "Niski", "Rowne tempo, aerodynamika"],
-        ["Puncheur", "Wysoki", "Sredni", "Ataki, krotkie gorki"]
+        ["Sprinter", "Średni", "Wysoki", "Dynamika, punch, sprinty"],
+        ["Climber", "Wysoki", "Niski", "Długie wspinaczki, tempo"],
+        ["Time Trialist", "Wysoki", "Niski", "Równe tempo, aerodynamika"],
+        ["Puncheur", "Wysoki", "Średni", "Ataki, krótkie górki"]
     ]
     t = Table(data, colWidths=[30*mm, 30*mm, 30*mm, 80*mm])
     # Table should use DejaVuSans for Polish chars if needed, though ASCII used above
@@ -3164,15 +3179,15 @@ def build_page_thermal(
     elements.append(Spacer(1, 6 * mm))
     
     elements.append(Paragraph(
-        "Cieplo jest cichym zabojca wydajnosci. Wzrost temperatury glebokiej (Core Temp) "
-        "powoduje przekierowanie krwi do skory (chlodzenie), co zabiera tlen pracujacym miesniom.",
+        "Ciepło jest cichym zabójcą wydajności. Wzrost temperatury głębokiej (Core Temp) "
+        "powoduje przekierowanie krwi do skóry (chłodzenie), co zabiera tlen pracującym mięśniom.",
         styles["body"]
     ))
     elements.append(Spacer(1, 4 * mm))
     
     # Chart 1: Core Temp vs HSI
     if figure_paths and "thermal_hsi" in figure_paths:
-        elements.extend(_build_chart(figure_paths["thermal_hsi"], "Temp. Gleboka vs Indeks Zmeczenia (HSI)", styles))
+        elements.extend(_build_chart(figure_paths["thermal_hsi"], "Temp. Głęboka vs Indeks Zmęczenia (HSI)", styles))
         elements.append(Spacer(1, 6 * mm))
     
     # === KEY NUMBERS TABLE (Thermoregulation) ===

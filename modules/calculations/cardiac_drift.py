@@ -93,7 +93,7 @@ def analyze_cardiac_drift(
     mask = (~np.isnan(power)) & (~np.isnan(hr)) & (hr > 50) & (power > 50)
     if np.sum(mask) < 60:
         logger.warning("Insufficient data for drift analysis")
-        profile.mechanism_description = "Niewystarczajace dane do analizy dryfu."
+        profile.mechanism_description = "Niewystarczające dane do analizy dryfu."
         return profile
     
     power_valid = power[mask]
@@ -107,7 +107,7 @@ def analyze_cardiac_drift(
     ef_valid = ef[~np.isnan(ef)]
     
     if len(ef_valid) < 30:
-        profile.mechanism_description = "Za malo danych EF do analizy."
+        profile.mechanism_description = "Za mało danych EF do analizy."
         return profile
     
     # EF at start (first 60 seconds) and end (last 60 seconds)
@@ -227,48 +227,48 @@ def _generate_drift_mechanism(profile: CardiacDriftProfile) -> str:
     if profile.drift_classification == "minimal":
         base = f"MINIMALNY DRYF ({drift_pct:.1f}%)"
         detail = (
-            "Efficiency Factor pozostaje stabilny przez caly test. "
-            "Uklad krazenia efektywnie dostarcza tlen bez przeciazenia. "
-            "To wskazuje na dobra ekonomie wysikowa i adaptacje treningowa."
+            "Efficiency Factor pozostaje stabilny przez cały test. "
+            "Układ krążenia efektywnie dostarcza tlen bez przeciążenia. "
+            "To wskazuje na dobrą ekonomię wysiłkową i adaptację treningową."
         )
     elif profile.drift_classification == "moderate":
         base = f"UMIARKOWANY DRYF ({drift_pct:.1f}%)"
         if profile.drift_type == "thermal":
             detail = (
-                "Spadek EF jest skorelowany ze wzrostem temperatury glebokiej. "
-                "Serce pompuje dodatkowa krew do skory (chlodzenie), co zmniejsza "
-                "ilosc tlenu dostarczanego do miesni. Rozważ strategie chlodzenia."
+                "Spadek EF jest skorelowany ze wzrostem temperatury głębokiej. "
+                "Serce pompuje dodatkową krew do skóry (chłodzenie), co zmniejsza "
+                "ilość tlenu dostarczanego do mięśni. Rozważ strategie chłodzenia."
             )
         elif profile.drift_type == "metabolic":
             detail = (
-                "SmO2 spada znaczaco, wskazujac na lokalne zmeczenie mięśniowe. "
+                "SmO2 spada znacząco, wskazując na lokalne zmęczenie mięśniowe. "
                 "Perfuzja obwodowa jest ograniczona niezależnie od HR. "
-                "Priorytet: praca nad wytrzymaloscia miesniowa."
+                "Priorytet: praca nad wytrzymałością mięśniową."
             )
         else:
             detail = (
-                "Dryf o zlożonej etiologii (mieszany). Obserwujemy wplyw "
-                "zarowno zmeczenia centralnego jak i obwodowego."
+                "Dryf o złożonej etiologii (mieszany). Obserwujemy wpływ "
+                "zarówno zmęczenia centralnego jak i obwodowego."
             )
     else:  # high
         base = f"WYSOKI DRYF ({drift_pct:.1f}%)"
         if profile.drift_type == "thermal":
             detail = (
-                "KRYTYCZNY: Temperatura gleboka powoduje masywna redystrybucje krwi. "
-                "EF spada o {:.2f} W/bpm na kazdy °C wzrostu temperatury. "
-                "Ryzyko przegrzania i dekompensacji krazeniowej jest wysokie. "
-                "PRIORYTET: adaptacja cieplna i strategie chlodzenia."
+                "KRYTYCZNY: Temperatura głęboka powoduje masywną redystrybucję krwi. "
+                "EF spada o {:.2f} W/bpm na każdy °C wzrostu temperatury. "
+                "Ryzyko przegrzania i dekompensacji krążeniowej jest wysokie. "
+                "PRIORYTET: adaptacja cieplna i strategie chłodzenia."
             ).format(abs(profile.ef_vs_temp_slope))
         elif profile.drift_type == "metabolic":
             detail = (
-                "Znaczny dryf obwodowy. SmO2 spada o {:.1f}%, wskazujac na "
-                "krytyczne ograniczenie perfuzji miesniowej. "
-                "Uklad krazenia nie nadaza z dostawa tlenu do pracujacych miesni."
+                "Znaczny dryf obwodowy. SmO2 spada o {:.1f}%, wskazując na "
+                "krytyczne ograniczenie perfuzji mięśniowej. "
+                "Układ krążenia nie nadąża z dostawą tlenu do pracujących mięśni."
             ).format(abs(profile.smo2_drift_pct))
         else:
             detail = (
-                "Dryf kardiologiczny wskazuje na przeciazenie ukladu krazenia. "
-                "HR rosnie o {:.1f}% przy stalej mocy. "
+                "Dryf kardiologiczny wskazuje na przeciążenie układu krążenia. "
+                "HR rośnie o {:.1f}% przy stałej mocy. "
                 "Wymagana konsultacja z fizjologiem/kardiologiem."
             ).format(profile.hr_drift_pct)
     
@@ -308,51 +308,52 @@ def _generate_training_implications(profile: CardiacDriftProfile) -> List[str]:
     
     if profile.drift_classification == "minimal":
         implications = [
-            "Mozesz utrzymac obecny plan treningowy",
-            "Interwaly do 20min w strefie Z4 sa bezpieczne",
-            "Monitoruj utrzymanie stabilnosci EF w kolejnych testach",
+            "Możesz utrzymać obecny plan treningowy",
+            "Interwały do 20min w strefie Z4 są bezpieczne",
+            "Monitoruj utrzymanie stabilności EF w kolejnych testach",
         ]
     elif profile.drift_classification == "moderate":
         if profile.drift_type == "thermal":
             implications = [
-                "SKROC INTERWALY do 10-15min w cieple",
-                "Stosuj chlodzenie: woda na glowe co 10-15min",
+                "SKRÓĆ INTERWAŁY do 10-15min w cieple",
+                "Stosuj chłodzenie: woda na głowę co 10-15min",
                 "Rozważ 5-7 dni adaptacji cieplnej",
-                "Obniz intensywnosc o 5% w temperaturze >25°C",
+                "Obniż intensywność o 5% w temperaturze >25°C",
             ]
         elif profile.drift_type == "metabolic":
             implications = [
                 "PRIORYTET: Treningi tempo 2x20min Z3",
-                "Praca nad wytrzymaloscia miesniowa (strength endurance)",
-                "Zwieksz kadencje o 5-10 rpm dla lepszej perfuzji",
+                "Praca nad wytrzymałością mięśniową (strength endurance)",
+                "Zwiększ kadencję o 5-10 rpm dla lepszej perfuzji",
             ]
         else:
             implications = [
-                "Zredukuj dlugosc interwalow o 20%",
-                "Zwieksz przerwy miedzy powtorzeniami",
-                "Monitoruj HR i SmO2 podczas treningow",
+                "Zredukuj długość interwałów o 20%",
+                "Zwiększ przerwy między powtórzeniami",
+                "Monitoruj HR i SmO2 podczas treningów",
             ]
     else:  # high
         if profile.drift_type == "thermal":
             implications = [
-                "PILNE: Obniz intensywnosc o 10-15% w cieple",
-                "LIMIT: Interwaly max 8-10min",
+                "PILNE: Obniż intensywność o 10-15% w cieple",
+                "LIMIT: Interwały max 8-10min",
                 "Heat acclimation: 10-14 dni, 60min @ Z2 w 30°C",
                 "Pre-cooling przed zawodami (kamizelka lodowa)",
-                "Unikaj zawodow w temp >28°C do adaptacji",
+                "Monitoruj EF w czasie rzeczywistym podczas długich wysiłków >2h",
+                "Stosuj pre-cooling przed zawodami w gorącu (kamizelka lodowa, zimny napój)",
             ]
         elif profile.drift_type == "metabolic":
             implications = [
-                "PILNE: Redukcja intensywnosci o 10%",
-                "Mikrocykle recovery po kazdych 2 tygodniach intensywnych",
-                "Sprawdz poziom zelaza i hemoglobiny",
-                "Rozważ suplementacje B12 i żelaza",
+                "PILNE: Redukcja intensywności o 10%",
+                "Mikrocykle recovery po każdych 2 tygodniach intensywnych",
+                "Sprawdź poziom żelaza i hemoglobiny",
+                "Rozważ suplementację B12 i żelaza",
             ]
         else:
             implications = [
                 "KONSULTACJA LEKARSKA: wysoki dryf kardiologiczny",
-                "Obniz intensywnosc do Z2-Z3",
-                "EKG wysilkowe rekomendowane",
+                "Obniż intensywność do Z2-Z3",
+                "EKG wysiłkowe rekomendowane",
                 "Max Interval: 5-8min do stabilizacji",
             ]
     

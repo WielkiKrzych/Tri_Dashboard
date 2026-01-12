@@ -42,26 +42,36 @@ def render_nutrition_tab(df_plot, cp_input, vt1_watts, vt2_watts):
         """)
     
     if 'watts' in df_plot.columns:
-        # --- NOWY MODEL INSCYD-INSPIRED ---
-        # Spalanie oparte na %FTP z ciągłą krzywą
-        intensity = df_plot['watts'] / cp_input if cp_input > 0 else 0
+        # --- CORRECTED MODEL: Physics-based CHO consumption ---
+        # Based on XERT/INSCYD research and intervals.icu forum discussions
         
-        # Bazowy współczynnik spalania (g/W/h) rośnie wykładniczo z intensywnością
-        # Formuła uproszczona: base_rate * intensity^exponent
-        base_rate = 0.5  # g/W/h przy 100% FTP
+        # Step 1: Mechanical work to total energy expenditure
+        # 1 kJ mechanical work ≈ 1 kcal total energy burned
+        # (The ~24% efficiency factor roughly cancels the 4.184 kJ/kcal conversion)
+        # Power [W] = J/s. For 1 hour: W * 3600 / 1000 = kJ/h ≈ kcal/h
+        energy_kcal_per_hour = df_plot['watts'] * 3.6  # kJ/h ≈ kcal/h
         
-        # Krzywą kalibrujemy by pasowała do danych INSCYD:
-        # - 50% FTP: ~20-30g/h
-        # - 75% FTP: ~50-70g/h
-        # - 100% FTP: ~100-120g/h
-        # - 120% FTP: ~150-180g/h
+        # Step 2: CHO fraction based on %FTP (INSCYD/XERT model)
+        # Research shows:
+        # - FatMax occurs around 55-65% FTP
+        # - Above threshold, almost all energy from CHO
+        intensity = df_plot['watts'] / cp_input if cp_input > 0 else df_plot['watts'] / 280
         
-        # Formuła: CarbRate = Power * BaseRate * (Intensity^1.5)
-        # Dla 250W @100%: 250 * 0.5 * 1.0 = 125 g/h
-        # Dla 200W @80%: 200 * 0.5 * 0.71 = 71 g/h
-        # Dla 150W @60%: 150 * 0.5 * 0.46 = 35 g/h
+        # Piecewise linear CHO fraction model
+        # Z1 (<55% FTP): ~30% CHO (fat dominant - recovery)
+        # Z2 (55-75% FTP): 30-60% CHO (endurance - mixed)
+        # Z3-Z4 (75-100% FTP): 60-90% CHO (tempo/threshold)
+        # Z5+ (>100% FTP): 90-100% CHO (VO2max - almost all CHO)
+        cho_fraction = np.where(intensity < 0.55, 0.30,
+                      np.where(intensity < 0.75, 0.30 + (intensity - 0.55) * 1.5,   # 30→60%
+                      np.where(intensity < 1.00, 0.60 + (intensity - 0.75) * 1.2,   # 60→90%
+                      np.clip(0.90 + (intensity - 1.0) * 0.5, 0.90, 1.0))))         # 90-100%
         
-        carb_rate_per_sec = (df_plot['watts'] * base_rate * np.power(np.clip(intensity, 0.1, 2.0), 1.5)) / 3600.0
+        # Step 3: Calculate CHO burn rate
+        # 1g CHO = 4 kcal
+        cho_kcal_per_hour = energy_kcal_per_hour * cho_fraction
+        carb_rate_per_sec = cho_kcal_per_hour / 4.0 / 3600.0  # Convert to g/s
+        
         cumulative_burn = carb_rate_per_sec.cumsum()
         
         intake_per_sec = carb_intake / 3600.0
@@ -76,6 +86,7 @@ def render_nutrition_tab(df_plot, cp_input, vt1_watts, vt2_watts):
             'Spożyte [g]': cumulative_intake,
             'Burn Rate [g/h]': carb_rate_per_sec * 3600
         })
+
         
         # --- WYKRES 1: BILANS GLIKOGENU ---
         fig_nutri = go.Figure()
@@ -176,15 +187,15 @@ def render_nutrition_tab(df_plot, cp_input, vt1_watts, vt2_watts):
             
             ---
             
-            ## Strefy Spalania Paliwa
+            ## Strefy Spalania Paliwa (dla FTP ~280W)
             
-            | Intensywność | %FTP | Dominujące paliwo | Spalanie CHO [g/h] |
-            |--------------|------|-------------------|-------------------|
-            | Z1 (Recovery) | <55% | Tłuszcz (70-90%) | 10-30 |
-            | Z2 (Endurance) | 55-75% | Mix (50-70% tłuszcz) | 30-60 |
-            | Z3 (Tempo) | 76-90% | Mix (50-70% CHO) | 60-90 |
-            | Z4 (Threshold) | 91-105% | Węglowodany (80%+) | 90-130 |
-            | Z5/Z6 (VO2max) | >105% | Węglowodany (95%+) | 130-180+ |
+            | Intensywność | %FTP | Moc [W] | Udział CHO | Spalanie CHO [g/h] |
+            |--------------|------|---------|------------|-------------------|
+            | Z1 (Recovery) | <55% | <155 | ~30% | 30-50 |
+            | Z2 (Endurance) | 55-75% | 155-210 | 30-60% | 50-100 |
+            | Z3 (Tempo) | 76-90% | 210-250 | 60-80% | 100-180 |
+            | Z4 (Threshold) | 91-105% | 250-295 | 80-95% | 180-250 |
+            | Z5/Z6 (VO2max) | >105% | >295 | 95-100% | 250-350+ |
             
             ---
             
@@ -215,7 +226,7 @@ def render_nutrition_tab(df_plot, cp_input, vt1_watts, vt2_watts):
             | **Periodyzacja** | Cykl tygodniowy | Łączenie obu strategii |
             | **Sleep Low** | Po treningu wieczorem | Wzmocnienie odpowiedzi adaptacyjnej |
             
-            *Ten kalkulator używa uproszczonego modelu INSCYD, gdzie spalanie węgli rośnie wykładniczo z intensywnością (%FTP^1.5).*
+            *Ten kalkulator używa modelu opartego na fizyce i badaniach XERT/INSCYD: praca mechaniczna (kJ) → energia całkowita (kcal) × udział węglowodanów (zależny od %FTP) / 4 kcal/g.*
             """)
     else:
         st.warning("Brak danych mocy (Watts) do obliczenia wydatku energetycznego.")

@@ -1,6 +1,8 @@
 import streamlit as st
 import plotly.graph_objects as go
 import numpy as np
+import pandas as pd
+from typing import Any, Optional
 from modules.calculations import calculate_dynamic_dfa_v2
 import importlib
 import modules.calculations.hrv
@@ -9,7 +11,13 @@ importlib.reload(modules.calculations.hrv)
 from modules.calculations.hrv import calculate_dynamic_dfa_v2
 
 
-def render_hrv_tab(df_clean_pl):
+def render_hrv_tab(df_clean_pl: Any) -> None:
+    """
+    Render the HRV (Heart Rate Variability) analysis tab.
+
+    Args:
+        df_clean_pl: DataFrame with cleaned RR interval data (Polars or Pandas)
+    """
     st.header("Analiza Zmienności Rytmu Serca (HRV)")
 
     # 1. Inicjalizacja "Pamięci" (Session State)

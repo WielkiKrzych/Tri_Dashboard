@@ -211,6 +211,27 @@ def validate_dfa_quality(
     return is_uncertain, reasons, quality_grade
 
 
+# Cache for DFA results to avoid recomputation
+dfa_cache = {}
+
+
+def _generate_cache_key(
+    df_pl, window_sec: int, step_sec: int, min_samples_hrv: int, alpha1_clip_range: tuple
+) -> str:
+    """Generate a unique cache key based on input parameters and data hash."""
+    import hashlib
+
+    df = ensure_pandas(df_pl)
+
+    # Create a hash of the data
+    data_str = f"{df.shape}{df.columns.tolist()}{df.head(1).to_string()}{df.tail(1).to_string()}"
+    data_hash = hashlib.md5(data_str.encode()).hexdigest()[:16]
+
+    # Include parameters in key
+    key = f"{data_hash}_{window_sec}_{step_sec}_{min_samples_hrv}_{alpha1_clip_range}"
+    return key
+
+
 def calculate_dynamic_dfa_v2(
     df_pl,
     window_sec: int = 300,
@@ -220,8 +241,8 @@ def calculate_dynamic_dfa_v2(
 ) -> Tuple[Optional[pd.DataFrame], Optional[str]]:
     """
     Calculate HRV metrics (RMSSD, SDNN, Alpha-1) in a sliding window.
-    Optimized version with Numba.
-    V2: Robust column detection and cache-busting.
+    Optimized version with Numba and caching.
+    V2: Robust column detection, cache-busting, and data cleaning.
 
     Args:
         df_pl: DataFrame with RR data
@@ -233,6 +254,12 @@ def calculate_dynamic_dfa_v2(
     Returns:
         Tuple of (results DataFrame, error message or None)
     """
+    # Check cache first
+    cache_key = _generate_cache_key(df_pl, window_sec, step_sec, min_samples_hrv, alpha1_clip_range)
+    if cache_key in dfa_cache:
+        print(f"[DEBUG] Using cached DFA results for key: {cache_key[:16]}...")
+        return dfa_cache[cache_key]
+
     print(f"[DEBUG] Executing calculate_dynamic_dfa_v2 logic...")
     df = ensure_pandas(df_pl)
 
@@ -349,6 +376,10 @@ def calculate_dynamic_dfa_v2(
                 "mean_rr": r_mean_rr,
             }
         )
+
+        # Store in cache
+        dfa_cache[cache_key] = (results, None)
+
         return results, None
 
     except Exception as e:

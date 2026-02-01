@@ -1280,19 +1280,23 @@ def detect_vt_cpet(
         rcp_steady_w = result.get("rcp_steady_watts")
         is_vt1_steady_interpolated = result.get("vt1_steady_is_interpolated", False)
 
-        # Fallback: if VT1_onset missing, estimate at 55% max
+        # Fallback: if VT1_onset missing, use 60th percentile
         if vt1_onset_w is None:
-            vt1_onset_w = int(max_power * 0.55)
+            vt1_onset_w = int(np.percentile(df_steps["power"].values, 60))
             result["vt1_onset_watts"] = vt1_onset_w
             result["vt1_watts"] = vt1_onset_w
-            result["analysis_notes"].append("⚠️ VT1_onset nie wykryty - szacunek 55% max")
+            result["analysis_notes"].append(
+                f"⚠️ VT1_onset nie wykryty - szacunek 60 percentyl ({vt1_onset_w}W)"
+            )
 
-        # Fallback: if RCP_onset missing, estimate at 85% max
+        # Fallback: if RCP_onset missing, use 80th percentile
         if rcp_onset_w is None:
-            rcp_onset_w = int(max_power * 0.85)
+            rcp_onset_w = int(np.percentile(df_steps["power"].values, 80))
             result["rcp_onset_watts"] = rcp_onset_w
             result["vt2_watts"] = rcp_onset_w
-            result["analysis_notes"].append("⚠️ RCP_onset nie wykryty - szacunek 85% max")
+            result["analysis_notes"].append(
+                f"⚠️ RCP_onset nie wykryty - szacunek 80 percentyl ({rcp_onset_w}W)"
+            )
 
         # CRITICAL: If VT1_steady still None, create virtual interpolation
         if vt1_steady_w is None:
@@ -1342,6 +1346,39 @@ def detect_vt_cpet(
                 result["rcp_steady_watts"] = rcp_steady_w
 
         result["boundaries_valid"] = vt1_onset_w < vt1_steady_w < rcp_onset_w < rcp_steady_w
+
+        # =====================================================================
+        # PERCENTILE VALIDATION: Check if detected values are in expected range
+        # Use raw data percentiles for more accurate threshold estimation
+        # =====================================================================
+        # Get raw power data (not aggregated steps) for percentile calculation
+        raw_power = data[data[cols["power"]] >= 100][cols["power"]].values
+        power_60th_raw = int(np.percentile(raw_power, 60))
+        power_80th_raw = int(np.percentile(raw_power, 80))
+
+        # Check if detected VT1 is too low (below 60th percentile of raw data)
+        if vt1_onset_w < power_60th_raw:
+            result["analysis_notes"].append(
+                f"⚠️ VT1_onset ({vt1_onset_w}W) poniżej 60 percentyla ({power_60th_raw}W) - korekta"
+            )
+            vt1_onset_w = power_60th_raw
+            result["vt1_onset_watts"] = vt1_onset_w
+            result["vt1_watts"] = vt1_onset_w
+
+        # Check if detected VT2 is too low (below 80th percentile of raw data)
+        if rcp_onset_w < power_80th_raw:
+            result["analysis_notes"].append(
+                f"⚠️ RCP_onset ({rcp_onset_w}W) poniżej 80 percentyla ({power_80th_raw}W) - korekta"
+            )
+            rcp_onset_w = power_80th_raw
+            result["rcp_onset_watts"] = rcp_onset_w
+            result["vt2_watts"] = rcp_onset_w
+
+        # Re-validate boundaries after potential corrections
+        if vt1_steady_w <= vt1_onset_w:
+            vt1_steady_w = int((vt1_onset_w + rcp_onset_w) / 2)
+            result["vt1_steady_watts"] = vt1_steady_w
+            result["vt1_steady_is_interpolated"] = True
 
         # =====================================================================
         # BUILD 4 ZONES (MANDATORY)
@@ -1443,12 +1480,16 @@ def detect_vt_cpet(
     max_power = df_steps["power"].max()
 
     if result["vt1_watts"] is None:
-        result["vt1_watts"] = int(max_power * 0.60)
-        result["analysis_notes"].append("VT1 not detected - using default (60% max)")
+        # Use percentile-based estimation for better accuracy
+        vt1_power = int(np.percentile(df_steps["power"].values, 60))
+        result["vt1_watts"] = vt1_power
+        result["analysis_notes"].append(f"VT1 not detected - using 60th percentile ({vt1_power}W)")
 
     if result["vt2_watts"] is None:
-        result["vt2_watts"] = int(max_power * 0.85)
-        result["analysis_notes"].append("VT2 not detected - using default (85% max)")
+        # Use percentile-based estimation for better accuracy
+        vt2_power = int(np.percentile(df_steps["power"].values, 80))
+        result["vt2_watts"] = vt2_power
+        result["analysis_notes"].append(f"VT2 not detected - using 80th percentile ({vt2_power}W)")
 
     # =========================================================================
     # 7. PHYSIOLOGICAL VALIDATION

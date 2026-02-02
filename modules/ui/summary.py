@@ -12,6 +12,7 @@ import numpy as np
 from scipy import stats
 from modules.config import Config
 from modules.calculations.thresholds import analyze_step_test
+from modules.calculations.smo2_advanced import detect_smo2_thresholds_moxy
 
 
 def render_summary_tab(
@@ -52,6 +53,23 @@ def render_summary_tab(
         time_column="time",
     )
 
+    # Use detect_smo2_thresholds_moxy for SmO2 detection (same as SmO2 - Progi tab)
+    smo2_result = None
+    if "smo2" in df_plot.columns:
+        hr_max = int(df_plot[hr_col].max()) if hr_col else None
+        smo2_result = detect_smo2_thresholds_moxy(
+            df=df_plot,
+            step_duration_sec=180,
+            smo2_col="smo2",
+            power_col="watts",
+            hr_col=hr_col,
+            time_col="time",
+            cp_watts=cp_input if cp_input > 0 else None,
+            hr_max=hr_max,
+            vt1_watts=threshold_result.vt1_watts,
+            rcp_onset_watts=threshold_result.vt2_watts,
+        )
+
     # Use detected values if parameters are 0
     eff_vt1 = (
         vt1_watts
@@ -63,15 +81,16 @@ def render_summary_tab(
         if vt2_watts > 0
         else (threshold_result.vt2_watts if threshold_result.vt2_watts else 0)
     )
+    # Use smo2_result for LT1/LT2 (same algorithm as SmO2 - Progi tab)
     eff_lt1 = (
         lt1_watts
         if lt1_watts > 0
-        else (threshold_result.smo2_1_watts if threshold_result.smo2_1_watts else 0)
+        else (smo2_result.t1_watts if smo2_result and smo2_result.t1_watts else 0)
     )
     eff_lt2 = (
         lt2_watts
         if lt2_watts > 0
-        else (threshold_result.smo2_2_watts if threshold_result.smo2_2_watts else 0)
+        else (smo2_result.t2_onset_watts if smo2_result and smo2_result.t2_onset_watts else 0)
     )
 
     # =========================================================================
@@ -260,6 +279,45 @@ def render_summary_tab(
         fig_ve_br.update_yaxes(title_text="VE (L/min)", secondary_y=False)
         fig_ve_br.update_yaxes(title_text="BR (/min)", secondary_y=True)
         st.plotly_chart(fig_ve_br, use_container_width=True)
+
+        # Oblicz statystyki VE i BR
+        ve_min = df_plot["tymeventilation"].min()
+        ve_max = df_plot["tymeventilation"].max()
+        ve_mean = df_plot["tymeventilation"].mean()
+
+        br_min = df_plot["tymebreathrate"].min() if "tymebreathrate" in df_plot.columns else None
+        br_max = df_plot["tymebreathrate"].max() if "tymebreathrate" in df_plot.columns else None
+        br_mean = df_plot["tymebreathrate"].mean() if "tymebreathrate" in df_plot.columns else None
+
+        # Wyświetl statystyki w ładnych ramkach
+        col1, col2 = st.columns(2)
+
+        with col1:
+            st.markdown(
+                f"""
+            <div style="padding:15px; border-radius:8px; border:2px solid #ffa15a; background-color: #222;">
+                <h3 style="margin:0; color: #ffa15a;">🫁 VE (Wentylacja)</h3>
+                <p style="margin:5px 0; color:#aaa;"><b>Min:</b> {ve_min:.1f} L/min</p>
+                <p style="margin:5px 0; color:#aaa;"><b>Max:</b> {ve_max:.1f} L/min</p>
+                <p style="margin:5px 0; color:#aaa;"><b>Śr:</b> {ve_mean:.1f} L/min</p>
+            </div>
+            """,
+                unsafe_allow_html=True,
+            )
+
+        with col2:
+            if br_min is not None:
+                st.markdown(
+                    f"""
+                <div style="padding:15px; border-radius:8px; border:2px solid #00cc96; background-color: #222;">
+                    <h3 style="margin:0; color: #00cc96;">🌬️ BR (Oddechy)</h3>
+                    <p style="margin:5px 0; color:#aaa;"><b>Min:</b> {br_min:.0f} /min</p>
+                    <p style="margin:5px 0; color:#aaa;"><b>Max:</b> {br_max:.0f} /min</p>
+                    <p style="margin:5px 0; color:#aaa;"><b>Śr:</b> {br_mean:.0f} /min</p>
+                </div>
+                """,
+                    unsafe_allow_html=True,
+                )
     else:
         st.info("Brak danych wentylacji (VE/BR) w tym pliku.")
 
@@ -293,7 +351,7 @@ def render_summary_tab(
     # 6. PROGI SmO2 LT1/LT2
     # =========================================================================
     st.subheader("6️⃣ Progi SmO2 (LT1/LT2)")
-    _render_smo2_thresholds_summary(df_plot, cp_input, eff_lt1, eff_lt2, threshold_result)
+    _render_smo2_thresholds_summary(df_plot, cp_input, eff_lt1, eff_lt2, smo2_result)
 
     st.markdown("---")
 
@@ -572,6 +630,91 @@ def _render_smo2_thb_chart(df_plot):
     fig_smo2_thb.update_yaxes(title_text="THb (g/dL)", secondary_y=True)
     st.plotly_chart(fig_smo2_thb, use_container_width=True)
 
+    # Oblicz statystyki SmO2 i THb
+    if "smo2" in df_plot.columns:
+        smo2_min = df_plot["smo2"].min()
+        smo2_max = df_plot["smo2"].max()
+        smo2_mean = df_plot["smo2"].mean()
+
+        thb_min = df_plot["thb"].min() if "thb" in df_plot.columns else None
+        thb_max = df_plot["thb"].max() if "thb" in df_plot.columns else None
+        thb_mean = df_plot["thb"].mean() if "thb" in df_plot.columns else None
+
+        # Wyświetl statystyki w ładnych ramkach (podobnie jak w sekcji 5 - Progi Wentylacyjne)
+        col1, col2 = st.columns(2)
+
+        with col1:
+            st.markdown(
+                f"""
+            <div style="padding:15px; border-radius:8px; border:2px solid #2ca02c; background-color: #222;">
+                <h3 style="margin:0; color: #2ca02c;">🩸 SmO2</h3>
+                <p style="margin:5px 0; color:#aaa;"><b>Min:</b> {smo2_min:.1f}%</p>
+                <p style="margin:5px 0; color:#aaa;"><b>Max:</b> {smo2_max:.1f}%</p>
+                <p style="margin:5px 0; color:#aaa;"><b>Śr:</b> {smo2_mean:.1f}%</p>
+            </div>
+            """,
+                unsafe_allow_html=True,
+            )
+
+        with col2:
+            if thb_min is not None:
+                st.markdown(
+                    f"""
+                <div style="padding:15px; border-radius:8px; border:2px solid #9467bd; background-color: #222;">
+                    <h3 style="margin:0; color: #9467bd;">💉 THb</h3>
+                    <p style="margin:5px 0; color:#aaa;"><b>Min:</b> {thb_min:.2f} g/dL</p>
+                    <p style="margin:5px 0; color:#aaa;"><b>Max:</b> {thb_max:.2f} g/dL</p>
+                    <p style="margin:5px 0; color:#aaa;"><b>Śr:</b> {thb_mean:.2f} g/dL</p>
+                </div>
+                """,
+                    unsafe_allow_html=True,
+                )
+
+
+def _get_vent_metrics_for_power(df_plot, power_watts):
+    """
+    Pobiera metryki wentylacyjne (HR, VE, BR) dla zadanej mocy z df_plot.
+    Znajduje najbliższy punkt w danych do zadanej mocy i zwraca wartości.
+    """
+    if not power_watts or power_watts <= 0:
+        return 0, 0, 0
+
+    # Znajdź najbliższy punkt do zadanej mocy
+    if "watts" not in df_plot.columns:
+        return 0, 0, 0
+
+    # Użyj wygładzonej mocy jeśli dostępna
+    power_col = "watts_smooth_5s" if "watts_smooth_5s" in df_plot.columns else "watts"
+
+    # Znajdź indeks z najbliższą mocą
+    idx = (df_plot[power_col] - power_watts).abs().idxmin()
+
+    # Pobierz wartości z tego indeksu (uśrednij w oknie ±5 próbek dla stabilności)
+    start_idx = max(0, idx - 5)
+    end_idx = min(len(df_plot), idx + 5)
+    window_data = df_plot.iloc[start_idx:end_idx]
+
+    # HR
+    hr_col = None
+    for alias in ["hr", "heartrate", "heart_rate", "bpm"]:
+        if alias in df_plot.columns:
+            hr_col = alias
+            break
+    hr_val = window_data[hr_col].mean() if hr_col else 0
+
+    # VE
+    ve_val = window_data["tymeventilation"].mean() if "tymeventilation" in df_plot.columns else 0
+
+    # BR
+    br_col = None
+    for alias in ["tymebreathrate", "br", "rr", "breath_rate"]:
+        if alias in df_plot.columns:
+            br_col = alias
+            break
+    br_val = window_data[br_col].mean() if br_col else 0
+
+    return hr_val, ve_val, br_val
+
 
 def _render_vent_thresholds_summary(df_plot, cp_input, vt1_watts, vt2_watts, threshold_result):
     """Renderowanie wykresu progów wentylacyjnych VT1/VT2."""
@@ -588,13 +731,29 @@ def _render_vent_thresholds_summary(df_plot, cp_input, vt1_watts, vt2_watts, thr
     vt1_w = vt1_watts
     vt2_w = vt2_watts
 
-    # Pobierz HR i VE dla wyświetlenia, jeśli dostępne w threshold_result
-    # Jeśli vt1_watts przekazane jako param (manual), HR i VE mogą być nieznane bez ponownej detekcji,
-    # ale threshold_result zawiera dane z auto-detekcji.
-    vt1_hr = threshold_result.vt1_hr if threshold_result.vt1_watts == vt1_w else 0
-    vt2_hr = threshold_result.vt2_hr if threshold_result.vt2_watts == vt2_w else 0
-    vt1_ve = threshold_result.vt1_ve if threshold_result.vt1_watts == vt1_w else 0
-    vt2_ve = threshold_result.vt2_ve if threshold_result.vt2_watts == vt2_w else 0
+    # Pobierz HR, VE, BR dla wyświetlenia z threshold_result
+    # Używamy wartości z auto-detekcji lub obliczamy dla zadanej mocy
+    if threshold_result.vt1_watts and abs(threshold_result.vt1_watts - vt1_w) < 10:
+        # VT1 z detekcji - użyj wartości z threshold_result
+        vt1_hr = threshold_result.vt1_hr or 0
+        vt1_ve = threshold_result.vt1_ve or 0
+        vt1_br = threshold_result.vt1_br or 0
+    else:
+        # VT1 ręcznie ustawione lub duża różnica - oblicz z df_plot
+        vt1_hr, vt1_ve, vt1_br = _get_vent_metrics_for_power(df_plot, vt1_w)
+
+    if threshold_result.vt2_watts and abs(threshold_result.vt2_watts - vt2_w) < 10:
+        # VT2 z detekcji - użyj wartości z threshold_result
+        vt2_hr = threshold_result.vt2_hr or 0
+        vt2_ve = threshold_result.vt2_ve or 0
+        vt2_br = threshold_result.vt2_br or 0
+    else:
+        # VT2 ręcznie ustawione lub duża różnica - oblicz z df_plot
+        vt2_hr, vt2_ve, vt2_br = _get_vent_metrics_for_power(df_plot, vt2_w)
+
+    # Oblicz TV (tidal volume) jako VE/BR
+    vt1_tv = (vt1_ve / vt1_br * 1000) if vt1_ve and vt1_br else 0  # w mL
+    vt2_tv = (vt2_ve / vt2_br * 1000) if vt2_ve and vt2_br else 0  # w mL
 
     # Wykres
     fig_vent = go.Figure()
@@ -660,6 +819,8 @@ def _render_vent_thresholds_summary(df_plot, cp_input, vt1_watts, vt2_watts, thr
                 <h1 style="margin:5px 0; font-size:2.5em;">{int(vt1_w)} W</h1>
                 {f'<p style="margin:0; color:#aaa;"><b>HR:</b> {int(vt1_hr)} bpm</p>' if vt1_hr else ""}
                 {f'<p style="margin:0; color:#aaa;"><b>VE:</b> {vt1_ve:.1f} L/min</p>' if vt1_ve else ""}
+                {f'<p style="margin:0; color:#aaa;"><b>BR:</b> {int(vt1_br)} /min</p>' if vt1_br else ""}
+                {f'<p style="margin:0; color:#aaa;"><b>TV:</b> {vt1_tv:.0f} mL</p>' if vt1_tv else ""}
             </div>
             """,
                 unsafe_allow_html=True,
@@ -678,6 +839,8 @@ def _render_vent_thresholds_summary(df_plot, cp_input, vt1_watts, vt2_watts, thr
                 <h1 style="margin:5px 0; font-size:2.5em;">{int(vt2_w)} W</h1>
                 {f'<p style="margin:0; color:#aaa;"><b>HR:</b> {int(vt2_hr)} bpm</p>' if vt2_hr else ""}
                 {f'<p style="margin:0; color:#aaa;"><b>VE:</b> {vt2_ve:.1f} L/min</p>' if vt2_ve else ""}
+                {f'<p style="margin:0; color:#aaa;"><b>BR:</b> {int(vt2_br)} /min</p>' if vt2_br else ""}
+                {f'<p style="margin:0; color:#aaa;"><b>TV:</b> {vt2_tv:.0f} mL</p>' if vt2_tv else ""}
             </div>
             """,
                 unsafe_allow_html=True,
@@ -688,7 +851,7 @@ def _render_vent_thresholds_summary(df_plot, cp_input, vt1_watts, vt2_watts, thr
             st.info("VT2: Nie wykryto")
 
 
-def _render_smo2_thresholds_summary(df_plot, cp_input, lt1_watts, lt2_watts, threshold_result):
+def _render_smo2_thresholds_summary(df_plot, cp_input, lt1_watts, lt2_watts, smo2_result):
     """Renderowanie wykresu progów SmO2 LT1/LT2."""
     if "smo2" not in df_plot.columns:
         st.info("Brak danych SmO2 do analizy progów LT.")
@@ -702,11 +865,11 @@ def _render_smo2_thresholds_summary(df_plot, cp_input, lt1_watts, lt2_watts, thr
     # Użyj wykrytych lub przekazanych wartości
     lt1_w = lt1_watts
     lt2_w = lt2_watts
-    # Pobierz HR i SmO2 z threshold_result jeśli dostępne (z tolerancją dla float)
-    lt1_hr = threshold_result.smo2_1_hr if threshold_result.smo2_1_hr else 0
-    lt2_hr = threshold_result.smo2_2_hr if threshold_result.smo2_2_hr else 0
-    lt1_smo2 = threshold_result.smo2_1_value if threshold_result.smo2_1_value else 0
-    lt2_smo2 = threshold_result.smo2_2_value if threshold_result.smo2_2_value else 0
+    # Pobierz HR i SmO2 z smo2_result (detect_smo2_thresholds_moxy) jeśli dostępne
+    lt1_hr = smo2_result.t1_hr if smo2_result and smo2_result.t1_hr else 0
+    lt2_hr = smo2_result.t2_onset_hr if smo2_result and smo2_result.t2_onset_hr else 0
+    lt1_smo2 = smo2_result.t1_smo2 if smo2_result and smo2_result.t1_smo2 else 0
+    lt2_smo2 = smo2_result.t2_onset_smo2 if smo2_result and smo2_result.t2_onset_smo2 else 0
 
     # Wykres
     fig_smo2 = go.Figure()

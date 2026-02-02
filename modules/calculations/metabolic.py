@@ -197,8 +197,8 @@ def detect_smo2_from_steps(
         for i in range(lt1_idx + 2, len(all_steps) - 2):
             if dd_smo2[i] < dd_smo2[i - 1] and dd_smo2[i] < dd_smo2[i + 1]:
                 if dd_smo2[i] < curvature_threshold_lt2 and d_smo2[i] < -0.01:
-                    # Must be significantly higher power than LT1
-                    if powers[i] > powers[lt1_idx] + 50:
+                    # Must be significantly higher power than LT1 (min 20W difference)
+                    if powers[i] > powers[lt1_idx] + 20:
                         candidates_lt2.append((i, dd_smo2[i], powers[i]))
 
         candidates_lt2.sort(key=lambda x: x[1])

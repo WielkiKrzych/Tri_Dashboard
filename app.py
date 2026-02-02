@@ -16,6 +16,7 @@ from modules.utils import load_data
 from modules.ml_logic import MLX_AVAILABLE, predict_only, MODEL_FILE
 from modules.notes import TrainingNotes
 from modules.reports import generate_docx_report, export_all_charts_as_png
+from modules.reporting.pdf.summary_pdf import generate_summary_pdf
 from modules.db import SessionStore, SessionRecord
 from modules.reporting.persistence import check_git_tracking
 
@@ -422,6 +423,89 @@ if uploaded_file is not None:
             )
         except Exception as e:
             logger.warning(f"PNG export failed: {e}")
+
+    # PDF Summary Export
+    st.sidebar.markdown("---")
+    try:
+        # Import threshold detection for PDF
+        from modules.calculations.thresholds import analyze_step_test
+        from modules.calculations.smo2_advanced import detect_smo2_thresholds_moxy
+
+        # Detect thresholds for PDF
+        hr_col = None
+        for alias in ["hr", "heartrate", "heart_rate", "bpm"]:
+            if alias in df_plot.columns:
+                hr_col = alias
+                break
+
+        threshold_result = analyze_step_test(
+            df_plot,
+            power_column="watts",
+            ve_column="tymeventilation" if "tymeventilation" in df_plot.columns else None,
+            smo2_column="smo2" if "smo2" in df_plot.columns else None,
+            hr_column=hr_col,
+            time_column="time",
+        )
+
+        smo2_result = None
+        if "smo2" in df_plot.columns:
+            hr_max = int(df_plot[hr_col].max()) if hr_col else None
+            smo2_result = detect_smo2_thresholds_moxy(
+                df=df_plot,
+                step_duration_sec=180,
+                smo2_col="smo2",
+                power_col="watts",
+                hr_col=hr_col,
+                time_col="time",
+                cp_watts=cp_input if cp_input > 0 else None,
+                hr_max=hr_max,
+                vt1_watts=threshold_result.vt1_watts,
+                rcp_onset_watts=threshold_result.vt2_watts,
+            )
+
+        # Get effective threshold values
+        eff_vt1 = (
+            vt1_watts
+            if vt1_watts > 0
+            else (threshold_result.vt1_watts if threshold_result.vt1_watts else 0)
+        )
+        eff_vt2 = (
+            vt2_watts
+            if vt2_watts > 0
+            else (threshold_result.vt2_watts if threshold_result.vt2_watts else 0)
+        )
+
+        # Get LT1/LT2 from smo2_result (auto-detected)
+        lt1_watts_auto = smo2_result.t1_watts if smo2_result and smo2_result.t1_watts else 0
+        lt2_watts_auto = (
+            smo2_result.t2_onset_watts if smo2_result and smo2_result.t2_onset_watts else 0
+        )
+
+        # Generate PDF
+        pdf_bytes = generate_summary_pdf(
+            df_plot=df_plot,
+            metrics=metrics,
+            cp_input=cp_input,
+            w_prime_input=w_prime_input,
+            rider_weight=rider_weight,
+            vt1_watts=int(eff_vt1) if eff_vt1 else 0,
+            vt2_watts=int(eff_vt2) if eff_vt2 else 0,
+            lt1_watts=int(lt1_watts_auto),
+            lt2_watts=int(lt2_watts_auto),
+            threshold_result=threshold_result,
+            smo2_result=smo2_result,
+            uploaded_file_name=uploaded_file.name,
+        )
+
+        st.sidebar.download_button(
+            "📄 PDF Podsumowanie",
+            pdf_bytes,
+            f"Podsumowanie_{uploaded_file.name.split('.')[0]}.pdf",
+            mime="application/pdf",
+        )
+    except Exception as e:
+        logger.warning(f"PDF Summary export failed: {e}")
+        st.sidebar.info("PDF Podsumowanie: Błąd generowania")
 
 else:
     st.sidebar.info("Wgraj plik.")

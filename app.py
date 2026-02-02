@@ -481,6 +481,20 @@ if uploaded_file is not None:
             smo2_result.t2_onset_watts if smo2_result and smo2_result.t2_onset_watts else 0
         )
 
+        # Calculate metrics for PDF
+        metrics = {
+            "avg_power": df_plot["watts"].mean() if "watts" in df_plot.columns else 0,
+            "max_power": df_plot["watts"].max() if "watts" in df_plot.columns else 0,
+            "avg_hr": df_plot["hr"].mean() if "hr" in df_plot.columns else 0,
+            "max_hr": df_plot["hr"].max() if "hr" in df_plot.columns else 0,
+            "avg_ve": df_plot["tymeventilation"].mean()
+            if "tymeventilation" in df_plot.columns
+            else 0,
+            "avg_br": df_plot["tymebreathrate"].mean()
+            if "tymebreathrate" in df_plot.columns
+            else 0,
+        }
+
         # Generate PDF
         pdf_bytes = generate_summary_pdf(
             df_plot=df_plot,

@@ -16,11 +16,11 @@ def render_manual_thresholds_tab(
     # 1. Przygotowanie danych
     if target_df is None or target_df.empty:
         st.error("Brak danych. Najpierw wgraj plik w sidebar.")
-        st.stop()
+        return
 
     if "time" not in target_df.columns or "tymeventilation" not in target_df.columns:
-        st.error("Brak danych wentylacji (tymeventilation) lub czasu!")
-        st.stop()
+        st.info("ℹ️ Brak danych wentylacji (tymeventilation) w tym pliku.")
+        return
 
     # Wygładzanie
     # Normalize columns first

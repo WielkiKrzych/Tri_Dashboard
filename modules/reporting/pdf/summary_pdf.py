@@ -19,11 +19,13 @@ from reportlab.platypus import (
     Image as RLImage,
 )
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.pdfbase import pdfmetrics
-from reportlab.pdfbase.ttfonts import TTFont
 import pandas as pd
-import numpy as np
-import os
+
+# Import existing PDF styles with Polish font support
+from .styles import (
+    FONT_FAMILY,
+    FONT_FAMILY_BOLD,
+)
 
 # Set matplotlib backend to Agg (no display required)
 import matplotlib
@@ -31,22 +33,6 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
-
-
-# Register fonts with Polish character support
-def _register_polish_fonts():
-    """Register DejaVuSans fonts for Polish character support."""
-    try:
-        import matplotlib
-
-        font_dir = os.path.join(matplotlib.get_data_path(), "fonts", "ttf")
-        pdfmetrics.registerFont(TTFont("DejaVuSans", os.path.join(font_dir, "DejaVuSans.ttf")))
-        pdfmetrics.registerFont(
-            TTFont("DejaVuSans-Bold", os.path.join(font_dir, "DejaVuSans-Bold.ttf"))
-        )
-        return "DejaVuSans", "DejaVuSans-Bold"
-    except Exception:
-        return "Helvetica", "Helvetica-Bold"
 
 
 def generate_summary_pdf(
@@ -84,15 +70,12 @@ def generate_summary_pdf(
         bottomMargin=2 * cm,
     )
 
-    # Register Polish fonts
-    font_normal, font_bold = _register_polish_fonts()
-
-    # Prepare styles with Polish font support
+    # Prepare styles with Polish font support from existing styles module
     styles = getSampleStyleSheet()
     title_style = ParagraphStyle(
         "CustomTitle",
         parent=styles["Heading1"],
-        fontName=font_bold,
+        fontName=FONT_FAMILY_BOLD,
         fontSize=24,
         textColor=colors.HexColor("#1f77b4"),
         spaceAfter=30,
@@ -101,13 +84,17 @@ def generate_summary_pdf(
     section_style = ParagraphStyle(
         "SectionTitle",
         parent=styles["Heading2"],
-        fontName=font_bold,
+        fontName=FONT_FAMILY_BOLD,
         fontSize=18,
         textColor=colors.HexColor("#2ca02c"),
         spaceAfter=20,
     )
     value_style = ParagraphStyle(
-        "ValueStyle", parent=styles["Normal"], fontName=font_normal, fontSize=12, spaceAfter=10
+        "ValueStyle",
+        parent=styles["Normal"],
+        fontName=FONT_FAMILY,
+        fontSize=12,
+        spaceAfter=10,
     )
 
     story = []
@@ -116,11 +103,12 @@ def generate_summary_pdf(
     story.append(Spacer(1, 3 * cm))
     story.append(Paragraph("📊 Podsumowanie Treningu", title_style))
     story.append(Spacer(1, 1 * cm))
-    story.append(Paragraph(f"Plik: {uploaded_file_name}", styles["Normal"]))
+    normal_style = ParagraphStyle(name="normal", parent=styles["Normal"], fontName=FONT_FAMILY)
+    story.append(Paragraph(f"Plik: {uploaded_file_name}", normal_style))
     story.append(Spacer(1, 0.5 * cm))
-    story.append(Paragraph(f"CP: {cp_input} W | W': {w_prime_input} J", styles["Normal"]))
+    story.append(Paragraph(f"CP: {cp_input} W | W': {w_prime_input} J", normal_style))
     story.append(Spacer(1, 0.5 * cm))
-    story.append(Paragraph(f"Waga: {rider_weight} kg", styles["Normal"]))
+    story.append(Paragraph(f"Waga: {rider_weight} kg", normal_style))
     story.append(PageBreak())
 
     # Page 1: Training Overview (Wykres 1)
@@ -413,31 +401,22 @@ def generate_summary_pdf(
 
     story.append(PageBreak())
 
-    # Page 7: TDI Analysis
-    story.append(Paragraph("7️⃣ Threshold Discordance Index (TDI)", section_style))
+    # Page 7: VO2max Estimation with chart
+    story.append(Paragraph("7️⃣ Estymacja VO2max", section_style))
     story.append(Spacer(1, 0.5 * cm))
 
-    if vt1_watts > 0 and lt1_watts > 0:
-        tdi = abs(vt1_watts - lt1_watts) / ((vt1_watts + lt1_watts) / 2) * 100
-        story.append(Paragraph(f"<b>TDI (VT1 vs LT1):</b> {tdi:.1f}%", value_style))
-
-        if tdi < 10:
-            story.append(Paragraph("✅ Wysoka zgodność progów", value_style))
-        elif tdi < 20:
-            story.append(Paragraph("⚠️ Umiarkowana zgodność progów", value_style))
-        else:
-            story.append(Paragraph("❌ Niska zgodność progów - wymaga weryfikacji", value_style))
-
-    story.append(PageBreak())
-
-    # Page 8: VO2max Estimation
-    story.append(Paragraph("8️⃣ Estymacja VO2max z Niepewnością (CI95%)", section_style))
-    story.append(Spacer(1, 0.5 * cm))
-
-    # Calculate VO2max
+    # Calculate VO2max and create chart
     if "watts" in df_plot.columns and rider_weight > 0:
-        mmp_5min = df_plot["watts"].rolling(300, min_periods=1).mean().max()
+        # Calculate rolling 5-min mean power
+        rolling_5min = df_plot["watts"].rolling(300, min_periods=1).mean()
+        mmp_5min = rolling_5min.max()
         vo2max = 16.61 + 8.87 * (mmp_5min / rider_weight)
+
+        # Create VO2max chart
+        chart_bytes = _create_vo2max_chart_matplotlib(df_plot, rolling_5min, rider_weight)
+        if chart_bytes:
+            story.append(RLImage(io.BytesIO(chart_bytes), width=16 * cm, height=8 * cm))
+            story.append(Spacer(1, 0.5 * cm))
 
         story.append(Paragraph(f"<b>Estymowane VO2max:</b> {vo2max:.1f} ml/kg/min", value_style))
         story.append(Spacer(1, 0.3 * cm))
@@ -566,4 +545,59 @@ def _create_smo2_thb_chart_matplotlib(df_plot: pd.DataFrame) -> Optional[bytes]:
         return buf.getvalue()
     except Exception as e:
         print(f"Error creating SmO2/THb chart: {e}")
+        return None
+
+
+def _create_vo2max_chart_matplotlib(
+    df_plot: pd.DataFrame, rolling_5min: pd.Series | Any, rider_weight: float
+) -> Optional[bytes]:
+    """Create VO2max estimation chart using matplotlib."""
+    try:
+        fig, ax1 = plt.subplots(figsize=(10, 5))
+
+        time_x = df_plot["time"] if "time" in df_plot.columns else range(len(df_plot))
+
+        # Power
+        if "watts" in df_plot.columns:
+            ax1.plot(
+                time_x, df_plot["watts"], color="#1f77b4", linewidth=1, alpha=0.5, label="Moc (W)"
+            )
+            ax1.set_xlabel("Czas (s)")
+            ax1.set_ylabel("Moc (W)", color="#1f77b4")
+            ax1.tick_params(axis="y", labelcolor="#1f77b4")
+
+        # Rolling 5-min power on secondary axis
+        ax2 = ax1.twinx()
+        ax2.plot(time_x, rolling_5min, color="#ff7f0e", linewidth=2, label="Moc 5-min (W)")
+        ax2.set_ylabel("Moc 5-min (W)", color="#ff7f0e")
+        ax2.tick_params(axis="y", labelcolor="#ff7f0e")
+
+        # Mark max point
+        max_idx = int(rolling_5min.idxmax())  # type: ignore[arg-type]
+        max_val = float(rolling_5min.max())
+        if isinstance(time_x, pd.Series):
+            time_at_max = float(time_x.iloc[max_idx])
+        else:
+            time_at_max = float(list(time_x)[max_idx])  # type: ignore[call-overload]
+        ax2.scatter(
+            [time_at_max],
+            [max_val],
+            color="red",
+            s=100,
+            zorder=5,
+            label=f"MMP5: {max_val:.0f}W",
+        )
+
+        plt.title("Moc i MMP5 dla estymacji VO2max")
+        plt.tight_layout()
+
+        buf = io.BytesIO()
+        canvas = FigureCanvas(fig)
+        canvas.print_png(buf)
+        buf.seek(0)
+        plt.close(fig)
+
+        return buf.getvalue()
+    except Exception as e:
+        print(f"Error creating VO2max chart: {e}")
         return None

@@ -12,15 +12,15 @@ def render_smo2_tab(target_df, training_notes, uploaded_file_name):
 
     if target_df is None or target_df.empty:
         st.error("Brak danych. Najpierw wgraj plik w sidebar.")
-        st.stop()
+        return
 
     if "time" not in target_df.columns:
         st.error("Brak kolumny 'time' w danych!")
-        st.stop()
+        return
 
     if "smo2" not in target_df.columns:
-        st.error("Brak kolumny 'smo2' w danych!")
-        st.stop()
+        st.info("ℹ️ Brak danych SmO2 w tym pliku.")
+        return
 
     # Ensure smoothed columns exist
     if "watts_smooth_5s" not in target_df.columns and "watts" in target_df.columns:

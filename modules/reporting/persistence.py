@@ -480,7 +480,7 @@ def save_ramp_test_report(
                         "method": "rolling_300s_mean_max",
                         "source": "persistence_pandas",
                         "confidence": 0.70,
-                        "formula": "ACSM: (10.8 * P / kg) + 7",
+                        "formula": "Sitko et al. 2021: 16.61 + 8.87 * (P / kg)",
                         "weight_kg": weight,
                     }
 

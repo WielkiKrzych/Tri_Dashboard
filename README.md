@@ -217,10 +217,34 @@ The dashboard is organized into four main sections:
 
 | Tab | Description |
 |-----|-------------|
-| **📊 Overview** | Report generation, KPI dashboard, **Summary** (consolidated charts), DOCX/PNG/PDF export |
+| **📊 Overview** | **Report with KPI** (consolidated report and key performance indicators), **Summary** (consolidated charts), DOCX/PNG/PDF export |
 | **⚡ Performance** | Power analysis, PDC, Training Load, TTE, Intervals Generator |
 | **🧠 Intelligence** | Nutrition analysis, Limiters diagnosis, AI Coach |
 | **🫀 Physiology** | HRV, SmO2 (with thresholds), Ventilation (VE/BR), Ventilatory Thresholds (VT1/VT2), Thermal, Biomechanics, Ramp Archive |
+
+### Report with KPI Tab Features
+The **Report with KPI** tab combines executive summary with key performance indicators:
+
+**Key Performance Indicators (KPI):**
+- **Power Metrics**: Average power, normalized power, work above CP
+- **Cardiovascular**: Average HR, Power/HR ratio, Efficiency Factor (EF)
+- **Oxygenation**: Average SmO2, VO2max estimation
+- **Decoupling**: Pa:Hr drift, Z2 drift analysis
+- **Thermal**: Max Heat Strain Index (HSI)
+- **Respiratory**: Average ventilation (VE), breathing rate (RR)
+
+**Visualizations:**
+- **Physiological Drift**: Triad chart (Power - HR - SmO2) showing fatigue physiology
+- **SmO2 Analysis**: Local muscle oxygenation with trend line
+- **Heart Rate Response**: Cardiovascular system response
+- **Ventilation Mechanics**: VE/BR dynamics with VT1/VT2 thresholds
+
+**Executive Summary:**
+- Training timeline with Power, HR, SmO2, and VE overlay
+- Power zone distribution (Z1-Z6)
+- Heart rate distribution histogram
+- Peak Power (MMP): 5s, 1m, 5m, 20m, 60m
+- CP-based training zones
 
 ### Summary Tab Features
 The **Summary** tab provides a consolidated view of all key training metrics:

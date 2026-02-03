@@ -30,7 +30,6 @@ class TabRegistry:
 
     _tabs = {
         "report": ("modules.ui.report", "render_report_tab"),
-        "kpi": ("modules.ui.kpi", "render_kpi_tab"),
         "power": ("modules.ui.power", "render_power_tab"),
         "intervals": ("modules.ui.intervals_ui", "render_intervals_tab"),
         "biomech": ("modules.ui.biomech", "render_biomech_tab"),
@@ -237,22 +236,21 @@ if uploaded_file is not None:
 
     with tab_overview:
         UIComponents.show_breadcrumb("📊 Overview")
-        t1, t2, t3 = st.tabs(["📋 Raport", "📈 KPI", "📊 Podsumowanie"])
+        t1, t2 = st.tabs(["📋 Raport z KPI", "📊 Podsumowanie"])
         with t1:
-            render_tab_content("report", df_plot, rider_weight, cp_input)
-        with t2:
             render_tab_content(
-                "kpi",
+                "report",
                 df_plot,
                 df_plot_resampled,
                 metrics,
                 rider_weight,
+                cp_input,
                 decoupling_percent,
                 drift_z2,
                 vt1_vent,
                 vt2_vent,
             )
-        with t3:
+        with t2:
             render_tab_content(
                 "summary",
                 df_plot,

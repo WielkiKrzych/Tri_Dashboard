@@ -5,6 +5,7 @@ import pandas as pd
 import numpy as np
 import io
 import logging
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -58,66 +59,57 @@ def normalize_columns_pandas(df_pd: pd.DataFrame) -> pd.DataFrame:
     # Lowercase all columns first
     df_pd.columns = [str(c).lower().strip() for c in df_pd.columns]
 
-    # Apply standard mappings
+    # Apply standard mappings using cached reverse index for O(m) complexity
     mapping = {}
-    cols = list(df_pd.columns)
+    cols = set(df_pd.columns)  # O(1) lookup
+    cols_lower = {c.lower().strip() for c in df_pd.columns}
 
-    # Mapping definitions: {alias: canonical}
-    aliases = {
-        # Heart Rate
-        "hr": "heartrate",
-        "heart rate": "heartrate",
-        "bpm": "heartrate",
-        "tętno": "heartrate",
-        "heartrate": "heartrate",
-        "heart_rate": "heartrate",
-        "heart-rate": "heartrate",
-        "pulse": "heartrate",
-        "heart_rate_bpm": "heartrate",
-        "heartrate_bpm": "heartrate",
-        "hr_bpm": "heartrate",
-        # Power
-        "power": "watts",
-        "pwr": "watts",
-        "moc": "watts",
-        "w": "watts",
-        "watts": "watts",
-        # Core Temp
-        "core temp": "core_temperature",
-        "core_temp": "core_temperature",
-        "temp_central": "core_temperature",
-        "temp": "core_temperature",
-        "core temperature": "core_temperature",
-        # Skin Temp
-        "skin temp": "skin_temperature",
-        "skin_temp": "skin_temperature",
-        "skin temperature": "skin_temperature",
-        # Ventilation
-        "ve": "tymeventilation",
-        "ventilation": "tymeventilation",
-        "vent": "tymeventilation",
-        # Breath Rate
-        "br": "tymebreathrate",
-        "rr": "tymebreathrate",
-        "breath rate": "tymebreathrate",
-        "breathing rate": "tymebreathrate",
-        "respiration rate": "tymebreathrate",
-        # Cadence
-        "cad": "cadence",
-        "rpm": "cadence",
-        # Hematology
-        "total_hemoglobin": "thb",
-        "total hemoglobin": "thb",
-    }
-
-    for alias, canonical in aliases.items():
-        if alias in cols and canonical not in cols:
-            mapping[alias] = canonical
+    # Pre-built reverse index: canonical -> set of aliases (module-level constant)
+    for canonical, aliases in _COLUMN_ALIAS_INDEX.items():
+        if canonical not in cols_lower:
+            # Find first matching alias
+            match = next((a for a in aliases if a in cols_lower), None)
+            if match:
+                # Find original case column name
+                orig_col = next(c for c in df_pd.columns if c.lower().strip() == match)
+                mapping[orig_col] = canonical
 
     if mapping:
         df_pd = df_pd.rename(columns=mapping)
 
     return df_pd
+
+
+# Module-level constant: canonical -> set of aliases for O(1) reverse lookup
+_COLUMN_ALIAS_INDEX = {
+    "heartrate": {
+        "hr",
+        "heart rate",
+        "bpm",
+        "tętno",
+        "heartrate",
+        "heart_rate",
+        "heart-rate",
+        "pulse",
+        "heart_rate_bpm",
+        "heartrate_bpm",
+        "hr_bpm",
+    },
+    "watts": {"power", "pwr", "moc", "w", "watts"},
+    "core_temperature": {"core temp", "core_temp", "temp_central", "temp", "core temperature"},
+    "skin_temperature": {"skin temp", "skin_temp", "skin temperature"},
+    "tymeventilation": {"ve", "ventilation", "vent", "tymeventilation"},
+    "tymebreathrate": {
+        "br",
+        "rr",
+        "breath rate",
+        "breathing rate",
+        "respiration rate",
+        "tymebreathrate",
+    },
+    "cadence": {"cad", "rpm", "cadence"},
+    "thb": {"total_hemoglobin", "total hemoglobin", "thb"},
+}
 
 
 def _clean_hrv_value(val: str) -> float:
@@ -221,20 +213,25 @@ def _convert_numeric_types(df: pd.DataFrame) -> pd.DataFrame:
 
 
 @st.cache_data
-def load_data(file) -> pd.DataFrame:
+def load_data(file, chunk_size: Optional[int] = None) -> pd.DataFrame:
     """Load CSV/TXT file into DataFrame with column normalization.
 
     Uses Polars for faster reading if available, falls back to Pandas.
-    Refactored to single responsibility steps.
+    Supports chunked loading for large files (>100k rows) to control memory.
 
     Args:
         file: Uploaded file object
+        chunk_size: Optional chunk size for large files (default: auto-detect)
 
     Returns:
         Processed DataFrame with normalized columns
     """
     # 1. IO -> Raw DataFrame
     df_pd = _read_raw_file(file)
+
+    # Check if chunked processing needed for large files
+    if len(df_pd) > 100000 and chunk_size is not False:
+        return _process_large_dataframe(df_pd, chunk_size or 50000)
 
     # 2. Normalization -> Standard Column Names
     df_pd = normalize_columns_pandas(df_pd)
@@ -250,3 +247,39 @@ def load_data(file) -> pd.DataFrame:
     df_pd = _convert_numeric_types(df_pd)
 
     return df_pd
+
+
+def _process_large_dataframe(df: pd.DataFrame, chunk_size: int) -> pd.DataFrame:
+    """Process large DataFrames in chunks to control memory usage.
+
+    Args:
+        df: Large input DataFrame
+        chunk_size: Number of rows per chunk
+
+    Returns:
+        Concatenated processed DataFrame
+    """
+    import gc
+
+    chunks = []
+    total_rows = len(df)
+
+    for start_idx in range(0, total_rows, chunk_size):
+        end_idx = min(start_idx + chunk_size, total_rows)
+        chunk = df.iloc[start_idx:end_idx].copy()
+
+        # Process chunk
+        chunk = normalize_columns_pandas(chunk)
+        chunk = _process_hrv_column(chunk)
+
+        if "time" not in chunk.columns:
+            chunk["time"] = np.arange(start_idx, end_idx).astype(float)
+
+        chunk = _convert_numeric_types(chunk)
+        chunks.append(chunk)
+
+        # Explicit cleanup
+        del chunk
+        gc.collect()
+
+    return pd.concat(chunks, ignore_index=True)

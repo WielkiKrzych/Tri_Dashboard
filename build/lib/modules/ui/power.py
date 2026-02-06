@@ -1,0 +1,575 @@
+import streamlit as st
+import plotly.graph_objects as go
+import plotly.express as px
+import pandas as pd
+import numpy as np
+from modules.config import Config
+from modules.plots import apply_chart_style
+from modules.calculations import (
+    calculate_power_duration_curve,
+    calculate_fatigue_resistance_index,
+    count_match_burns,
+    get_fri_interpretation,
+    calculate_stamina_score,
+    estimate_vlamax_from_pdc,
+    get_stamina_interpretation,
+    get_vlamax_interpretation,
+    estimate_tte,
+    calculate_durability_index,
+    get_durability_interpretation,
+    calculate_recovery_score,
+    get_recovery_recommendation,
+)
+
+
+def _format_duration(seconds: int) -> str:
+    """Format seconds to human-readable duration."""
+    if seconds < 60:
+        return f"{seconds}s"
+    elif seconds < 3600:
+        mins = seconds // 60
+        secs = seconds % 60
+        return f"{mins}:{secs:02d}" if secs else f"{mins}min"
+    else:
+        hours = seconds // 3600
+        mins = (seconds % 3600) // 60
+        return f"{hours}h{mins:02d}" if mins else f"{hours}h"
+
+
+def _format_tte(seconds: float) -> str:
+    """Format TTE to human-readable string."""
+    if seconds == float("inf"):
+        return "∞ (sustainable)"
+    elif seconds < 60:
+        return f"{seconds:.0f}s"
+    elif seconds < 3600:
+        mins = int(seconds // 60)
+        secs = int(seconds % 60)
+        return f"{mins}:{secs:02d}"
+    else:
+        return ">1h"
+
+
+def render_power_tab(
+    df_plot, df_plot_resampled, cp_input, w_prime_input, rider_weight, vo2max_est=0
+):
+    st.subheader("Wykres Mocy i W'")
+    fig_pw = go.Figure()
+    fig_pw.add_trace(
+        go.Scatter(
+            x=df_plot_resampled["time_min"],
+            y=df_plot_resampled["watts_smooth"],
+            name="Moc",
+            fill="tozeroy",
+            line=dict(color=Config.COLOR_POWER, width=1),
+            hovertemplate="Moc: %{y:.0f} W<extra></extra>",
+        )
+    )
+    fig_pw.add_trace(
+        go.Scatter(
+            x=df_plot_resampled["time_min"],
+            y=df_plot_resampled["w_prime_balance"],
+            name="W' Bal",
+            yaxis="y2",
+            line=dict(color=Config.COLOR_HR, width=2),
+            hovertemplate="W' Bal: %{y:.0f} J<extra></extra>",
+        )
+    )
+    fig_pw.update_layout(
+        template="plotly_dark",
+        title="Zarządzanie Energią (Moc vs W')",
+        hovermode="x unified",
+        xaxis=dict(title="Czas [min]", tickformat=".0f", hoverformat=".0f"),
+        yaxis=dict(title="Moc [W]"),
+        yaxis2=dict(title="W' Balance [J]", overlaying="y", side="right", showgrid=False),
+    )
+    st.plotly_chart(fig_pw, use_container_width=True)
+
+    st.info("""
+    **💡 Interpretacja: Energia Beztlenowa (W' Balance)**
+
+    Ten wykres pokazuje, ile "zapałek" masz jeszcze w pudełku.
+
+    * **Czerwona Linia (W' Bal):** Poziom energii beztlenowej w Dżulach [J].
+    * **Moc Krytyczna (CP):** To Twoja granica tlenowa (jak FTP, ale fizjologicznie precyzyjniejsza).
+
+    **Jak to działa?**
+    * **Moc < CP (Strefa Tlenowa):** Nie spalasz W'. Jeśli jechałeś mocno wcześniej, bateria się ładuje (czerwona linia rośnie).
+    * **Moc > CP (Strefa Beztlenowa):** Zaczynasz "palić zapałki". Czerwona linia spada. Im mocniej depczesz, tym szybciej spada.
+    * **W' = 0 J (Wyczerpanie):** "Odcina prąd". Nie jesteś w stanie utrzymać mocy powyżej CP ani sekundy dłużej. Musisz zwolnić, żeby zregenerować.
+
+    **Scenariusze:**
+    1.  **Interwały:** W' powinno spadać w trakcie powtórzenia (wysiłek) i rosnąć w przerwie (regeneracja). Jeśli nie wraca do 100% przed kolejnym startem, kumulujesz zmęczenie.
+    2.  **Finisz:** Idealnie rozegrany wyścig to taki, gdzie W' spada do zera dokładnie na linii mety. Jeśli zostało Ci 10kJ, mogłeś finiszować mocniej. Jeśli spadło do zera 500m przed metą - przeszarżowałeś.
+    3.  **Błędne CP:** Jeśli podczas spokojnej jazdy W' ciągle spada, Twoje CP jest ustawione za wysoko. Jeśli finiszujesz "w trupa", a W' pokazuje wciąż 50% - Twoje CP lub W' są niedoszacowane.
+    """)
+
+    st.subheader("Czas w Strefach Mocy (Time in Zones)")
+    if "watts" in df_plot.columns:
+        bins = [
+            0,
+            0.55 * cp_input,
+            0.75 * cp_input,
+            0.90 * cp_input,
+            1.05 * cp_input,
+            1.20 * cp_input,
+            10000,
+        ]
+        labels = [
+            "Z1: Regeneracja",
+            "Z2: Wytrzymałość",
+            "Z3: Tempo",
+            "Z4: Próg",
+            "Z5: VO2Max",
+            "Z6: Beztlenowa",
+        ]
+        colors = ["#A0A0A0", "#32CD32", "#FFD700", "#FF8C00", "#FF4500", "#8B0000"]
+        df_z = df_plot.copy()
+        df_z["Zone"] = pd.cut(df_z["watts"], bins=bins, labels=labels, right=False)
+        pcts = (df_z["Zone"].value_counts().sort_index() / len(df_z) * 100).round(1)
+        fig_z = px.bar(
+            x=pcts.values,
+            y=labels,
+            orientation="h",
+            text=pcts.apply(lambda x: f"{x}%"),
+            color=labels,
+            color_discrete_sequence=colors,
+        )
+        fig_z.update_layout(template="plotly_dark", showlegend=False)
+        st.plotly_chart(apply_chart_style(fig_z), use_container_width=True)
+
+        st.info("""
+        **💡 Interpretacja Treningowa:**
+        * **Polaryzacja:** Dobry plan często ma dużo Z1/Z2 (baza) i trochę Z5/Z6 (bodziec), a mało "śmieciowych kilometrów" w Z3. Strefa Z3 to "szara strefa", która męczy, ale nie daje dużych korzyści adaptacyjnych, jednakże zużywa dużo glikogenu. Mimo tego, w triathlonie Z3 ma swoje miejsce (jazda na czas) i warto ją stosować taktycznie.
+        * **Długie Wyścigi (Triathlon):** Większość czasu powinna być w Z2, z akcentami w Z4 (próg mleczanowy) i Z5 (VO2Max) dla poprawy wydolności. Spędzanie czasu w Z3 powinno być ograniczone ale taktyczne (np. jazda na czas).
+        * **Sprinty i Criterium:** Więcej czasu w Z4/Z5/Z6, ale z odpowiednią regeneracją w Z1. Dużo interwałów wysokiej intensywności. Ważne jest, aby nie zaniedbywać Z2 dla budowy bazy tlenowej.
+        * **Regeneracja:** Z1 to strefa regeneracyjna, idealna na dni odpoczynku lub bardzo lekkie sesje. Może pomóc w usuwaniu metabolitów i poprawie krążenia bez dodatkowego stresu. "Nie trenować" to też trening.
+        * **Adaptacje Fizjologiczne:**
+        * **Z1 (Szary):** Regeneracja i krążenie.
+        * **Z2 (Zielony):** Kluczowe dla budowania mitochondriów i spalania tłuszczu. Podstawa wytrzymałości.
+        * **Z3 (Żółty):** Mieszana strefa, poprawia ekonomię jazdy i tolerancję na wysiłek, ale może prowadzić do zmęczenia bez odpowiedniej regeneracji.
+        * **Z4/Z5 (Pomarańczowy/Czerwony):** Budują tolerancję na mleczan i VO2Max, ale wymagają długiej regeneracji. Nie powinny dominować w planie treningowym.
+        """)
+
+        st.markdown("### 📚 Kompendium Fizjologii Stref (Deep Dive)")
+        with st.expander("🟩 Z1/Z2: Fundament Tlenowy (< 75% CP)", expanded=True):
+            st.markdown("""
+            * **Metabolizm:** Dominacja Wolnych Kwasów Tłuszczowych (WKT). RER ~0.7-0.85. Oszczędność glikogenu.
+            * **Fizjologia:**
+                * Biogeneza mitochondriów (więcej "pieców" energetycznych).
+                * Angiogeneza (tworzenie nowych naczyń włosowatych).
+                * Wzrost aktywności enzymów oksydacyjnych.
+            * **Biomechanika:** Rekrutacja głównie włókien wolnokurczliwych (Typ I).
+            * **SmO2:** Stabilne, wysokie wartości (Równowaga Podaż=Popyt).
+            * **Oddech (VT):** Poniżej VT1. Pełna konwersacja.
+            * **Typowy Czas:** 1.5h - 6h+.
+            """)
+
+        with st.expander("🟨 Z3: Tempo / Sweet Spot (76-90% CP)"):
+            st.markdown("""
+            * **Metabolizm:** Miks węglowodanów i tłuszczów (RER ~0.85-0.95). Zaczyna się znaczne zużycie glikogenu.
+            * **Fizjologia:** "Strefa Szara". Bodziec tlenowy, ale już z narastającym zmęczeniem.
+            * **Zastosowanie:** Trening specyficzny pod 70.3 / Ironman (długie utrzymanie mocy).
+            * **SmO2:** Stabilne, ale niższe niż w Z2. Możliwy powolny trend spadkowy.
+            * **Oddech (VT):** Okolice VT1. Głęboki, rytmiczny oddech.
+            * **Typowy Czas:** 45 min - 2.5h.
+            """)
+
+        with st.expander("🟧 Z4: Próg Mleczanowy (91-105% CP)"):
+            st.markdown("""
+            * **Metabolizm:** Dominacja glikogenu (RER ~1.0). Produkcja mleczanu równa się jego utylizacji (MLSS).
+            * **Fizjologia:** Poprawa tolerancji na kwasicę. Zwiększenie magazynów glikogenu.
+            * **Biomechanika:** Rekrutacja włókien pośrednich (Typ IIa).
+            * **SmO2:** Granica równowagi. Utrzymuje się na stałym, niskim poziomie.
+            * **Oddech (VT):** Pomiędzy VT1 a VT2. Oddech mocny, utrudniona mowa.
+            * **Typowy Czas:** Interwały 8-30 min (łącznie do 60-90 min w sesji).
+            """)
+
+        with st.expander("🟥 Z5/Z6: VO2Max i Beztlenowa (> 106% CP)"):
+            st.markdown("""
+            * **Metabolizm:** Wyłącznie glikogen + Fosfokreatyna (PCr). RER > 1.1.
+            * **Fizjologia:** Maksymalny pobór tlenu (pułap tlenowy). Szybkie narastanie długu tlenowego.
+            * **Biomechanika:** Pełna rekrutacja wszystkich włókien (Typ IIx). Duży moment siły.
+            * **SmO2:** Gwałtowny spadek (Desaturacja).
+            * **Oddech (VT):** Powyżej VT2 (RCP). Hiperwentylacja.
+            * **Typowy Czas:** Z5: 3-8 min. Z6: < 2 min.
+            """)
+
+    st.divider()
+    st.subheader("🔥 Symulator 'Spalania Zapałek' (W' Attack)")
+    st.markdown("Sprawdź, jak konkretny atak wpłynie na Twoje rezerwy energii.")
+
+    c_sim1, c_sim2 = st.columns(2)
+    with c_sim1:
+        sim_watts = st.slider(
+            "Moc Ataku [W]",
+            min_value=int(cp_input),
+            max_value=int(cp_input * 2.5),
+            value=int(cp_input * 1.2),
+            step=10,
+        )
+        sim_dur = st.slider("Czas Trwania [sek]", min_value=10, max_value=300, value=60, step=10)
+
+        if sim_watts > cp_input:
+            w_burned = (sim_watts - cp_input) * sim_dur
+            w_rem = w_prime_input - w_burned
+            w_rem_pct = (w_rem / w_prime_input) * 100
+        else:
+            w_burned = 0
+            w_rem = w_prime_input
+            w_rem_pct = 100
+        if w_rem < 0:
+            w_rem = 0
+            w_rem_pct = 0
+        st.markdown(
+            f"**Spalone:** {w_burned:.0f} J\n**Pozostało:** {w_rem:.0f} J ({w_rem_pct:.1f}%)"
+        )
+    with c_sim2:
+        fig_g = go.Figure(
+            go.Indicator(
+                mode="gauge+number",
+                value=w_rem,
+                domain={"x": [0, 1], "y": [0, 1]},
+                title={"text": "Pozostałe W'"},
+                gauge={
+                    "axis": {"range": [0, w_prime_input], "tickwidth": 1},
+                    "bar": {"color": "darkblue"},
+                    "steps": [
+                        {"range": [0, w_prime_input * 0.25], "color": "red"},
+                        {"range": [w_prime_input * 0.25, w_prime_input * 0.5], "color": "orange"},
+                        {"range": [w_prime_input * 0.5, w_prime_input], "color": "green"},
+                    ],
+                },
+            )
+        )
+        st.plotly_chart(apply_chart_style(fig_g), use_container_width=True)
+
+    if w_rem_pct == 0:
+        st.error("💀 **TOTAL FAILURE!** Ten atak wyczerpie Cię całkowicie. Nie dojedziesz.")
+    elif w_rem_pct < 25:
+        st.warning("⚠️ **KRYTYCZNIE:** Bardzo ryzykowny atak. Zostaniesz na oparach.")
+    else:
+        st.success("✅ **BEZPIECZNIE:** Masz zapas na taki ruch.")
+
+    st.divider()
+
+    # Calculate PDC if power data exists
+    pdc = {}
+    if "watts" in df_plot.columns:
+        pdc = calculate_power_duration_curve(df_plot)
+
+    # Get MMP values
+    mmp_5s = pdc.get(5)
+    mmp_1min = pdc.get(60)
+    mmp_5min = pdc.get(300)
+    mmp_20min = pdc.get(1200)
+
+    # ===== KEY METRICS + TTE (NEW) =====
+    st.subheader("📈 Kluczowe Metryki & Time to Exhaustion")
+
+    col_km1, col_km2, col_km3, col_km4 = st.columns(4)
+
+    with col_km1:
+        if mmp_5s:
+            tte_5s = estimate_tte(mmp_5s, cp_input, w_prime_input)
+            st.metric(
+                "⚡ MMP 5s",
+                f"{mmp_5s:.0f} W",
+                f"{mmp_5s / rider_weight:.1f} W/kg" if rider_weight > 0 else None,
+            )
+            st.caption(f"TTE: {_format_tte(tte_5s)}")
+        else:
+            st.metric("⚡ MMP 5s", "—")
+
+    with col_km2:
+        if mmp_1min:
+            tte_1min = estimate_tte(mmp_1min, cp_input, w_prime_input)
+            st.metric(
+                "🔥 MMP 1min",
+                f"{mmp_1min:.0f} W",
+                f"{mmp_1min / rider_weight:.1f} W/kg" if rider_weight > 0 else None,
+            )
+            st.caption(f"TTE: {_format_tte(tte_1min)}")
+        else:
+            st.metric("🔥 MMP 1min", "—")
+
+    with col_km3:
+        if mmp_5min:
+            tte_5min = estimate_tte(mmp_5min, cp_input, w_prime_input)
+            st.metric(
+                "💪 MMP 5min",
+                f"{mmp_5min:.0f} W",
+                f"{mmp_5min / rider_weight:.1f} W/kg" if rider_weight > 0 else None,
+            )
+            st.caption(f"TTE: {_format_tte(tte_5min)}")
+        else:
+            st.metric("💪 MMP 5min", "—")
+
+    with col_km4:
+        if mmp_20min:
+            tte_20min = estimate_tte(mmp_20min, cp_input, w_prime_input)
+            st.metric(
+                "🏔️ MMP 20min",
+                f"{mmp_20min:.0f} W",
+                f"{mmp_20min / rider_weight:.1f} W/kg" if rider_weight > 0 else None,
+            )
+            st.caption(f"TTE: {_format_tte(tte_20min)}")
+        else:
+            st.metric("🏔️ MMP 20min", "—")
+
+    st.divider()
+
+    # ===== DURABILITY INDEX (NEW) =====
+    st.subheader("🛡️ Durability Index")
+
+    durability, avg_first, avg_second = calculate_durability_index(df_plot, min_duration_min=20)
+
+    if durability is not None:
+        durability_interp = get_durability_interpretation(durability)
+
+        col_d1, col_d2, col_d3 = st.columns(3)
+
+        with col_d1:
+            delta_color = "normal" if durability >= 90 else "inverse"
+            st.metric(
+                "Durability Index",
+                f"{durability:.1f}%",
+                delta=f"{durability - 100:.1f}%" if durability < 100 else "+0%",
+                delta_color=delta_color,
+                help="Stosunek średniej mocy w 2. połowie do 1. połowy treningu",
+            )
+
+        with col_d2:
+            st.metric("Śr. Moc (1. połowa)", f"{avg_first:.0f} W")
+
+        with col_d3:
+            st.metric("Śr. Moc (2. połowa)", f"{avg_second:.0f} W")
+
+        st.info(f"**Interpretacja:** {durability_interp}")
+    else:
+        st.info("Potrzeba minimum 20 minut treningu do obliczenia Durability Index.")
+
+    st.divider()
+
+    # ===== RECOVERY SCORE (NEW) =====
+    st.subheader("🔄 Recovery Score")
+
+    if "w_prime_balance" in df_plot.columns and w_prime_input > 0:
+        w_bal_end = df_plot["w_prime_balance"].iloc[-1]
+        recovery_score = calculate_recovery_score(w_bal_end, w_prime_input, time_since_effort_sec=0)
+        zone_rec, zone_desc = get_recovery_recommendation(recovery_score)
+
+        col_r1, col_r2 = st.columns([1, 2])
+
+        with col_r1:
+            st.metric(
+                "Recovery Score",
+                f"{recovery_score:.0f}/100",
+                help="Gotowość do następnego treningu na podstawie W' Balance",
+            )
+
+        with col_r2:
+            st.info(f"**{zone_rec}**\n\n{zone_desc}")
+    else:
+        st.info("Oblicz W' Balance, aby zobaczyć Recovery Score.")
+
+    st.divider()
+
+    # ===== FATIGUE RESISTANCE INDEX =====
+    st.subheader("🔋 Fatigue Resistance Index (FRI)")
+
+    if mmp_5min and mmp_20min:
+        fri = calculate_fatigue_resistance_index(mmp_5min, mmp_20min)
+        fri_interpretation = get_fri_interpretation(fri)
+
+        col_fri1, col_fri2 = st.columns([1, 2])
+
+        with col_fri1:
+            st.metric(
+                "FRI (MMP20 / MMP5)",
+                f"{fri:.2f}",
+                help="Stosunek mocy 20min do 5min. Im bliżej 1.0, tym lepsza wytrzymałość.",
+            )
+
+        with col_fri2:
+            st.info(f"**Interpretacja:** {fri_interpretation}")
+
+        # FRI gauge
+        fig_fri = go.Figure(
+            go.Indicator(
+                mode="gauge+number",
+                value=fri,
+                domain={"x": [0, 1], "y": [0, 1]},
+                gauge={
+                    "axis": {"range": [0.6, 1.0], "tickwidth": 1},
+                    "bar": {"color": "#FFD700"},
+                    "steps": [
+                        {"range": [0.6, 0.75], "color": "#FF4500"},
+                        {"range": [0.75, 0.85], "color": "#FFA500"},
+                        {"range": [0.85, 0.92], "color": "#32CD32"},
+                        {"range": [0.92, 1.0], "color": "#00CED1"},
+                    ],
+                    "threshold": {
+                        "line": {"color": "white", "width": 2},
+                        "thickness": 0.75,
+                        "value": fri,
+                    },
+                },
+                title={"text": "Fatigue Resistance"},
+            )
+        )
+        fig_fri.update_layout(
+            template="plotly_dark", height=250, margin=dict(l=30, r=30, t=50, b=10)
+        )
+        st.plotly_chart(fig_fri, use_container_width=True)
+    else:
+        st.warning("Potrzeba danych ≥5 minut i ≥20 minut dla obliczenia FRI.")
+
+    st.divider()
+
+    # ===== MATCH BURNS =====
+    st.subheader("🔥 Spalone Zapałki (Match Burns)")
+
+    if "w_prime_balance" in df_plot.columns and w_prime_input > 0:
+        w_bal = df_plot["w_prime_balance"].values
+        burns = count_match_burns(w_bal, w_prime_input, threshold_pct=0.3)
+
+        col_match1, col_match2 = st.columns([1, 2])
+
+        with col_match1:
+            st.metric(
+                "🔥 Spalone Zapałki",
+                burns,
+                help="Liczba razy, gdy W' spadło poniżej 30% pojemności",
+            )
+
+        with col_match2:
+            if burns == 0:
+                st.success("Zachowałeś wszystkie zapałki - trening regeneracyjny lub Z2.")
+            elif burns <= 3:
+                st.info(f"Spalono {burns} zapałek - umiarkowane wysiłki anaerobowe.")
+            elif burns <= 6:
+                st.warning(f"Spalono {burns} zapałek - intensywny trening interwałowy.")
+            else:
+                st.error(f"Spalono {burns} zapałek - ekstremalnie wymagający trening!")
+
+        # Match burns over time visualization
+        fig_matches = go.Figure()
+
+        # Time axis
+        if "time" in df_plot.columns:
+            time_min = df_plot["time"] / 60
+        elif "time_min" in df_plot.columns:
+            time_min = df_plot["time_min"]
+        else:
+            time_min = np.arange(len(w_bal)) / 60
+
+        fig_matches.add_trace(
+            go.Scatter(
+                x=time_min,
+                y=w_bal,
+                name="W' Balance",
+                line=dict(color="#00CED1", width=2),
+                fill="tozeroy",
+                fillcolor="rgba(0,206,209,0.2)",
+            )
+        )
+
+        # Threshold line
+        threshold = w_prime_input * 0.3
+        fig_matches.add_hline(
+            y=threshold,
+            line_dash="dash",
+            line_color="red",
+            annotation_text=f"Próg zapałki ({threshold / 1000:.0f} kJ)",
+        )
+
+        fig_matches.update_layout(
+            template="plotly_dark",
+            title="W' Balance - Kiedy paliłeś zapałki?",
+            xaxis=dict(title="Czas [min]"),
+            yaxis=dict(title="W' Balance [J]"),
+            height=350,
+            margin=dict(l=10, r=10, t=50, b=10),
+        )
+
+        st.plotly_chart(fig_matches, use_container_width=True)
+    else:
+        st.info("Oblicz W' Balance, aby zobaczyć analizę zapałek.")
+
+    st.divider()
+
+    # ===== STAMINA SCORE =====
+    st.subheader("🏆 Stamina Score")
+
+    if mmp_5min and mmp_20min and rider_weight > 0 and cp_input > 0:
+        fri = calculate_fatigue_resistance_index(mmp_5min, mmp_20min)
+
+        # Use provided VO2max or estimate from 5min power
+        if vo2max_est <= 0:
+            power_per_kg = mmp_5min / rider_weight
+            vo2max_est = 16.61 + 8.87 * power_per_kg
+
+        stamina = calculate_stamina_score(vo2max_est, fri, w_prime_input, cp_input, rider_weight)
+        stamina_interp = get_stamina_interpretation(stamina)
+
+        # VLamax estimation
+        vlamax = estimate_vlamax_from_pdc(pdc, rider_weight)
+        vlamax_interp = get_vlamax_interpretation(vlamax) if vlamax else "Niewystarczające dane"
+
+        col_s1, col_s2, col_s3 = st.columns(3)
+
+        with col_s1:
+            st.metric(
+                "Stamina Score", f"{stamina:.0f}/100", help="Composite metric: VO2max + FRI + CP/kg"
+            )
+            st.caption(stamina_interp)
+
+        with col_s2:
+            st.metric(
+                "Est. VO2max",
+                f"{vo2max_est:.1f} ml/kg/min",
+                help="Szacowane z 5-minutowej mocy max",
+            )
+
+        with col_s3:
+            if vlamax:
+                st.metric(
+                    "Est. VLamax",
+                    f"{vlamax:.2f} mmol/L/s",
+                    help="Szacowane z kształtu krzywej mocy",
+                )
+                st.caption(vlamax_interp)
+            else:
+                st.metric("Est. VLamax", "—")
+
+        with st.expander("📚 Jak interpretować te metryki?"):
+            st.markdown("""
+            ### Stamina Score (0-100)
+            Composite metric łącząca wydolność tlenową, zdolność do utrzymania mocy i moc względną.
+            
+            | Score | Poziom |
+            |-------|--------|
+            | 80+ | World Tour / Pro Continental |
+            | 65-80 | Elitarny amator |
+            | 50-65 | Wytrenowany kolarz klubowy |
+            | 35-50 | Amator średni |
+            | <35 | Początkujący |
+            
+            ### Fatigue Resistance Index (FRI)
+            Stosunek MMP20 do MMP5. Im bliżej 1.0, tym lepiej utrzymujesz moc w czasie.
+            
+            - **0.95+**: Wyjątkowa wytrzymałość (diesele jak Froome)
+            - **0.90-0.95**: Poziom Pro
+            - **0.85-0.90**: Dobrze wytrenowany amator
+            - **<0.80**: Profil sprinterski
+            
+            ### VLamax (Estimated)
+            Maksymalna szybkość produkcji mleczanu. Niższa wartość = lepsza wydolność tlenowa.
+            
+            - **>0.9**: Sprinter - wysoka glikoliza
+            - **0.5-0.7**: All-rounder
+            - **<0.4**: Climber/TT specialist
+            """)
+    else:
+        st.info("Potrzeba danych CP, wagi i minimum 20 minut treningu do obliczenia Stamina Score.")

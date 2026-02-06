@@ -44,7 +44,7 @@ dev = [
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["modules*", "services*"]
+include = ["modules*", "services*", "models*"]
 
 [tool.black]
 line-length = 100

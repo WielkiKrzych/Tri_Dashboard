@@ -18,6 +18,61 @@ from dataclasses import dataclass, field
 from scipy import stats
 import logging
 
+try:
+    from numba import jit, prange
+    NUMBA_AVAILABLE = True
+except ImportError:
+    NUMBA_AVAILABLE = False
+    # Create dummy decorator if numba not available
+    def jit(*args, **kwargs):
+        def decorator(func):
+            return func
+        return decorator
+
+logger = logging.getLogger("Tri_Dashboard.SmO2Advanced")
+
+
+# =============================================================================
+# NUMBA-OPTIMIZED FUNCTIONS
+# =============================================================================
+
+if NUMBA_AVAILABLE:
+    @jit(nopython=True, cache=True)
+    def _fast_gradient(smo2_vals, power_vals):
+        """Fast gradient calculation using Numba."""
+        n = len(smo2_vals)
+        grad = np.zeros(n)
+        for i in range(1, n - 1):
+            dp = power_vals[i + 1] - power_vals[i - 1]
+            if dp != 0:
+                grad[i] = (smo2_vals[i + 1] - smo2_vals[i - 1]) / dp
+        grad[0] = grad[1] if n > 1 else 0
+        grad[-1] = grad[-2] if n > 1 else 0
+        return grad
+
+    @jit(nopython=True, cache=True)
+    def _fast_curvature(smo2_vals, power_vals):
+        """Fast curvature calculation using Numba."""
+        n = len(smo2_vals)
+        grad = _fast_gradient(smo2_vals, power_vals)
+        curv = np.zeros(n)
+        for i in range(1, n - 1):
+            dp = power_vals[i + 1] - power_vals[i - 1]
+            if dp != 0:
+                curv[i] = (grad[i + 1] - grad[i - 1]) / dp
+        curv[0] = curv[1] if n > 1 else 0
+        curv[-1] = curv[-2] if n > 1 else 0
+        return curv
+else:
+    def _fast_gradient(smo2_vals, power_vals):
+        """Fallback gradient calculation."""
+        return np.gradient(smo2_vals, power_vals)
+
+    def _fast_curvature(smo2_vals, power_vals):
+        """Fallback curvature calculation."""
+        grad = np.gradient(smo2_vals, power_vals)
+        return np.gradient(grad, power_vals)
+
 logger = logging.getLogger("Tri_Dashboard.SmO2Advanced")
 
 
@@ -667,8 +722,11 @@ def detect_smo2_thresholds_moxy(
     # 3. CALCULATE DERIVATIVES
     # =========================================================================
     
-    step_df['gradient'] = np.gradient(step_df['smo2'].values, step_df['power'].values)
-    step_df['curvature'] = np.gradient(step_df['gradient'].values, step_df['power'].values)
+    # Use Numba-optimized functions if available
+    smo2_vals = step_df['smo2'].values
+    power_vals = step_df['power'].values
+    step_df['gradient'] = _fast_gradient(smo2_vals, power_vals)
+    step_df['curvature'] = _fast_curvature(smo2_vals, power_vals)
     
     # =========================================================================
     # 4. SmO₂_T1 DETECTION (LT1 analog)

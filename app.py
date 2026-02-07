@@ -323,29 +323,12 @@ if uploaded_file is not None:
     with tab_intelligence:
         UIComponents.show_breadcrumb("🧠 Intelligence")
         t1, t2, t3 = st.tabs(["🍎 Nutrition", "🚧 Limiters", "🤖 AI Coach"])
-        
-        # Lazy loading - only compute when tab is selected
-        if 'intelligence_tab_initialized' not in st.session_state:
-            st.session_state.intelligence_tab_initialized = False
-            st.session_state.intelligence_active_tab = 0
-        
-        # Track active tab
-        active_tab = st.session_state.get('intelligence_active_tab', 0)
-        
         with t1:
-            st.session_state.intelligence_active_tab = 0
-            if active_tab == 0 or st.session_state.intelligence_tab_initialized:
-                render_tab_content("nutrition", df_plot, cp_input, vt1_watts, vt2_watts)
+            render_tab_content("nutrition", df_plot, cp_input, vt1_watts, vt2_watts)
         with t2:
-            st.session_state.intelligence_active_tab = 1
-            if active_tab == 1:
-                render_tab_content("limiters", df_plot, cp_input, vt2_vent)
+            render_tab_content("limiters", df_plot, cp_input, vt2_vent)
         with t3:
-            st.session_state.intelligence_active_tab = 2
-            if active_tab == 2:
-                render_tab_content("ai_coach", df_plot_resampled)
-        
-        st.session_state.intelligence_tab_initialized = True
+            render_tab_content("ai_coach", df_plot_resampled)
 
     with tab_physiology:
         UIComponents.show_breadcrumb("🫀 Physiology")

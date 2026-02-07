@@ -589,7 +589,7 @@ def detect_smo2_thresholds_moxy(
     # 2. AGGREGATE BY STEP
     # =========================================================================
     
-    step_data = []
+    # OPTIMIZED: Vectorized step aggregation using groupby
     all_steps = sorted(df['step'].unique())
     
     # REMOVE LAST 1 STEP (ischemic crash zone)
@@ -598,12 +598,17 @@ def detect_smo2_thresholds_moxy(
     else:
         last_step = None
     
-    for step_num in all_steps:
+    # Filter steps with at least 30 samples
+    step_counts = df.groupby('step').size()
+    valid_steps = step_counts[step_counts >= 30].index.tolist()
+    
+    if not valid_steps:
+        result.analysis_notes.append("⚠️ Za mało danych w stopniach")
+        return result
+    
+    # Vectorized aggregation per step
+    def aggregate_step(step_num):
         step_df = df[df['step'] == step_num]
-        
-        if len(step_df) < 30:
-            continue
-        
         last_90 = step_df.tail(90) if len(step_df) >= 90 else step_df
         last_60 = step_df.tail(60) if len(step_df) >= 60 else step_df
         
@@ -635,10 +640,7 @@ def detect_smo2_thresholds_moxy(
             if len(hr_vals) > 2:
                 hr_slope = np.polyfit(time_vals, hr_vals, 1)[0]
         
-        # Mark as last step (ischemic)
-        is_last_step = step_num == last_step
-        
-        step_data.append({
+        return {
             'step': step_num,
             'power': avg_power,
             'smo2': avg_smo2,
@@ -649,8 +651,11 @@ def detect_smo2_thresholds_moxy(
             'osc_amp': osc_amp,
             'trend': trend,
             'hr_slope': hr_slope,
-            'is_last_step': is_last_step
-        })
+            'is_last_step': step_num == last_step
+        }
+    
+    # Use list comprehension for better performance
+    step_data = [aggregate_step(step) for step in valid_steps]
     
     if len(step_data) < 4:
         result.analysis_notes.append(f"⚠️ Za mało stopni ({len(step_data)})")

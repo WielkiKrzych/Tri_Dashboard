@@ -17,6 +17,7 @@ from modules.ml_logic import MLX_AVAILABLE, predict_only, MODEL_FILE
 from modules.notes import TrainingNotes
 from modules.reports import generate_docx_report, export_all_charts_as_png
 from modules.reporting.pdf.summary_pdf import generate_summary_pdf
+from modules.reporting.summary_export import generate_summary_charts_zip, CHART_SIZES
 from modules.db import SessionStore, SessionRecord
 from modules.reporting.persistence import check_git_tracking
 
@@ -526,6 +527,44 @@ if uploaded_file is not None:
     except Exception as e:
         logger.warning(f"PDF Summary export failed: {e}")
         st.sidebar.info("PDF Podsumowanie: Błąd generowania")
+
+    st.sidebar.markdown("---")
+    st.sidebar.header("📊 Export Wykresów (Podsumowanie)")
+
+    st.sidebar.markdown("**Rozmiar wykresów:**")
+    size_options = {
+        "standard": "Standard (1200x800)",
+        "large": "Duży (1600x1200)",
+        "full_hd": "Full HD (1920x1080)",
+        "macbook_pro": "MacBook Pro M4 (3024x1964)",
+    }
+
+    selected_size = st.sidebar.radio(
+        "Wybierz rozmiar:",
+        options=list(size_options.keys()),
+        format_func=lambda x: size_options[x],
+        key="summary_chart_size"
+    )
+
+    if st.sidebar.button("🖼️ Generuj wykresy PNG", key="generate_summary_charts"):
+        with st.sidebar.spinner("Generowanie wykresów..."):
+            try:
+                zip_bytes = generate_summary_charts_zip(
+                    df_plot,
+                    size_key=selected_size,
+                    add_watermark_flag=True
+                )
+
+                st.sidebar.download_button(
+                    label="⬇️ Pobierz ZIP z wykresami",
+                    data=zip_bytes,
+                    file_name=f"wykresy_podsumowanie_{uploaded_file.name.split('.')[0]}.zip",
+                    mime="application/zip",
+                    key="download_summary_charts"
+                )
+                st.sidebar.success("✅ Wykresy gotowe do pobrania!")
+            except Exception as e:
+                st.sidebar.error(f"❌ Błąd generowania: {e}")
 
 else:
     st.sidebar.info("Wgraj plik.")

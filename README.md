@@ -220,6 +220,8 @@ The dashboard is organized into four main sections:
 | **📊 Overview** | **Report with KPI** (consolidated report and key performance indicators), **Summary** (consolidated charts), DOCX/PNG/PDF export |
 | **⚡ Performance** | Power analysis, PDC, Training Load, TTE, Intervals Generator |
 | **🧠 Intelligence** | Nutrition analysis, Limiters diagnosis, AI Coach |
+
+**Note:** The "Trends" tab has been removed from the Intelligence section as part of the latest refactoring to streamline the user interface.
 | **🫀 Physiology** | HRV, SmO2 (with thresholds), Ventilation (VE/BR), Ventilatory Thresholds (VT1/VT2), Thermal, Biomechanics, Ramp Archive |
 
 ### Report with KPI Tab Features

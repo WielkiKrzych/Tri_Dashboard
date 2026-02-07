@@ -311,15 +311,13 @@ if uploaded_file is not None:
 
     with tab_intelligence:
         UIComponents.show_breadcrumb("🧠 Intelligence")
-        t1, t2, t3, t4 = st.tabs(["🍎 Nutrition", "🚧 Limiters", "🤖 AI Coach", "📈 Trendy"])
+        t1, t2, t3 = st.tabs(["🍎 Nutrition", "🚧 Limiters", "🤖 AI Coach"])
         with t1:
             render_tab_content("nutrition", df_plot, cp_input, vt1_watts, vt2_watts)
         with t2:
             render_tab_content("limiters", df_plot, cp_input, vt2_vent)
         with t3:
             render_tab_content("ai_coach", df_plot_resampled)
-        with t4:
-            render_tab_content("trends")
 
     with tab_physiology:
         UIComponents.show_breadcrumb("🫀 Physiology")

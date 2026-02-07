@@ -16,7 +16,7 @@ class SettingsManager:
             "vt2_watts": 405,
             "vt1_vent": 71.0,
             "vt2_vent": 109.0,
-            "crank_length": 160.0
+            "crank_length": 165.0
         }
 
     def load_settings(self):

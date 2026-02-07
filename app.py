@@ -58,7 +58,6 @@ class TabRegistry:
         "drift_maps": ("modules.ui.drift_maps_ui", "render_drift_maps_tab"),
         "tte": ("modules.ui.tte_ui", "render_tte_tab"),
         "ramp_archive": ("modules.ui.ramp_archive", "render_ramp_archive"),
-        "trends": ("modules.ui.trends", "render_trends_tab"),
     }
 
     @classmethod

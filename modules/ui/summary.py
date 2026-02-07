@@ -10,9 +10,142 @@ from plotly.subplots import make_subplots
 import pandas as pd
 import numpy as np
 from scipy import stats
+import hashlib
+from typing import Optional
 from modules.config import Config
 from modules.calculations.thresholds import analyze_step_test
 from modules.calculations.smo2_advanced import detect_smo2_thresholds_moxy
+
+
+def _hash_dataframe(df: pd.DataFrame) -> str:
+    """Create a hash of DataFrame for cache key generation."""
+    if df is None or df.empty:
+        return "empty"
+    sample = df.head(100).to_json()
+    shape_str = f"{df.shape}_{list(df.columns)}"
+    return hashlib.md5(f"{shape_str}_{sample}".encode()).hexdigest()[:16]
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def _build_training_timeline_chart(df_plot: pd.DataFrame) -> Optional[go.Figure]:
+    """Build training timeline chart with power, HR, SmO2, VE (cached)."""
+    fig = go.Figure()
+    time_x = (
+        df_plot["time_min"]
+        if "time_min" in df_plot.columns
+        else df_plot["time"] / 60
+        if "time" in df_plot.columns
+        else None
+    )
+
+    if time_x is None:
+        return None
+
+    if "watts_smooth" in df_plot.columns:
+        fig.add_trace(
+            go.Scatter(
+                x=time_x,
+                y=df_plot["watts_smooth"],
+                name="Moc",
+                fill="tozeroy",
+                line=dict(color=Config.COLOR_POWER, width=1),
+                hovertemplate="Moc: %{y:.0f} W<extra></extra>",
+            )
+        )
+    elif "watts" in df_plot.columns:
+        fig.add_trace(
+            go.Scatter(
+                x=time_x,
+                y=df_plot["watts"].rolling(5, center=True).mean(),
+                name="Moc",
+                fill="tozeroy",
+                line=dict(color=Config.COLOR_POWER, width=1),
+                hovertemplate="Moc: %{y:.0f} W<extra></extra>",
+            )
+        )
+
+    if "heartrate_smooth" in df_plot.columns:
+        fig.add_trace(
+            go.Scatter(
+                x=time_x,
+                y=df_plot["heartrate_smooth"],
+                name="HR",
+                line=dict(color=Config.COLOR_HR, width=2),
+                yaxis="y2",
+                hovertemplate="HR: %{y:.0f} bpm<extra></extra>",
+            )
+        )
+    elif "heartrate" in df_plot.columns:
+        fig.add_trace(
+            go.Scatter(
+                x=time_x,
+                y=df_plot["heartrate"],
+                name="HR",
+                line=dict(color=Config.COLOR_HR, width=2),
+                yaxis="y2",
+                hovertemplate="HR: %{y:.0f} bpm<extra></extra>",
+            )
+        )
+
+    if "smo2_smooth" in df_plot.columns:
+        fig.add_trace(
+            go.Scatter(
+                x=time_x,
+                y=df_plot["smo2_smooth"],
+                name="SmO2",
+                line=dict(color=Config.COLOR_SMO2, width=2, dash="dot"),
+                yaxis="y3",
+                hovertemplate="SmO2: %{y:.1f}%<extra></extra>",
+            )
+        )
+    elif "smo2" in df_plot.columns:
+        fig.add_trace(
+            go.Scatter(
+                x=time_x,
+                y=df_plot["smo2"].rolling(5, center=True).mean(),
+                name="SmO2",
+                line=dict(color=Config.COLOR_SMO2, width=2, dash="dot"),
+                yaxis="y3",
+                hovertemplate="SmO2: %{y:.1f}%<extra></extra>",
+            )
+        )
+
+    if "tymeventilation_smooth" in df_plot.columns:
+        fig.add_trace(
+            go.Scatter(
+                x=time_x,
+                y=df_plot["tymeventilation_smooth"],
+                name="VE",
+                line=dict(color=Config.COLOR_VE, width=2, dash="dash"),
+                yaxis="y4",
+                hovertemplate="VE: %{y:.1f} L/min<extra></extra>",
+            )
+        )
+    elif "tymeventilation" in df_plot.columns:
+        fig.add_trace(
+            go.Scatter(
+                x=time_x,
+                y=df_plot["tymeventilation"].rolling(10, center=True).mean(),
+                name="VE",
+                line=dict(color=Config.COLOR_VE, width=2, dash="dash"),
+                yaxis="y4",
+                hovertemplate="VE: %{y:.1f} L/min<extra></extra>",
+            )
+        )
+
+    fig.update_layout(
+        template="plotly_dark",
+        title="Przebieg Treningu (Moc, HR, SmO2, VE)",
+        hovermode="x unified",
+        xaxis=dict(title="Czas [min]"),
+        yaxis=dict(title="Moc [W]", side="left"),
+        yaxis2=dict(title="HR [bpm]", overlaying="y", side="right", showgrid=False),
+        yaxis3=dict(title="SmO2 [%]", overlaying="y", side="right", position=0.95, showgrid=False),
+        yaxis4=dict(title="VE [L/min]", overlaying="y", side="right", position=0.98, showgrid=False),
+        height=500,
+        legend=dict(orientation="h", y=-0.2),
+    )
+    return fig
 
 
 def render_summary_tab(
@@ -94,131 +227,14 @@ def render_summary_tab(
     )
 
     # =========================================================================
-    # 1. WYKRES PRZEBIEG TRENINGU
+    # 1. WYKRES PRZEBIEG TRENINGU (CACHED)
     # =========================================================================
     st.subheader("1️⃣ Przebieg Treningu")
 
-    fig_training = go.Figure()
-    time_x = (
-        df_plot["time_min"]
-        if "time_min" in df_plot.columns
-        else df_plot["time"] / 60
-        if "time" in df_plot.columns
-        else None
-    )
-
-    if time_x is not None:
-        if "watts_smooth" in df_plot.columns:
-            fig_training.add_trace(
-                go.Scatter(
-                    x=time_x,
-                    y=df_plot["watts_smooth"],
-                    name="Moc",
-                    fill="tozeroy",
-                    line=dict(color=Config.COLOR_POWER, width=1),
-                    hovertemplate="Moc: %{y:.0f} W<extra></extra>",
-                )
-            )
-        elif "watts" in df_plot.columns:
-            fig_training.add_trace(
-                go.Scatter(
-                    x=time_x,
-                    y=df_plot["watts"].rolling(5, center=True).mean(),
-                    name="Moc",
-                    fill="tozeroy",
-                    line=dict(color=Config.COLOR_POWER, width=1),
-                    hovertemplate="Moc: %{y:.0f} W<extra></extra>",
-                )
-            )
-
-        if "heartrate_smooth" in df_plot.columns:
-            fig_training.add_trace(
-                go.Scatter(
-                    x=time_x,
-                    y=df_plot["heartrate_smooth"],
-                    name="HR",
-                    line=dict(color=Config.COLOR_HR, width=2),
-                    yaxis="y2",
-                    hovertemplate="HR: %{y:.0f} bpm<extra></extra>",
-                )
-            )
-        elif "heartrate" in df_plot.columns:
-            fig_training.add_trace(
-                go.Scatter(
-                    x=time_x,
-                    y=df_plot["heartrate"],
-                    name="HR",
-                    line=dict(color=Config.COLOR_HR, width=2),
-                    yaxis="y2",
-                    hovertemplate="HR: %{y:.0f} bpm<extra></extra>",
-                )
-            )
-
-        if "smo2_smooth" in df_plot.columns:
-            fig_training.add_trace(
-                go.Scatter(
-                    x=time_x,
-                    y=df_plot["smo2_smooth"],
-                    name="SmO2",
-                    line=dict(color=Config.COLOR_SMO2, width=2, dash="dot"),
-                    yaxis="y3",
-                    hovertemplate="SmO2: %{y:.1f}%<extra></extra>",
-                )
-            )
-        elif "smo2" in df_plot.columns:
-            fig_training.add_trace(
-                go.Scatter(
-                    x=time_x,
-                    y=df_plot["smo2"].rolling(5, center=True).mean(),
-                    name="SmO2",
-                    line=dict(color=Config.COLOR_SMO2, width=2, dash="dot"),
-                    yaxis="y3",
-                    hovertemplate="SmO2: %{y:.1f}%<extra></extra>",
-                )
-            )
-
-        if "tymeventilation_smooth" in df_plot.columns:
-            fig_training.add_trace(
-                go.Scatter(
-                    x=time_x,
-                    y=df_plot["tymeventilation_smooth"],
-                    name="VE",
-                    line=dict(color=Config.COLOR_VE, width=2, dash="dash"),
-                    yaxis="y4",
-                    hovertemplate="VE: %{y:.1f} L/min<extra></extra>",
-                )
-            )
-        elif "tymeventilation" in df_plot.columns:
-            fig_training.add_trace(
-                go.Scatter(
-                    x=time_x,
-                    y=df_plot["tymeventilation"].rolling(10, center=True).mean(),
-                    name="VE",
-                    line=dict(color=Config.COLOR_VE, width=2, dash="dash"),
-                    yaxis="y4",
-                    hovertemplate="VE: %{y:.1f} L/min<extra></extra>",
-                )
-            )
-
-    fig_training.update_layout(
-        template="plotly_dark",
-        height=450,
-        yaxis=dict(title="Moc [W]"),
-        yaxis2=dict(title="HR", overlaying="y", side="right", showgrid=False),
-        yaxis3=dict(
-            title="SmO2",
-            overlaying="y",
-            side="right",
-            showgrid=False,
-            showticklabels=False,
-            range=[0, 100],
-        ),
-        yaxis4=dict(title="VE", overlaying="y", side="right", showgrid=False, showticklabels=False),
-        legend=dict(orientation="h", y=1.05, x=0),
-        hovermode="x unified",
-        margin=dict(l=20, r=20, t=30, b=20),
-    )
-    st.plotly_chart(fig_training, use_container_width=True)
+    # Use cached chart building
+    fig_training = _build_training_timeline_chart(df_plot)
+    if fig_training is not None:
+        st.plotly_chart(fig_training, use_container_width=True)
 
     # =========================================================================
     # 1a. METRYKI POD WYKRESEM

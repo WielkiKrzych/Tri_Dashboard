@@ -127,17 +127,28 @@ if uploaded_file is not None:
             # --- SESSION TYPE CLASSIFICATION (MUST run first) ---
             from modules.domain import SessionType, classify_session_type, classify_ramp_test
 
-            session_type = classify_session_type(df_raw, uploaded_file.name)
-            st.session_state["session_type"] = session_type
-
-            # Store detailed ramp classification for gating decisions
-            ramp_classification = None
-            if "watts" in df_raw.columns or "power" in df_raw.columns:
-                power_col = "watts" if "watts" in df_raw.columns else "power"
-                power = df_raw[power_col].dropna()
-                if len(power) >= 300:
-                    ramp_classification = classify_ramp_test(power)
-                    st.session_state["ramp_classification"] = ramp_classification
+            # Check if we already processed this file
+            current_file_hash = hash(uploaded_file.name + str(uploaded_file.size))
+            cached_hash = st.session_state.get("current_file_hash")
+            
+            if cached_hash != current_file_hash:
+                # New file - process and cache
+                session_type = classify_session_type(df_raw, uploaded_file.name)
+                st.session_state["session_type"] = session_type
+                st.session_state["current_file_hash"] = current_file_hash
+                
+                # Store detailed ramp classification for gating decisions
+                ramp_classification = None
+                if "watts" in df_raw.columns or "power" in df_raw.columns:
+                    power_col = "watts" if "watts" in df_raw.columns else "power"
+                    power = df_raw[power_col].dropna()
+                    if len(power) >= 300:
+                        ramp_classification = classify_ramp_test(power)
+                        st.session_state["ramp_classification"] = ramp_classification
+            else:
+                # Use cached values
+                session_type = st.session_state.get("session_type")
+                ramp_classification = st.session_state.get("ramp_classification")
 
             # --- PROCESSING PIPELINE (SRP/DIP) ---
             from services.session_orchestrator import process_uploaded_session

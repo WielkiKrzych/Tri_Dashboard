@@ -1,7 +1,67 @@
 import streamlit as st
 import plotly.graph_objects as go
 import plotly.express as px
+import hashlib
+from typing import Optional
 from modules.calculations import calculate_thermal_decay
+
+
+def _hash_dataframe(df) -> str:
+    """Create a hash of DataFrame for cache key generation."""
+    if df is None or df.empty:
+        return "empty"
+    sample = df.head(100).to_json() if hasattr(df, 'to_json') else str(df)
+    shape_str = f"{df.shape}_{list(df.columns)}" if hasattr(df, 'shape') else str(df)
+    return hashlib.md5(f"{shape_str}_{sample}".encode()).hexdigest()[:16]
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def _build_thermal_chart(df_plot) -> Optional[go.Figure]:
+    """Build thermal regulation chart (cached)."""
+    fig = go.Figure()
+    
+    # 1. CORE TEMP (Oś Lewa)
+    if 'core_temperature_smooth' in df_plot.columns:
+        fig.add_trace(go.Scatter(
+            x=df_plot['time_min'], 
+            y=df_plot['core_temperature_smooth'], 
+            name='Core Temp', 
+            line=dict(color='#ff7f0e', width=2), 
+            hovertemplate="Temp: %{y:.2f}°C<extra></extra>"
+        ))
+    
+    # 2. HSI - HEAT STRAIN INDEX (Oś Prawa)
+    if 'hsi' in df_plot.columns:
+        fig.add_trace(go.Scatter(
+            x=df_plot['time_min'], 
+            y=df_plot['hsi'], 
+            name='HSI', 
+            yaxis="y2", 
+            line=dict(color='#d62728', width=2, dash='dot'), 
+            hovertemplate="HSI: %{y:.1f}<extra></extra>"
+        ))
+    
+    fig.add_hline(y=38.5, line_dash="dash", line_color="red", opacity=0.5, annotation_text="Krytyczna (38.5°C)", annotation_position="top left")
+    fig.add_hline(y=37.5, line_dash="dot", line_color="green", opacity=0.5, annotation_text="Optymalna (37.5°C)", annotation_position="bottom left")
+
+    fig.update_layout(
+        template="plotly_dark",
+        title="Termoregulacja: Temperatura Głęboka vs Indeks Zmęczenia (HSI)",
+        hovermode="x unified",
+        xaxis=dict(
+            title="Czas [min]",
+            tickformat=".0f",
+            hoverformat=".0f"
+        ),
+        yaxis=dict(title="Core Temp [°C]"),
+        yaxis2=dict(title="HSI [0-10]", overlaying="y", side="right", showgrid=False, range=[0, 12]),
+        legend=dict(orientation="h", y=1.1, x=0),
+        margin=dict(l=10, r=10, t=40, b=10),
+        height=450
+    )
+    
+    return fig
+
 
 def render_thermal_tab(df_plot):
     st.header("Wydajność Chłodzenia i Koszt Termiczny")
@@ -26,49 +86,10 @@ def render_thermal_tab(df_plot):
 
     st.divider()
 
-    fig_t = go.Figure()
-    
-    # 1. CORE TEMP (Oś Lewa)
-    if 'core_temperature_smooth' in df_plot.columns:
-        fig_t.add_trace(go.Scatter(
-            x=df_plot['time_min'], 
-            y=df_plot['core_temperature_smooth'], 
-            name='Core Temp', 
-            line=dict(color='#ff7f0e', width=2), 
-            hovertemplate="Temp: %{y:.2f}°C<extra></extra>"
-        ))
-    
-    # 2. HSI - HEAT STRAIN INDEX (Oś Prawa)
-    if 'hsi' in df_plot.columns:
-        fig_t.add_trace(go.Scatter(
-            x=df_plot['time_min'], 
-            y=df_plot['hsi'], 
-            name='HSI', 
-            yaxis="y2", 
-            line=dict(color='#d62728', width=2, dash='dot'), 
-            hovertemplate="HSI: %{y:.1f}<extra></extra>"
-        ))
-    
-    fig_t.add_hline(y=38.5, line_dash="dash", line_color="red", opacity=0.5, annotation_text="Krytyczna (38.5°C)", annotation_position="top left")
-    fig_t.add_hline(y=37.5, line_dash="dot", line_color="green", opacity=0.5, annotation_text="Optymalna (37.5°C)", annotation_position="bottom left")
-
-    fig_t.update_layout(
-        template="plotly_dark",
-        title="Termoregulacja: Temperatura Głęboka vs Indeks Zmęczenia (HSI)",
-        hovermode="x unified",
-        xaxis=dict(
-            title="Czas [min]",
-            tickformat=".0f",
-            hoverformat=".0f"
-        ),
-        yaxis=dict(title="Core Temp [°C]"),
-        yaxis2=dict(title="HSI [0-10]", overlaying="y", side="right", showgrid=False, range=[0, 12]),
-        legend=dict(orientation="h", y=1.1, x=0),
-        margin=dict(l=10, r=10, t=40, b=10),
-        height=450
-    )
-    
-    st.plotly_chart(fig_t, use_container_width=True)
+    # Use cached chart building
+    fig_t = _build_thermal_chart(df_plot)
+    if fig_t is not None:
+        st.plotly_chart(fig_t, use_container_width=True)
     
     with st.expander("🌡️ Teoria: Koszt Termiczny Wydajności (WKO5/INSCYD)", expanded=False):
         st.markdown("""

@@ -528,6 +528,8 @@ if uploaded_file is not None:
         logger.warning(f"PDF Summary export failed: {e}")
         st.sidebar.info("PDF Podsumowanie: Błąd generowania")
 
+
+
     st.sidebar.markdown("---")
     st.sidebar.header("📊 Export Wykresów (Podsumowanie)")
 

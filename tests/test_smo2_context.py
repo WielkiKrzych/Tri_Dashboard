@@ -39,7 +39,7 @@ def test_context_classification():
     trend_res = detect_smo2_trend(df_demand['time'], df_demand['smo2'])
     ctx_demand = classify_smo2_context(df_demand, trend_res)
     print(f"Scenario 1 (Rising Power): {ctx_demand['cause']}")
-    assert ctx_demand['cause'] == "Demand Driven", "Should identify as Demand Driven"
+    assert ctx_demand['cause'] == "Napędzany popytem", "Should identify as Demand Driven"
     
     # Scenario 2: Mechanical Occlusion (Grinding)
     # Power steady, Low Cadence (50), SmO2 dropping
@@ -47,7 +47,7 @@ def test_context_classification():
     trend_res = detect_smo2_trend(df_grind['time'], df_grind['smo2'])
     ctx_grind = classify_smo2_context(df_grind, trend_res)
     print(f"Scenario 2 (Low Cadence): {ctx_grind['cause']}")
-    assert ctx_grind['cause'] == "Mechanical Occlusion", "Should identify as Mechanical Occlusion"
+    assert ctx_grind['cause'] == "Okluzja mechaniczna", "Should identify as Mechanical Occlusion"
 
     # Scenario 3: Delivery Limitation
     # Power steady, HR steady (implied max or steady), SmO2 dropping
@@ -55,7 +55,7 @@ def test_context_classification():
     trend_res = detect_smo2_trend(df_limit['time'], df_limit['smo2'])
     ctx_limit = classify_smo2_context(df_limit, trend_res)
     print(f"Scenario 3 (Steady Power): {ctx_limit['cause']}")
-    assert ctx_limit['cause'] == "Delivery Limitation", "Should identify as Delivery Limitation"
+    assert ctx_limit['cause'] == "Ograniczenie dostawy", "Should identify as Delivery Limitation"
     
     # Scenario 4: Efficiency Loss (Fading)
     # Power dropping (< -0.5 W/s), but SmO2 STILL dropping!
@@ -63,7 +63,7 @@ def test_context_classification():
     trend_res = detect_smo2_trend(df_fade['time'], df_fade['smo2'])
     ctx_fade = classify_smo2_context(df_fade, trend_res)
     print(f"Scenario 4 (Dropping Power): {ctx_fade['cause']}")
-    assert ctx_fade['cause'] == "Efficiency Loss", "Should identify as Efficiency Loss"
+    assert ctx_fade['cause'] == "Utrata efektywności", "Should identify as Efficiency Loss"
 
     print("\nAll Context Tests Passed!")
 

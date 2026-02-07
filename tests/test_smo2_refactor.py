@@ -44,19 +44,19 @@ def test_trend_detection():
     smo2_rapid_deox = 100 - 0.1 * time
     res_a = detect_smo2_trend(time, pd.Series(smo2_rapid_deox))
     print(f"Rapid Deox Slope: {res_a['slope']:.4f} -> {res_a['category']}")
-    assert "Rapid Deox" in res_a['category'] or "Deox" in res_a['category'], "Failed to detect Deoxygenation"
+    assert "Szybka deoksygenacja" in res_a['category'] or "deoksygenacja" in res_a['category'], "Failed to detect Deoxygenation"
 
     # Case B: Stable / Equilibrium (Slope 0.0)
     smo2_stable = np.full_like(time, 50) + np.random.normal(0, 0.001, 100) # Tiny noise
     res_b = detect_smo2_trend(time, pd.Series(smo2_stable))
     print(f"Stable Slope: {res_b['slope']:.4f} -> {res_b['category']}")
-    assert "Equilibrium" in res_b['category'] or "Stable" in res_b['category'], "Failed to detect Equilibrium"
+    assert "Równowaga" in res_b['category'] or "Stabilny" in res_b['category'], "Failed to detect Equilibrium"
     
     # Case C: Reox (Slope +0.06)
     smo2_reox = 40 + 0.06 * time
     res_c = detect_smo2_trend(time, pd.Series(smo2_reox))
     print(f"Reox Slope: {res_c['slope']:.4f} -> {res_c['category']}")
-    assert "Reoxygenation" in res_c['category'], "Failed to detect Reoxygenation"
+    assert "Reoksygenacja" in res_c['category'] or "reoksygenacja" in res_c['category'].lower(), "Failed to detect Reoxygenation"
 
     print("Trend Detection Passed!")
 

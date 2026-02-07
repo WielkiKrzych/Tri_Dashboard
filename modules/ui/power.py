@@ -3,6 +3,8 @@ import plotly.graph_objects as go
 import plotly.express as px
 import pandas as pd
 import numpy as np
+import hashlib
+from typing import Dict, Any, Optional
 from modules.config import Config
 from modules.plots import apply_chart_style
 from modules.calculations import (
@@ -20,6 +22,144 @@ from modules.calculations import (
     calculate_recovery_score,
     get_recovery_recommendation,
 )
+
+
+def _hash_dataframe(df: pd.DataFrame) -> str:
+    """Create a hash of DataFrame for cache key generation."""
+    if df is None or df.empty:
+        return "empty"
+    # Use shape and sample of data for hash
+    sample = df.head(100).to_json()
+    shape_str = f"{df.shape}_{list(df.columns)}"
+    return hashlib.md5(f"{shape_str}_{sample}".encode()).hexdigest()[:16]
+
+
+def _hash_params(**kwargs) -> str:
+    """Create a hash of parameters for cache key."""
+    param_str = str(sorted(kwargs.items()))
+    return hashlib.md5(param_str.encode()).hexdigest()[:16]
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def _build_power_w_chart(df_resampled: pd.DataFrame, cp_input: int, w_prime_input: int) -> go.Figure:
+    """Build power and W' balance chart (cached)."""
+    fig = go.Figure()
+    fig.add_trace(
+        go.Scatter(
+            x=df_resampled["time_min"],
+            y=df_resampled["watts_smooth"],
+            name="Moc",
+            fill="tozeroy",
+            line=dict(color=Config.COLOR_POWER, width=1),
+            hovertemplate="Moc: %{y:.0f} W<extra></extra>",
+        )
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=df_resampled["time_min"],
+            y=df_resampled["w_prime_balance"],
+            name="W' Bal",
+            yaxis="y2",
+            line=dict(color=Config.COLOR_HR, width=2),
+            hovertemplate="W' Bal: %{y:.0f} J<extra></extra>",
+        )
+    )
+    fig.update_layout(
+        template="plotly_dark",
+        title="Zarządzanie Energią (Moc vs W')",
+        hovermode="x unified",
+        xaxis=dict(title="Czas [min]", tickformat=".0f", hoverformat=".0f"),
+        yaxis=dict(title="Moc [W]"),
+        yaxis2=dict(title="W' Balance [J]", overlaying="y", side="right", showgrid=False),
+    )
+    return fig
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def _build_zones_chart(df_plot: pd.DataFrame, cp_input: int) -> Optional[go.Figure]:
+    """Build power zones chart (cached)."""
+    if "watts" not in df_plot.columns:
+        return None
+    
+    bins = [
+        0,
+        0.55 * cp_input,
+        0.75 * cp_input,
+        0.90 * cp_input,
+        1.05 * cp_input,
+        1.20 * cp_input,
+        10000,
+    ]
+    labels = [
+        "Z1: Regeneracja",
+        "Z2: Wytrzymałość",
+        "Z3: Tempo",
+        "Z4: Próg",
+        "Z5: VO2Max",
+        "Z6: Beztlenowa",
+    ]
+    colors = ["#A0A0A0", "#32CD32", "#FFD700", "#FF8C00", "#FF4500", "#8B0000"]
+    df_z = df_plot.copy()
+    df_z["Zone"] = pd.cut(df_z["watts"], bins=bins, labels=labels, right=False)
+    pcts = (df_z["Zone"].value_counts().sort_index() / len(df_z) * 100).round(1)
+    fig = px.bar(
+        x=pcts.values,
+        y=labels,
+        orientation="h",
+        text=pcts.apply(lambda x: f"{x}%"),
+        color=labels,
+        color_discrete_sequence=colors,
+    )
+    fig.update_layout(template="plotly_dark", showlegend=False)
+    return apply_chart_style(fig)
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def _build_fri_gauge(fri: float) -> go.Figure:
+    """Build FRI gauge chart (cached)."""
+    fig = go.Figure(
+        go.Indicator(
+            mode="gauge+number",
+            value=fri,
+            domain={"x": [0, 1], "y": [0, 1]},
+            gauge={
+                "axis": {"range": [0.6, 1.0], "tickwidth": 1},
+                "bar": {"color": "#FFD700"},
+                "steps": [
+                    {"range": [0.6, 0.75], "color": "#FF4500"},
+                    {"range": [0.75, 0.85], "color": "#FFA500"},
+                    {"range": [0.85, 0.92], "color": "#32CD32"},
+                    {"range": [0.92, 1.0], "color": "#00CED1"},
+                ],
+                "threshold": {
+                    "line": {"color": "white", "width": 2},
+                    "thickness": 0.75,
+                    "value": fri,
+                },
+            },
+            title={"text": "Fatigue Resistance"},
+        )
+    )
+    fig.update_layout(
+        template="plotly_dark", height=250, margin=dict(l=30, r=30, t=50, b=10)
+    )
+    return fig
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def _calculate_power_metrics(df_plot: pd.DataFrame, cp_input: int, w_prime_input: int, rider_weight: float) -> Dict[str, Any]:
+    """Calculate all power-related metrics (cached)."""
+    pdc = {}
+    if "watts" in df_plot.columns:
+        pdc = calculate_power_duration_curve(df_plot)
+    
+    return {
+        "pdc": pdc,
+        "mmp_5s": pdc.get(5),
+        "mmp_1min": pdc.get(60),
+        "mmp_5min": pdc.get(300),
+        "mmp_20min": pdc.get(1200),
+    }
 
 
 def _format_duration(seconds: int) -> str:
@@ -54,35 +194,8 @@ def render_power_tab(
     df_plot, df_plot_resampled, cp_input, w_prime_input, rider_weight, vo2max_est=0
 ):
     st.subheader("Wykres Mocy i W'")
-    fig_pw = go.Figure()
-    fig_pw.add_trace(
-        go.Scatter(
-            x=df_plot_resampled["time_min"],
-            y=df_plot_resampled["watts_smooth"],
-            name="Moc",
-            fill="tozeroy",
-            line=dict(color=Config.COLOR_POWER, width=1),
-            hovertemplate="Moc: %{y:.0f} W<extra></extra>",
-        )
-    )
-    fig_pw.add_trace(
-        go.Scatter(
-            x=df_plot_resampled["time_min"],
-            y=df_plot_resampled["w_prime_balance"],
-            name="W' Bal",
-            yaxis="y2",
-            line=dict(color=Config.COLOR_HR, width=2),
-            hovertemplate="W' Bal: %{y:.0f} J<extra></extra>",
-        )
-    )
-    fig_pw.update_layout(
-        template="plotly_dark",
-        title="Zarządzanie Energią (Moc vs W')",
-        hovermode="x unified",
-        xaxis=dict(title="Czas [min]", tickformat=".0f", hoverformat=".0f"),
-        yaxis=dict(title="Moc [W]"),
-        yaxis2=dict(title="W' Balance [J]", overlaying="y", side="right", showgrid=False),
-    )
+    # Use cached chart building
+    fig_pw = _build_power_w_chart(df_plot_resampled, cp_input, w_prime_input)
     st.plotly_chart(fig_pw, use_container_width=True)
 
     st.info("""
@@ -105,38 +218,9 @@ def render_power_tab(
     """)
 
     st.subheader("Czas w Strefach Mocy (Time in Zones)")
-    if "watts" in df_plot.columns:
-        bins = [
-            0,
-            0.55 * cp_input,
-            0.75 * cp_input,
-            0.90 * cp_input,
-            1.05 * cp_input,
-            1.20 * cp_input,
-            10000,
-        ]
-        labels = [
-            "Z1: Regeneracja",
-            "Z2: Wytrzymałość",
-            "Z3: Tempo",
-            "Z4: Próg",
-            "Z5: VO2Max",
-            "Z6: Beztlenowa",
-        ]
-        colors = ["#A0A0A0", "#32CD32", "#FFD700", "#FF8C00", "#FF4500", "#8B0000"]
-        df_z = df_plot.copy()
-        df_z["Zone"] = pd.cut(df_z["watts"], bins=bins, labels=labels, right=False)
-        pcts = (df_z["Zone"].value_counts().sort_index() / len(df_z) * 100).round(1)
-        fig_z = px.bar(
-            x=pcts.values,
-            y=labels,
-            orientation="h",
-            text=pcts.apply(lambda x: f"{x}%"),
-            color=labels,
-            color_discrete_sequence=colors,
-        )
-        fig_z.update_layout(template="plotly_dark", showlegend=False)
-        st.plotly_chart(apply_chart_style(fig_z), use_container_width=True)
+    fig_z = _build_zones_chart(df_plot, cp_input)
+    if fig_z is not None:
+        st.plotly_chart(fig_z, use_container_width=True)
 
         st.info("""
         **💡 Interpretacja Treningowa:**
@@ -195,16 +279,13 @@ def render_power_tab(
             * **Typowy Czas:** Z5: 3-8 min. Z6: < 2 min.
             """)
 
-    # Calculate PDC if power data exists
-    pdc = {}
-    if "watts" in df_plot.columns:
-        pdc = calculate_power_duration_curve(df_plot)
-
-    # Get MMP values
-    mmp_5s = pdc.get(5)
-    mmp_1min = pdc.get(60)
-    mmp_5min = pdc.get(300)
-    mmp_20min = pdc.get(1200)
+    # Calculate PDC and metrics using cached function
+    metrics = _calculate_power_metrics(df_plot, cp_input, w_prime_input, rider_weight)
+    pdc = metrics["pdc"]
+    mmp_5s = metrics["mmp_5s"]
+    mmp_1min = metrics["mmp_1min"]
+    mmp_5min = metrics["mmp_5min"]
+    mmp_20min = metrics["mmp_20min"]
 
     # ===== KEY METRICS + TTE (NEW) =====
     st.subheader("📈 Kluczowe Metryki & Time to Exhaustion")
@@ -336,33 +417,8 @@ def render_power_tab(
         with col_fri2:
             st.info(f"**Interpretacja:** {fri_interpretation}")
 
-        # FRI gauge
-        fig_fri = go.Figure(
-            go.Indicator(
-                mode="gauge+number",
-                value=fri,
-                domain={"x": [0, 1], "y": [0, 1]},
-                gauge={
-                    "axis": {"range": [0.6, 1.0], "tickwidth": 1},
-                    "bar": {"color": "#FFD700"},
-                    "steps": [
-                        {"range": [0.6, 0.75], "color": "#FF4500"},
-                        {"range": [0.75, 0.85], "color": "#FFA500"},
-                        {"range": [0.85, 0.92], "color": "#32CD32"},
-                        {"range": [0.92, 1.0], "color": "#00CED1"},
-                    ],
-                    "threshold": {
-                        "line": {"color": "white", "width": 2},
-                        "thickness": 0.75,
-                        "value": fri,
-                    },
-                },
-                title={"text": "Fatigue Resistance"},
-            )
-        )
-        fig_fri.update_layout(
-            template="plotly_dark", height=250, margin=dict(l=30, r=30, t=50, b=10)
-        )
+        # FRI gauge - use cached version
+        fig_fri = _build_fri_gauge(fri)
         st.plotly_chart(fig_fri, use_container_width=True)
     else:
         st.warning("Potrzeba danych ≥5 minut i ≥20 minut dla obliczenia FRI.")

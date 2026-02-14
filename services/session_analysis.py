@@ -1,8 +1,8 @@
 """
-Session Analysis Service
+Session Analysis Service - Optimized
 
 Handles all session-level metrics calculations including:
-- Header metrics (NP, IF, TSS)
+- Header metrics (NP, IF, TSS) with caching
 - Extended metrics (VO2max estimation, carbs, pulse power, etc.)
 - SmO2 smoothing
 - DataFrame resampling
@@ -10,7 +10,9 @@ Handles all session-level metrics calculations including:
 
 import pandas as pd
 import numpy as np
-from typing import Tuple, Dict, Any
+from typing import Tuple, Dict, Any, Optional
+from dataclasses import dataclass
+from functools import lru_cache
 from modules.config import Config
 
 # ============================================================
@@ -24,6 +26,22 @@ RESAMPLE_STEP = Config.RESAMPLE_STEP
 MIN_WATTS_ACTIVE = Config.MIN_WATTS_ACTIVE
 MIN_HR_ACTIVE = Config.MIN_HR_ACTIVE
 MIN_RECORDS_FOR_ROLLING = Config.MIN_RECORDS_FOR_ROLLING
+
+
+@dataclass(frozen=True)
+class HeaderMetrics:
+    """Immutable container for header metrics."""
+    np: float
+    intensity_factor: float
+    tss: float
+
+
+@lru_cache(maxsize=128)
+def _cached_np_calculation(watts_tuple: tuple, window: int) -> float:
+    """Cached NP calculation for repeated calls."""
+    watts = np.array(watts_tuple)
+    rolling = pd.Series(watts).rolling(window=window, min_periods=1).mean()
+    return float(np.power(np.mean(np.power(rolling, 4)), 0.25))
 
 
 def calculate_header_metrics(df: pd.DataFrame, cp: float) -> Tuple[float, float, float]:
@@ -148,20 +166,43 @@ def _calculate_average_pulse_power(df: pd.DataFrame) -> float:
     return (watts_values[safe_mask] / hr_values[safe_mask]).mean()
 
 
-def apply_smo2_smoothing(df: pd.DataFrame) -> pd.DataFrame:
+def calculate_header_metrics_cached(df: pd.DataFrame, cp: float) -> Tuple[float, float, float]:
+    """Cached version of header metrics calculation."""
+    if "watts" not in df.columns:
+        return 0.0, 0.0, 0.0
+    
+    # Convert to tuple for caching
+    watts_tuple = tuple(df["watts"].values)
+    np_val = _cached_np_calculation(watts_tuple, Config.ROLLING_WINDOW_30S)
+    
+    if cp <= 0:
+        return np_val, 0.0, 0.0
+    
+    if_val = np_val / cp
+    duration_sec = len(df)
+    tss_val = (duration_sec * np_val * if_val) / (cp * 3600) * 100
+    
+    return np_val, float(if_val), float(tss_val)
+
+
+def apply_smo2_smoothing(df: pd.DataFrame, inplace: bool = False) -> pd.DataFrame:
     """Apply smoothing to SmO2 data if present.
 
     Args:
         df: DataFrame with optional 'smo2' column
+        inplace: If True, modify original DataFrame (default: False - return copy)
 
     Returns:
         DataFrame with 'smo2_smooth_ultra' column added if smo2 exists
     """
-    if "smo2" in df.columns:
-        df["smo2_smooth_ultra"] = (
-            df["smo2"].rolling(window=Config.ROLLING_WINDOW_60S, center=True, min_periods=1).mean()
-        )
-    return df
+    if "smo2" not in df.columns:
+        return df if inplace else df.copy()
+    
+    result = df if inplace else df.copy()
+    result["smo2_smooth_ultra"] = (
+        df["smo2"].rolling(window=Config.ROLLING_WINDOW_60S, center=True, min_periods=1).mean()
+    )
+    return result
 
 
 def resample_dataframe(df: pd.DataFrame) -> pd.DataFrame:

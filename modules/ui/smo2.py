@@ -1,3 +1,6 @@
+"""
+SmO2 tab — muscle-oxygenation time series, kinetics, and state timeline.
+"""
 import streamlit as st
 import plotly.graph_objects as go
 import pandas as pd

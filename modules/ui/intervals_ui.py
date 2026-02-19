@@ -1,3 +1,6 @@
+"""
+Intervals tab — automatic interval detection, lap splits, and W/kg breakdown.
+"""
 import streamlit as st
 import plotly.graph_objects as go
 import pandas as pd

@@ -1,3 +1,6 @@
+"""
+KPI Summary tab — headline metrics: VO₂max estimate, TSS, IF, and W/kg zones.
+"""
 import streamlit as st
 import plotly.graph_objects as go
 from modules.config import Config

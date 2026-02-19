@@ -1,3 +1,7 @@
+"""
+Ventilatory Thresholds tab — VT1/VT2 detection via V-slope and step-test methods.
+"""
+import logging
 import streamlit as st
 import plotly.graph_objects as go
 import pandas as pd
@@ -7,6 +11,8 @@ from modules.calculations.pipeline import run_ramp_test_pipeline
 from modules.reporting.persistence import save_ramp_test_report
 from modules.manual_overrides import get_manual_overrides, to_dict
 from models.results import ValidityLevel
+
+logger = logging.getLogger(__name__)
 
 
 def render_vent_thresholds_tab(
@@ -148,7 +154,7 @@ def render_vent_thresholds_tab(
 
         except Exception as e:
             st.error(f"Błąd analizy pipeline: {e}")
-            print(f"Pipeline failed: {e}")
+            logger.error("Pipeline failed: %s", e)
 
     # ========== GENERUJ RAPORT BUTTON ==========
     st.markdown("---")
@@ -251,7 +257,7 @@ def render_vent_thresholds_tab(
 
                 except Exception as e:
                     st.error(f"❌ Błąd generowania raportu: {e}")
-                    print(f"Report generation failed: {e}")
+                    logger.warning("Report generation failed: %s", e)
     else:
         st.warning(
             "⚠️ Brak danych do wygenerowania raportu. Najpierw wgraj plik i poczekaj na analizę."

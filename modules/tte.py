@@ -5,6 +5,7 @@ Computes the maximum continuous duration an athlete can sustain
 a target power percentage (e.g., 100% FTP ±5%).
 """
 
+import logging
 from typing import Dict, List, Optional, Tuple, Callable
 import json
 import numpy as np
@@ -15,6 +16,8 @@ from dataclasses import dataclass
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 from modules.config import Config
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -209,7 +212,7 @@ def get_tte_history_from_db(days: int = 90, target_pct: float = 100.0) -> List[D
                         }
                     )
     except Exception as e:
-        print(f"Error fetching TTE history: {e}")
+        logger.error("Error fetching TTE history: %s", e)
 
     return history
 
@@ -254,7 +257,7 @@ def save_tte_to_db(filename: str, session_date: str, target_pct: float, tte_seco
             conn.commit()
             return True
     except Exception as e:
-        print(f"Error saving TTE to db: {e}")
+        logger.error("Error saving TTE to db: %s", e)
         return False
 
 
@@ -373,7 +376,7 @@ def batch_compute_tte_for_all_sessions(
                     conn.commit()
 
     except Exception as e:
-        print(f"Parallel TTE error: {e}")
+        logger.error("Parallel TTE error: %s", e)
 
     return success_count, fail_count
 

@@ -1,3 +1,6 @@
+"""
+SmO2 Thresholds tab — Moxy ramp-test pipeline: T1 / T2_onset detection and zones.
+"""
 import streamlit as st
 import plotly.graph_objects as go
 import pandas as pd

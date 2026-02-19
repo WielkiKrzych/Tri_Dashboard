@@ -1,3 +1,6 @@
+"""
+SmO2 Manual Thresholds tab — step-test SmO2 threshold entry and slope analysis.
+"""
 import streamlit as st
 import plotly.graph_objects as go
 import pandas as pd

@@ -2,6 +2,10 @@ import streamlit as st
 from io import BytesIO
 import os
 import logging
+import hashlib
+from typing import Optional, Tuple, Any
+
+import pandas as pd
 
 # --- FRONTEND IMPORTS ---
 from modules.frontend.theme import ThemeManager
@@ -9,23 +13,105 @@ from modules.frontend.state import StateManager
 from modules.frontend.layout import AppLayout
 from modules.frontend.components import UIComponents
 
-logger = logging.getLogger(__name__)
-
 # --- MODULE IMPORTS ---
 from modules.utils import load_data
 from modules.ml_logic import MLX_AVAILABLE, predict_only, MODEL_FILE
 from modules.notes import TrainingNotes
 from modules.reports import generate_docx_report, export_all_charts_as_png
-from modules.reporting.pdf.summary_pdf import generate_summary_pdf
-from modules.reporting.summary_export import generate_summary_charts_zip, CHART_SIZES
 from modules.db import SessionStore, SessionRecord
 from modules.reporting.persistence import check_git_tracking
+from modules.reporting.csv_export import export_session_csv, export_metrics_csv
+
+# --- DOMAIN IMPORTS ---
+from modules.domain import SessionType, classify_session_type, classify_ramp_test
 
 # --- SERVICES IMPORTS ---
 from services import calculate_header_metrics, prepare_session_record, prepare_sticky_header_data
+from services.session_orchestrator import process_uploaded_session
 
 
-# --- TAB REGISTRY (OCP) ---
+logger = logging.getLogger(__name__)
+
+
+# =============================================================================
+# UTILITY FUNCTIONS
+# =============================================================================
+
+def compute_file_hash(file) -> str:
+    """
+    Compute stable hash for file cache key.
+    
+    Uses MD5 for speed (not cryptographic security needed).
+    More stable than built-in hash() which can vary between runs.
+    """
+    return hashlib.md5(f"{file.name}:{file.size}".encode()).hexdigest()[:16]
+
+
+def classify_and_cache_session(df_raw: pd.DataFrame, file_hash: str, uploaded_file):
+    """Classify session type with caching in session_state."""
+    cached_hash = st.session_state.get("current_file_hash")
+    
+    if cached_hash == file_hash:
+        # Cache hit - use stored values
+        return (
+            st.session_state.get("session_type"),
+            st.session_state.get("ramp_classification")
+        )
+    
+    # Cache miss - classify new file
+    session_type = classify_session_type(df_raw, uploaded_file.name)
+    st.session_state["session_type"] = session_type
+    
+    ramp_classification = None
+    if "watts" in df_raw.columns or "power" in df_raw.columns:
+        power_col = "watts" if "watts" in df_raw.columns else "power"
+        power = df_raw[power_col].dropna()
+        if len(power) >= 300:
+            ramp_classification = classify_ramp_test(power)
+            st.session_state["ramp_classification"] = ramp_classification
+    
+    st.session_state["current_file_hash"] = file_hash
+    return session_type, ramp_classification
+
+
+def render_session_badge(session_type, ramp_classification) -> None:
+    """Render session type badge with confidence indicator."""
+    if not session_type:
+        return
+    
+    # Determine badge styling based on session type
+    if session_type == SessionType.RAMP_TEST and ramp_classification:
+        confidence = ramp_classification.confidence
+        bg_color = "rgba(46, 204, 113, 0.2)"
+        msg = f"Rozpoznano: <b>Ramp Test</b> (confidence: {confidence:.2f})"
+    elif session_type == SessionType.RAMP_TEST_CONDITIONAL and ramp_classification:
+        confidence = ramp_classification.confidence
+        bg_color = "rgba(241, 196, 15, 0.2)"
+        msg = f"Rozpoznano: <b>Ramp Test (warunkowo)</b> (confidence: {confidence:.2f})"
+    elif session_type == SessionType.TRAINING:
+        bg_color = "rgba(52, 152, 219, 0.2)"
+        if ramp_classification and not ramp_classification.is_ramp:
+            msg = f"Sesja treningowa – analiza badawcza pominięta"
+        else:
+            msg = f"Rozpoznano: <b>Sesja treningowa</b>"
+    else:
+        bg_color = "rgba(149, 165, 166, 0.2)"
+        msg = f"Typ sesji: <b>{session_type}</b>"
+
+    st.markdown(
+        f"""
+        <div style="background: linear-gradient(90deg, {bg_color}, transparent); 
+                    padding: 10px 15px; border-radius: 8px; margin-bottom: 10px; display: inline-block;">
+            <span style="font-size: 1.1em;">{session_type.emoji} {msg}</span>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+# =============================================================================
+# TAB REGISTRY (OCP)
+# =============================================================================
 class TabRegistry:
     """Registry for UI tabs to support Open/Closed Principle."""
 
@@ -65,6 +151,7 @@ class TabRegistry:
     def render(cls, tab_name, *args, **kwargs):
         """Dynamic dispatcher for tab rendering (Lazy loading)."""
         if tab_name not in cls._tabs:
+            logger.error("Unknown tab requested: %s", tab_name)
             st.error(f"Unknown tab: {tab_name}")
             return
 
@@ -76,6 +163,7 @@ class TabRegistry:
             func = getattr(module, func_name)
             return func(*args, **kwargs)
         except Exception as e:
+            logger.error("Tab load error [%s]: %s", tab_name, e, exc_info=True)
             st.error(f"Error loading tab {tab_name}: {e}")
 
 
@@ -98,21 +186,22 @@ check_git_tracking("treningi_csv")
 layout = AppLayout(state)
 uploaded_file, params = layout.render_sidebar()
 
-# Parameters shorthand
-rider_weight = params.get("rider_weight", 75.0)
-cp_input = params.get("cp", 280)
-vt1_watts = params.get("vt1_watts", 0)
-vt2_watts = params.get("vt2_watts", 0)
-vt1_vent = params.get("vt1_vent", 0)
-vt2_vent = params.get("vt2_vent", 0)
-w_prime_input = params.get("w_prime", 20000)
-rider_age = params.get("rider_age", 30)
+# Parameters shorthand with validation
+rider_weight = max(0.1, params.get("rider_weight", 75.0))
+cp_input = max(1, params.get("cp", 280))
+vt1_watts = max(0, params.get("vt1_watts", 0))
+vt2_watts = max(0, params.get("vt2_watts", 0))
+vt1_vent = max(0, params.get("vt1_vent", 0))
+vt2_vent = max(0, params.get("vt2_vent", 0))
+w_prime_input = max(0, params.get("w_prime", 20000))
+rider_age = max(1, min(120, params.get("rider_age", 30)))
 is_male = params.get("is_male", True)
 
 layout.render_header()
 
 
 if rider_weight <= 0 or cp_input <= 0:
+    logger.warning("Invalid params: weight=%.1f, cp=%d", rider_weight, cp_input)
     st.error("Błąd: Waga i CP muszą być większe od zera.")
     st.stop()
 
@@ -124,40 +213,20 @@ if uploaded_file is not None:
         try:
             df_raw = load_data(uploaded_file)
 
-            # --- SESSION TYPE CLASSIFICATION (MUST run first) ---
-            from modules.domain import SessionType, classify_session_type, classify_ramp_test
+            # Session classification with caching
+            current_file_hash = compute_file_hash(uploaded_file)
+            session_type, ramp_classification = classify_and_cache_session(
+                df_raw, current_file_hash, uploaded_file
+            )
 
-            # Check if we already processed this file
-            current_file_hash = hash(uploaded_file.name + str(uploaded_file.size))
-            cached_hash = st.session_state.get("current_file_hash")
-            
-            if cached_hash != current_file_hash:
-                # New file - process and cache
-                session_type = classify_session_type(df_raw, uploaded_file.name)
-                st.session_state["session_type"] = session_type
-                st.session_state["current_file_hash"] = current_file_hash
-                
-                # Store detailed ramp classification for gating decisions
-                ramp_classification = None
-                if "watts" in df_raw.columns or "power" in df_raw.columns:
-                    power_col = "watts" if "watts" in df_raw.columns else "power"
-                    power = df_raw[power_col].dropna()
-                    if len(power) >= 300:
-                        ramp_classification = classify_ramp_test(power)
-                        st.session_state["ramp_classification"] = ramp_classification
-            else:
-                # Use cached values
-                session_type = st.session_state.get("session_type")
-                ramp_classification = st.session_state.get("ramp_classification")
-
-            # --- PROCESSING PIPELINE (SRP/DIP) ---
-            from services.session_orchestrator import process_uploaded_session
+            # Processing pipeline
 
             df_plot, df_plot_resampled, metrics, error_msg = process_uploaded_session(
                 df_raw, cp_input, w_prime_input, rider_weight, vt1_watts, vt2_watts
             )
 
             if error_msg:
+                logger.error("Session processing failed: %s", error_msg)
                 st.error(f"Błąd analizy: {error_msg}")
                 st.stop()
 
@@ -178,6 +247,7 @@ if uploaded_file is not None:
                     logger.warning(f"AI prediction failed: {e}")
 
         except Exception as e:
+            logger.error("File load error: %s", e, exc_info=True)
             st.error(f"Błąd wczytywania pliku: {e}")
             st.stop()
 
@@ -209,36 +279,7 @@ if uploaded_file is not None:
     ramp_classification = st.session_state.get("ramp_classification")
 
     if session_type:
-        from modules.domain import SessionType
-
-        # Build display message based on session type
-        if session_type == SessionType.RAMP_TEST and ramp_classification:
-            confidence = ramp_classification.confidence
-            bg_color = "rgba(46, 204, 113, 0.2)"
-            msg = f"Rozpoznano: <b>Ramp Test</b> (confidence: {confidence:.2f})"
-        elif session_type == SessionType.RAMP_TEST_CONDITIONAL and ramp_classification:
-            confidence = ramp_classification.confidence
-            bg_color = "rgba(241, 196, 15, 0.2)"
-            msg = f"Rozpoznano: <b>Ramp Test (warunkowo)</b> (confidence: {confidence:.2f})"
-        elif session_type == SessionType.TRAINING:
-            bg_color = "rgba(52, 152, 219, 0.2)"
-            if ramp_classification and not ramp_classification.is_ramp:
-                msg = f"Sesja treningowa – analiza badawcza pominięta"
-            else:
-                msg = f"Rozpoznano: <b>Sesja treningowa</b>"
-        else:
-            bg_color = "rgba(149, 165, 166, 0.2)"
-            msg = f"Typ sesji: <b>{session_type}</b>"
-
-        st.markdown(
-            f"""
-        <div style="background: linear-gradient(90deg, {bg_color}, transparent); 
-                    padding: 10px 15px; border-radius: 8px; margin-bottom: 10px; display: inline-block;">
-            <span style="font-size: 1.1em;">{session_type.emoji} {msg}</span>
-        </div>
-        """,
-            unsafe_allow_html=True,
-        )
+        render_session_badge(session_type, ramp_classification)
 
     # Layout Tabs
     tab_overview, tab_performance, tab_intelligence, tab_physiology = st.tabs(
@@ -431,6 +472,32 @@ if uploaded_file is not None:
         except Exception as e:
             logger.warning(f"PNG export failed: {e}")
 
+    # CSV Export
+    st.sidebar.markdown("---")
+    st.sidebar.header("📊 Export CSV")
+    c3, c4 = st.sidebar.columns(2)
+    with c3:
+        try:
+            csv_session = export_session_csv(df_plot)
+            st.sidebar.download_button(
+                "📥 Dane",
+                csv_session,
+                f"{uploaded_file.name}_dane.csv",
+                mime="text/csv",
+            )
+        except Exception as e:
+            logger.warning("CSV session export failed: %s", e)
+    with c4:
+        try:
+            csv_metrics = export_metrics_csv(metrics)
+            st.sidebar.download_button(
+                "📥 Metryki",
+                csv_metrics,
+                f"{uploaded_file.name}_metryki.csv",
+                mime="text/csv",
+            )
+        except Exception as e:
+            logger.warning("CSV metrics export failed: %s", e)
 
 
 else:

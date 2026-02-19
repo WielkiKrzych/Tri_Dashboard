@@ -3,6 +3,7 @@ Header UI Module.
 
 Extracts sticky header and metric cards from app.py.
 """
+import html
 import streamlit as st
 import pandas as pd
 from typing import Dict, Any
@@ -97,19 +98,21 @@ def show_breadcrumb(group: str, section: str = None) -> None:
         group: Current tab group name
         section: Current sub-section name (optional)
     """
+    safe_group = html.escape(group)
     if section:
+        safe_section = html.escape(section)
         st.markdown(f'''
         <div class="breadcrumb-nav">
-            🏠 Dashboard <span class="separator">›</span> 
-            {group} <span class="separator">›</span> 
-            <span class="current">{section}</span>
+            🏠 Dashboard <span class="separator">›</span>
+            {safe_group} <span class="separator">›</span>
+            <span class="current">{safe_section}</span>
         </div>
         ''', unsafe_allow_html=True)
     else:
         st.markdown(f'''
         <div class="breadcrumb-nav">
-            🏠 Dashboard <span class="separator">›</span> 
-            <span class="current">{group}</span>
+            🏠 Dashboard <span class="separator">›</span>
+            <span class="current">{safe_group}</span>
         </div>
         ''', unsafe_allow_html=True)
 
@@ -131,7 +134,7 @@ def extract_header_data(df: pd.DataFrame, metrics: Dict[str, Any]) -> Dict[str, 
     return {
         'avg_power': metrics.get('avg_watts', 0),
         'avg_hr': metrics.get('avg_hr', 0),
-        'avg_smo2': df['smo2'].mean() if 'smo2' in df.columns else 0,
+        'avg_smo2': df['smo2'].mean() if ('smo2' in df.columns and len(df) > 0) else 0,
         'avg_cadence': metrics.get('avg_cadence', 0),
         'avg_ve': metrics.get('avg_vent', 0),
         'duration_min': len(df) / 60 if len(df) > 0 else 0

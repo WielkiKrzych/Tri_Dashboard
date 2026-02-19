@@ -1,3 +1,6 @@
+"""
+HRV Analysis tab — DFA-α1, RMSSD, and readiness scoring.
+"""
 import streamlit as st
 import plotly.graph_objects as go
 import numpy as np

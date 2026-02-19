@@ -1,3 +1,6 @@
+"""
+Manual Thresholds tab — step-test VT1/VT2 detection and editable threshold entry.
+"""
 import streamlit as st
 import plotly.graph_objects as go
 import pandas as pd

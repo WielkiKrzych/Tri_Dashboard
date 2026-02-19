@@ -3,6 +3,7 @@ History Import UI.
 
 UI for importing historical training files from 'treningi_csv' folder.
 """
+import html
 import streamlit as st
 
 from modules.history_import import (
@@ -96,10 +97,11 @@ def render_history_import_tab(cp: float = 280):
             # Show details
             with st.expander("Szczegóły importu"):
                 for msg in messages:
+                    safe_msg = html.escape(msg)
                     if msg.startswith("✅"):
-                        st.markdown(f"<span style='color: green'>{msg}</span>", unsafe_allow_html=True)
+                        st.markdown(f"<span style='color: green'>{safe_msg}</span>", unsafe_allow_html=True)
                     else:
-                        st.markdown(f"<span style='color: red'>{msg}</span>", unsafe_allow_html=True)
+                        st.markdown(f"<span style='color: red'>{safe_msg}</span>", unsafe_allow_html=True)
             
             # Refresh count
             new_count = store.get_session_count()

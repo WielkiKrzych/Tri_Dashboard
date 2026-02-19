@@ -9,13 +9,13 @@ Implements checks for:
 
 import pandas as pd
 import numpy as np
-from typing import Dict, Tuple
+from typing import Any, Dict, Tuple
 from scipy import stats
 
 
 def check_signal_quality(
     series: pd.Series, metric_name: str = "Metric", valid_range: Tuple[float, float] = (0, 1000)
-) -> Dict[str, any]:
+) -> Dict[str, Any]:
     """
     Check the quality of a single time-series signal.
 
@@ -79,7 +79,7 @@ def check_signal_quality(
     return {"score": round(score, 2), "is_valid": score > 0.5, "issues": issues}
 
 
-def check_step_test_protocol(df: pd.DataFrame, min_step_duration_sec: int = 120) -> Dict[str, any]:
+def check_step_test_protocol(df: pd.DataFrame, min_step_duration_sec: int = 120) -> Dict[str, Any]:
     """
     Check if the session looks like a valid Step Test (Staircase or Ramp).
     Reliable VT detection requires a monotonic increase in load.
@@ -162,7 +162,7 @@ def check_step_test_protocol(df: pd.DataFrame, min_step_duration_sec: int = 120)
     }
 
 
-def check_data_suitability(df: pd.DataFrame) -> Dict[str, any]:
+def check_data_suitability(df: pd.DataFrame) -> Dict[str, Any]:
     """General check for data sufficiency."""
     issues = []
     if len(df) < 300:  # < 5 mins

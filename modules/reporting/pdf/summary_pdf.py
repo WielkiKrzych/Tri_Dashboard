@@ -1,3 +1,4 @@
+import logging
 """
 Summary Page PDF Generator.
 
@@ -33,6 +34,8 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
+
+logger = logging.getLogger(__name__)
 
 
 def generate_summary_pdf(
@@ -468,7 +471,7 @@ def _create_training_chart_matplotlib(df_plot: pd.DataFrame) -> Optional[bytes]:
 
         return buf.getvalue()
     except Exception as e:
-        print(f"Error creating training chart: {e}")
+        logger.error("Error creating training chart: %s", e)
         return None
 
 
@@ -506,7 +509,7 @@ def _create_ve_br_chart_matplotlib(df_plot: pd.DataFrame) -> Optional[bytes]:
 
         return buf.getvalue()
     except Exception as e:
-        print(f"Error creating VE/BR chart: {e}")
+        logger.error("Error creating VE/BR chart: %s", e)
         return None
 
 
@@ -544,7 +547,7 @@ def _create_smo2_thb_chart_matplotlib(df_plot: pd.DataFrame) -> Optional[bytes]:
 
         return buf.getvalue()
     except Exception as e:
-        print(f"Error creating SmO2/THb chart: {e}")
+        logger.error("Error creating SmO2/THb chart: %s", e)
         return None
 
 
@@ -599,5 +602,5 @@ def _create_vo2max_chart_matplotlib(
 
         return buf.getvalue()
     except Exception as e:
-        print(f"Error creating VO2max chart: {e}")
+        logger.error("Error creating VO2max chart: %s", e)
         return None

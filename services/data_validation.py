@@ -56,10 +56,15 @@ def validate_dataframe(df: pd.DataFrame) -> Tuple[bool, str]:
         if df["time"].isnull().all():
             return False, "Kolumna 'time' zawiera same wartości puste (NaN)."
 
-        # Check for monotonicity (allowing for small resets/gaps if needed, but strictly it should be increasing usually)
-        # Note: Some trainers reset time. But usually we want monotonic.
-        # Let's just check if it's completely scrambled or garbage
-        pass
+        # Check for monotonicity — time must be non-decreasing
+        if not df["time"].is_monotonic_increasing:
+            n_violations = (df["time"].diff() < 0).sum()
+            if n_violations > len(df) * 0.05:
+                return (
+                    False,
+                    f"Kolumna 'time' nie jest monotonicznie rosnąca "
+                    f"({n_violations} naruszeń). Sprawdź poprawność pliku.",
+                )
 
     # Type Validation - Convert or reject non-numeric data
     validation_failures = []

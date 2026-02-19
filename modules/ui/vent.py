@@ -1,3 +1,6 @@
+"""
+Ventilation tab — VE time series, VE/VCO2 slope, and signal-quality checks.
+"""
 import streamlit as st
 import plotly.graph_objects as go
 import pandas as pd

@@ -1,3 +1,9 @@
+"""
+Shared Plotly chart helpers.
+
+Applies consistent dark-theme styling and common layout settings
+to all charts rendered across the dashboard.
+"""
 import plotly.graph_objects as go
 
 def apply_chart_style(fig, title=None):

@@ -7,10 +7,13 @@ Fetches weather data and calculates TSS corrections based on:
 - Altitude
 - Wind
 """
+import logging
 from dataclasses import dataclass
 from typing import Optional, Tuple
 from datetime import datetime
 import os
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -78,6 +81,8 @@ class EnvironmentService:
             api_key: OpenWeatherMap API key
         """
         self.api_key = api_key or os.environ.get('OPENWEATHER_API_KEY')
+        if not self.api_key:
+            logger.warning("OPENWEATHER_API_KEY not set – weather features will use mock data.")
     
     def get_conditions(
         self,
@@ -127,7 +132,7 @@ class EnvironmentService:
             )
             
         except Exception as e:
-            print(f"Weather API error: {e}")
+            logger.warning("Weather API error: %s", e)
             return None
     
     def _get_mock_data(self, lat: float, lon: float) -> WeatherData:

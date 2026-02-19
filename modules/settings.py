@@ -1,3 +1,6 @@
+"""
+User settings — JSON-backed persistence for dashboard preferences.
+"""
 import streamlit as st
 
 SETTINGS_FILE = 'user_settings.json'

@@ -1,3 +1,6 @@
+"""
+Training notes — JSON persistence for per-session text annotations.
+"""
 from pathlib import Path
 import json
 from datetime import datetime

@@ -1,3 +1,6 @@
+"""
+Limiters tab — identifies the primary performance limiter (central vs local vs metabolic).
+"""
 import streamlit as st
 import plotly.graph_objects as go
 import pandas as pd

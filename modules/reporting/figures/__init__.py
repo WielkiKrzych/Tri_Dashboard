@@ -2,8 +2,11 @@
 Static Figure Generator for Ramp Test PDF Reports.
 Orchestrates figure generation for various chart types.
 """
+import logging
 from pathlib import Path
 from typing import Dict, Any, Optional
+
+logger = logging.getLogger(__name__)
 
 from .common import DPI, get_color, save_figure
 from .ramp_profile import generate_ramp_profile_chart
@@ -67,12 +70,10 @@ def generate_all_ramp_figures(
             else:
                 fn(report_data, config, str(fpath))
             paths[name] = str(fpath)
-            print(f"[Figures] ✔ Generated: {name}")
+            logger.debug("[Figures] Generated: %s", name)
         except Exception as e:
-            import logging
-            logging.getLogger("figures").error(f"Failed to generate {name}: {e}")
             failed_charts.append(f"{name}: {e}")
-            print(f"[Figures] ✗ FAILED: {name} - {e}")
+            logger.error("[Figures] FAILED: %s - %s", name, e)
 
     # 1. Core
     add_fig("ramp_profile", generate_ramp_profile_chart)
@@ -104,9 +105,9 @@ def generate_all_ramp_figures(
     add_fig("vent_full", generate_full_vent_chart)
     
     # Summary log
-    print(f"[Figures] Summary: {len(paths)} generated, {len(failed_charts)} failed")
+    logger.info("[Figures] Summary: %s generated, %s failed", len(paths), len(failed_charts))
     if failed_charts:
-        print(f"[Figures] Failed charts: {failed_charts}")
+        logger.warning("[Figures] Failed charts: %s", failed_charts)
     
     return paths
 

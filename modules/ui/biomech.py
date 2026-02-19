@@ -1,3 +1,6 @@
+"""
+Biomechanical Stress tab — cadence, torque, and neuro-muscular load.
+"""
 import streamlit as st
 import plotly.graph_objects as go
 

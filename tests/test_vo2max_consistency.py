@@ -45,8 +45,6 @@ class TestVO2maxConsistency:
         assert vo2max_ui > 0, "VO2max should be positive"
         assert 40 < vo2max_ui < 90, f"VO2max {vo2max_ui} should be in reasonable range"
 
-        return vo2max_ui, mmp_5min_ui
-
     def test_canonical_vo2max_calculation(self, sample_power_data):
         """Test that canonical physiology uses the same value as UI."""
         from modules.calculations.metrics import calculate_vo2max
@@ -87,8 +85,6 @@ class TestVO2maxConsistency:
         assert abs(canonical.vo2max.value - vo2max_metrics) < 0.01, (
             f"Canonical {canonical.vo2max.value} should match metrics {vo2max_metrics}"
         )
-
-        return canonical.vo2max.value
 
     def test_ui_pdf_vo2max_identical(self, sample_power_data):
         """GOLD TEST: UI and PDF must show identical VO2max."""

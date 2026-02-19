@@ -2,12 +2,15 @@
 SRP: Moduł odpowiedzialny za analizę HRV i DFA Alpha-1.
 """
 
+import logging
 from typing import Optional, Tuple, List
 import numpy as np
 import pandas as pd
 from numba import jit
 
 from .common import ensure_pandas
+
+logger = logging.getLogger(__name__)
 
 
 @jit(nopython=True)
@@ -257,10 +260,10 @@ def calculate_dynamic_dfa_v2(
     # Check cache first
     cache_key = _generate_cache_key(df_pl, window_sec, step_sec, min_samples_hrv, alpha1_clip_range)
     if cache_key in dfa_cache:
-        print(f"[DEBUG] Using cached DFA results for key: {cache_key[:16]}...")
+        logger.debug("Using cached DFA results for key: %s...", cache_key[:16])
         return dfa_cache[cache_key]
 
-    print(f"[DEBUG] Executing calculate_dynamic_dfa_v2 logic...")
+    logger.debug("Executing calculate_dynamic_dfa_v2 logic...")
     df = ensure_pandas(df_pl)
 
     # Robust column detection (case-insensitive)

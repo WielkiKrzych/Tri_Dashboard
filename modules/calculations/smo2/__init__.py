@@ -1,3 +1,4 @@
+import logging
 """
 SmO2 Module - Refactored
 
@@ -7,7 +8,7 @@ Usage:
     from modules.calculations.smo2 import analyze_smo2_advanced
     
     metrics = analyze_smo2_advanced(df, smo2_col="smo2", power_col="watts")
-    print(metrics.limiter_type)  # 'local', 'central', 'metabolic', 'unknown'
+    logger.debug("SmO2 limiter type: %s", metrics.limiter_type)
 """
 
 from .types import SmO2AdvancedMetrics, SmO2ThresholdResult
@@ -17,6 +18,8 @@ from .classifier import SmO2LimiterClassifier
 
 # Backwards compatibility imports
 from ..smo2_advanced import detect_smo2_thresholds_moxy
+
+logger = logging.getLogger(__name__)
 
 __all__ = [
     "SmO2AdvancedMetrics",

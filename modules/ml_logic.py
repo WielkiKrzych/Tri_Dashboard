@@ -1,3 +1,10 @@
+"""
+Machine-learning inference layer (MLX / CoreML).
+
+Loads the trained performance-prediction model and exposes
+predict_only() for inference.  Falls back gracefully when MLX
+is unavailable.
+"""
 import os
 import json
 import time

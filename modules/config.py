@@ -1,3 +1,6 @@
+"""
+Application configuration — loads environment variables and exposes a Config object.
+"""
 import os
 from pathlib import Path
 from dotenv import load_dotenv

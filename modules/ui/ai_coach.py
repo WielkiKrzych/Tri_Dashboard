@@ -1,3 +1,10 @@
+"""
+AI Coach tab — GPT-powered personalised training feedback.
+
+Renders training load analysis, recovery status, and AI-generated
+coaching recommendations based on session metrics.
+"""
+import logging
 import streamlit as st
 import plotly.graph_objects as go
 import pandas as pd
@@ -6,6 +13,8 @@ import os
 import time
 from modules.ml_logic import MLX_AVAILABLE, train_cycling_brain, HISTORY_FILE
 from modules.ui.callbacks import StreamlitCallback
+
+logger = logging.getLogger(__name__)
 
 def render_ai_coach_tab(df_plot_resampled):
     st.header("🧠 AI Neural Coach (Powered by Apple MLX)")
@@ -56,7 +65,7 @@ def render_ai_coach_tab(df_plot_resampled):
                                     break
                                     
                 except Exception as e:
-                    print(f"Błąd odczytu historii: {e}")
+                    logger.warning("Błąd odczytu historii: %s", e)
             
             st.markdown("### Aktualna Forma")
             k1, k2 = st.columns(2)

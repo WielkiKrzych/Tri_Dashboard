@@ -1,3 +1,8 @@
+"""
+Centralized constants and thresholds for Tri_Dashboard.
+
+Avoids magic numbers spread across the codebase.
+"""
 # Constants and configuration for Tri_Dashboard
 # Centralized values to avoid magic numbers throughout the codebase
 

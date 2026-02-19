@@ -1,3 +1,6 @@
+"""
+Power Analysis tab — power distribution, MMP curve, and zone breakdown.
+"""
 import streamlit as st
 import plotly.graph_objects as go
 import plotly.express as px

@@ -39,7 +39,9 @@ dependencies = [
 dev = [
     "black",
     "ruff",
-    "mypy"
+    "mypy",
+    "pytest-cov",
+    "bandit",
 ]
 
 [tool.setuptools.packages.find]

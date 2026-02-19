@@ -1,3 +1,6 @@
+"""
+Haemodynamics tab — cardiac output, stroke volume, and SpO2 trends.
+"""
 import streamlit as st
 import plotly.graph_objects as go
 import plotly.express as px

@@ -671,7 +671,7 @@ def run_ramp_test_pipeline(
 
     # Early exit if invalid
     if validity.validity == ValidityLevel.INVALID:
-        print(f"[Pipeline] Test INVALID: {validity.issues}")
+        logger.debug("[Pipeline] Test INVALID: %s", validity.issues)
         return RampTestResult(validity=validity, overall_confidence=0.0, warnings=validity.issues)
 
     # Step 2: Preprocess signals

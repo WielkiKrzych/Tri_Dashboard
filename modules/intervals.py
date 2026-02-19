@@ -1,3 +1,8 @@
+"""
+Interval detection and classification utilities.
+
+Detects work intervals from power/HR data based on CP threshold.
+"""
 import pandas as pd
 
 def detect_intervals(df, cp, min_duration=30, min_power_pct=0.9, recovery_time_limit=30):

@@ -774,7 +774,7 @@ def build_ramp_pdf(
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
         with open(output_path, 'wb') as f:
             f.write(pdf_bytes)
-        print(f"PDF saved to: {output_path}")
+        logger.info("PDF saved to: %s", output_path)
     
     return pdf_bytes
 

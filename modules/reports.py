@@ -1,8 +1,17 @@
+"""
+Report generation — DOCX and PNG export.
+
+Builds Word documents and chart PNG zip archives from session
+metrics and plot figures.
+"""
+import logging
 from docx import Document
 from docx.shared import Pt, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 import zipfile
 from io import BytesIO
+
+logger = logging.getLogger(__name__)
 import numpy as np
 import pandas as pd
 from datetime import datetime
@@ -346,7 +355,7 @@ def export_all_charts_as_png(
                     zipf.writestr(exporter.filename, png_bytes)
             except Exception as e:
                 # Loguj błąd ale kontynuuj z innymi wykresami
-                print(f"Error exporting {exporter.filename}: {e}")
+                logger.error("Error exporting %s: %s", exporter.filename, e)
 
         # README
         readme = f"""RAPORT WYKRESÓW Z PEŁNĄ ANALIZĄ

@@ -87,9 +87,9 @@ def test_header_metrics_edge_cases():
     result = calculate_header_metrics(df_no_watts, cp=280)
     assert result == (0.0, 0.0, 0.0)
     
-    # Zero CP
-    df = pd.DataFrame({'watts': [100, 200, 300]})
+    # Zero CP — need enough rows to pass MIN_RECORDS_FOR_ROLLING (default 30)
+    df = pd.DataFrame({'watts': list(range(100, 130))})  # 30 rows
     result = calculate_header_metrics(df, cp=0)
-    assert result[0] > 0  # NP calculated
-    assert result[1] == 0.0  # IF = 0
-    assert result[2] == 0.0  # TSS = 0
+    assert result[0] > 0  # NP calculated independently of CP
+    assert result[1] == 0.0  # IF = 0 when CP is zero
+    assert result[2] == 0.0  # TSS = 0 when CP is zero

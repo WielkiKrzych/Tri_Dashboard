@@ -20,6 +20,7 @@ from modules.notes import TrainingNotes
 from modules.reports import generate_docx_report, export_all_charts_as_png
 from modules.db import SessionStore, SessionRecord
 from modules.reporting.persistence import check_git_tracking
+from modules.reporting.csv_export import export_session_csv, export_metrics_csv
 
 # --- DOMAIN IMPORTS ---
 from modules.domain import SessionType, classify_session_type, classify_ramp_test
@@ -150,6 +151,7 @@ class TabRegistry:
     def render(cls, tab_name, *args, **kwargs):
         """Dynamic dispatcher for tab rendering (Lazy loading)."""
         if tab_name not in cls._tabs:
+            logger.error("Unknown tab requested: %s", tab_name)
             st.error(f"Unknown tab: {tab_name}")
             return
 
@@ -161,6 +163,7 @@ class TabRegistry:
             func = getattr(module, func_name)
             return func(*args, **kwargs)
         except Exception as e:
+            logger.error("Tab load error [%s]: %s", tab_name, e, exc_info=True)
             st.error(f"Error loading tab {tab_name}: {e}")
 
 
@@ -198,6 +201,7 @@ layout.render_header()
 
 
 if rider_weight <= 0 or cp_input <= 0:
+    logger.warning("Invalid params: weight=%.1f, cp=%d", rider_weight, cp_input)
     st.error("Błąd: Waga i CP muszą być większe od zera.")
     st.stop()
 
@@ -222,6 +226,7 @@ if uploaded_file is not None:
             )
 
             if error_msg:
+                logger.error("Session processing failed: %s", error_msg)
                 st.error(f"Błąd analizy: {error_msg}")
                 st.stop()
 
@@ -242,6 +247,7 @@ if uploaded_file is not None:
                     logger.warning(f"AI prediction failed: {e}")
 
         except Exception as e:
+            logger.error("File load error: %s", e, exc_info=True)
             st.error(f"Błąd wczytywania pliku: {e}")
             st.stop()
 
@@ -466,6 +472,32 @@ if uploaded_file is not None:
         except Exception as e:
             logger.warning(f"PNG export failed: {e}")
 
+    # CSV Export
+    st.sidebar.markdown("---")
+    st.sidebar.header("📊 Export CSV")
+    c3, c4 = st.sidebar.columns(2)
+    with c3:
+        try:
+            csv_session = export_session_csv(df_plot)
+            st.sidebar.download_button(
+                "📥 Dane",
+                csv_session,
+                f"{uploaded_file.name}_dane.csv",
+                mime="text/csv",
+            )
+        except Exception as e:
+            logger.warning("CSV session export failed: %s", e)
+    with c4:
+        try:
+            csv_metrics = export_metrics_csv(metrics)
+            st.sidebar.download_button(
+                "📥 Metryki",
+                csv_metrics,
+                f"{uploaded_file.name}_metryki.csv",
+                mime="text/csv",
+            )
+        except Exception as e:
+            logger.warning("CSV metrics export failed: %s", e)
 
 
 else:

@@ -1,3 +1,6 @@
+"""
+Session Comparison tab — side-by-side metrics against baseline sessions.
+"""
 import streamlit as st
 import pandas as pd
 from modules.calculations.repeatability import (

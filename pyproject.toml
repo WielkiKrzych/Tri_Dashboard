@@ -69,3 +69,22 @@ testpaths = [
     "tests",
 ]
 python_files = "test_*.py"
+
+[tool.coverage.run]
+source = ["modules", "models", "services"]
+omit = [
+    "modules/ui/*",
+    "modules/reporting/pdf/*",
+    "modules/ai/*",
+    "*/__pycache__/*",
+]
+
+[tool.coverage.report]
+show_missing = true
+skip_empty = true
+fail_under = 0
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__ == .__main__.",
+    "if TYPE_CHECKING:",
+]

@@ -38,5 +38,8 @@ treningi_csv/**/*.csv
 # Safety net – any CSV in data folders
 data/**/*.csv
 
+# Build artifacts
+build/
+
 # Worktrees
 .worktrees/

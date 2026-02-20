@@ -191,8 +191,8 @@ def render_training_load_tab():
                 ])
                 
                 st.write("**Przewidywana forma:**")
-                for _, row in pred_df.iterrows():
-                    st.write(f"📅 {row['date']}: TSB = {row['tsb']:.0f} → {row['status']}")
+                for row in pred_df.itertuples(index=False, name=None):
+                    st.write(f"📅 {row[0]}: TSB = {row[1]:.0f} → {row[2]}")
     
     # Sessions history
     st.divider()

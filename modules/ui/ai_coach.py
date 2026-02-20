@@ -10,7 +10,6 @@ import plotly.graph_objects as go
 import pandas as pd
 import json
 import os
-import time
 from modules.ml_logic import MLX_AVAILABLE, train_cycling_brain, HISTORY_FILE
 from modules.ui.callbacks import StreamlitCallback
 
@@ -39,7 +38,7 @@ def render_ai_coach_tab(df_plot_resampled):
                         b_str = f"{b_val:.1f}" if b_val is not None else "N/A"
                         t_str = f"{t_val:.1f}" if t_val is not None else "N/A"
                         st.success(f"✅ Trening Zakończony! Baza: {b_str}, Próg: {t_str}")
-                        time.sleep(1)
+                        st.toast("Odświeżanie...", icon="🔄")
                         st.rerun()
                     except Exception as e:
                         st.error(f"Błąd treningu: {e}") 

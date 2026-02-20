@@ -1508,7 +1508,7 @@ def build_page_thresholds(
         if val == "brak danych": return val
         try:
             return f"{float(val):.0f}"
-        except:
+        except (ValueError, TypeError):
             return str(val)
 
     data = [
@@ -1656,7 +1656,7 @@ def build_page_smo2(smo2_data, smo2_manual, figure_paths, styles):
     def fmt(val):
         if val in ("brak danych", None, "---"): return "---"
         try: return f"{float(val):.0f}"
-        except: return str(val)
+        except (ValueError, TypeError): return str(val)
     
     elements.append(Paragraph("<b>PROGI OKSYGENACJI MIĘŚNIOWEJ</b>", styles["subheading"]))
     elements.append(Spacer(1, 2 * mm))
@@ -3940,8 +3940,8 @@ def build_page_kpi_dashboard(
             if v < 1.8: return (f"{v:.2f}", "SŁABO", "#E74C3C")
             elif v < 2.2: return (f"{v:.2f}", "OK", "#27AE60")
             else: return (f"{v:.2f}", "BARDZO DOBRZE", "#2ECC71")
-        except: return ("n/a", "BRAK", "#808080")
-    
+        except (ValueError, TypeError): return ("n/a", "BRAK", "#808080")
+
     def get_pahr_status(val):
         """Pa:Hr Decoupling status."""
         if val is None: return ("n/a", "BRAK", "#808080")
@@ -3950,8 +3950,8 @@ def build_page_kpi_dashboard(
             if v < 5: return (f"{v:.1f}%", "STABILNY", "#27AE60")
             elif v < 8: return (f"{v:.1f}%", "OSTRZEŻENIE", "#F39C12")
             else: return (f"{v:.1f}%", "RYZYKO", "#E74C3C")
-        except: return ("n/a", "BRAK", "#808080")
-    
+        except (ValueError, TypeError): return ("n/a", "BRAK", "#808080")
+
     def get_smo2_drift_status(val):
         """SmO2 Drift status."""
         if val is None: return ("n/a", "BRAK", "#808080")
@@ -3959,7 +3959,7 @@ def build_page_kpi_dashboard(
             v = float(val)
             if v < 5: return (f"{v:.1f}%", "STABILNY", "#27AE60")
             else: return (f"{v:.1f}%", "ZMĘCZENIE OBWODOWE", "#F39C12")
-        except: return ("n/a", "BRAK", "#808080")
+        except (ValueError, TypeError): return ("n/a", "BRAK", "#808080")
     
     # === GET VALUES ===
     ef_val, ef_status, ef_color = get_ef_status(kpi.get("ef"))
@@ -3974,7 +3974,7 @@ def build_page_kpi_dashboard(
             vo2max_val = f"{float(vo2max_raw):.1f} ml/kg"
             vo2max_status = "CANONICAL"
             vo2max_color = "#3498DB"
-        except:
+        except (ValueError, TypeError):
             vo2max_val = "n/a"
             vo2max_status = "BRAK"
             vo2max_color = "#808080"
@@ -4078,7 +4078,7 @@ def build_page_kpi_dashboard(
             else:
                 target = val * (1 + improvement_pct / 100)
             return f"{target:.2f}" if target < 10 else f"{target:.1f}"
-        except:
+        except (ValueError, TypeError, ZeroDivisionError):
             return "—"
     
     # Get current values (parsed earlier)

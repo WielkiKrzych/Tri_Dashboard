@@ -16,7 +16,8 @@ from typing import Optional, Tuple
 from .threshold_types import TransitionZone, SensitivityResult
 from .vt_utils import calculate_slope
 
-# Module-level result cache (same pattern as hrv.py dfa_cache)
+# Bounded module-level result cache (prevents unbounded memory growth)
+_VT_CACHE_MAXSIZE = 32
 _vt_cache: dict = {}
 
 
@@ -91,6 +92,8 @@ def detect_vt_transition_zone(
         )
 
     result = process_c(vt1_c, 0.05, 100), process_c(vt2_c, 0.15, 50)
+    if len(_vt_cache) >= _VT_CACHE_MAXSIZE:
+        _vt_cache.pop(next(iter(_vt_cache)))
     _vt_cache[cache_key] = result
     return result
 
@@ -136,5 +139,7 @@ def run_sensitivity_analysis(
 
     res.vt1_variability_watts, res.vt1_stability_score, res.is_vt1_unreliable = analyze(r1, "VT1")
     res.vt2_variability_watts, res.vt2_stability_score, res.is_vt2_unreliable = analyze(r2, "VT2")
+    if len(_vt_cache) >= _VT_CACHE_MAXSIZE:
+        _vt_cache.pop(next(iter(_vt_cache)))
     _vt_cache[cache_key] = res
     return res

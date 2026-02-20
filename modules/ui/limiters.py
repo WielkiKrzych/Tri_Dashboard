@@ -9,14 +9,15 @@ def render_limiters_tab(df_plot, cp_input, vt2_vent):
     st.header("Analiza Limiterów Fizjologicznych (INSCYD-style)")
     st.markdown("Identyfikujemy Twoje ograniczenia metaboliczne i typ zawodniczy na podstawie danych treningowych.")
 
-    # Normalize columns
+    # Work on a copy to avoid mutating the caller's DataFrame
+    df_plot = df_plot.copy()
     df_plot.columns = df_plot.columns.str.lower().str.strip()
-    
+
     # Handle HR aliases
     if 'hr' not in df_plot.columns:
         for alias in ['heartrate', 'heart_rate', 'bpm']:
             if alias in df_plot.columns:
-                df_plot.rename(columns={alias: 'hr'}, inplace=True)
+                df_plot = df_plot.rename(columns={alias: 'hr'})
                 break
     
     has_hr = 'hr' in df_plot.columns

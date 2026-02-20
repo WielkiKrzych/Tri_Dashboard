@@ -25,15 +25,15 @@ def render_manual_thresholds_tab(
         st.info("ℹ️ Brak danych wentylacji (tymeventilation) w tym pliku.")
         return
 
-    # Wygładzanie
-    # Normalize columns first
+    # Work on a copy to avoid mutating the caller's DataFrame
+    target_df = target_df.copy()
     target_df.columns = target_df.columns.str.lower().str.strip()
 
     # Handle HR aliases
     if "hr" not in target_df.columns:
         for alias in ["heart_rate", "heart rate", "bpm", "tętno", "heartrate", "heart_rate_bpm"]:
             if alias in target_df.columns:
-                target_df.rename(columns={alias: "hr"}, inplace=True)
+                target_df = target_df.rename(columns={alias: "hr"})
                 break
 
     if "watts_smooth_5s" not in target_df.columns and "watts" in target_df.columns:

@@ -84,7 +84,7 @@ def render_tte_tab(df_plot: pd.DataFrame, ftp: float, uploaded_file_name: str = 
             try:
                 ts = pd.to_datetime(df_plot['timestamp'].iloc[0])
                 session_date = ts.strftime("%Y-%m-%d")
-            except:
+            except (ValueError, TypeError, IndexError):
                 pass
         
         success = save_tte_to_db(

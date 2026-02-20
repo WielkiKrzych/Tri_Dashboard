@@ -66,7 +66,8 @@ def validate_test(
     result = TestValidity(validity=ValidityLevel.VALID)
     issues = []
 
-    # Check required columns
+    # Work on a copy to avoid mutating the caller's DataFrame
+    df = df.copy()
     df.columns = df.columns.str.lower().str.strip()
     has_power = power_column in df.columns
     has_hr = hr_column in df.columns

@@ -167,8 +167,8 @@ def generate_efficiency_chart(
         p = np.poly1d(z)
         x_trend = np.linspace(df_clean[temp_col].min(), df_clean[temp_col].max(), 100)
         ax.plot(x_trend, p(x_trend), "r--", linewidth=2, label=f"Trend (Slope: {z[0]:.3f})")
-    except:
-        pass 
+    except (np.linalg.LinAlgError, ValueError, TypeError):
+        pass
 
     ax.set_xlabel("Temperatura rdzenia [°C]", fontsize=font_size)
     ax.set_ylabel("Współczynnik Efektywności [W/bpm]", fontsize=font_size)

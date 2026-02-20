@@ -22,7 +22,7 @@ def render_hr_tab(df):
     if 'hr' not in df_chart.columns:
         for alias in ['heart_rate', 'heart rate', 'bpm', 'tętno', 'heartrate', 'heart_rate_bpm']:
             if alias in df_chart.columns:
-                df_chart.rename(columns={alias: 'hr'}, inplace=True)
+                df_chart = df_chart.rename(columns={alias: 'hr'})
                 break
                 
     if 'hr' not in df_chart.columns:
@@ -48,7 +48,7 @@ def render_hr_tab(df):
             if len(parts) == 3: return parts[0]*3600 + parts[1]*60 + parts[2]
             if len(parts) == 2: return parts[0]*60 + parts[1]
             if len(parts) == 1: return parts[0]
-        except:
+        except (ValueError, TypeError, AttributeError):
             return None
         return None
     

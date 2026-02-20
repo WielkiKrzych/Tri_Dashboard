@@ -51,7 +51,8 @@ def render_summary_tab(
     st.header("📊 Podsumowanie Treningu")
     st.markdown("Wszystkie kluczowe wykresy i metryki w jednym miejscu.")
 
-    # Normalize columns
+    # Work on a copy to avoid mutating the caller's DataFrame
+    df_plot = df_plot.copy()
     df_plot.columns = df_plot.columns.str.lower().str.strip()
 
     # --- SHARED THRESHOLD DETECTION ---

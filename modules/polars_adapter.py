@@ -100,12 +100,40 @@ class PolarsAdapter:
         return result.to_pandas()[col].values
 
     def filter(self, condition: str) -> "PolarsAdapter":
-        """Filter rows based on condition."""
-        if not self._is_polars:
-            return PolarsAdapter(self._df.query(condition))
+        """Filter rows based on a simple 'column op value' condition.
 
-        # Parse simple conditions for Polars
-        result = self._df.filter(eval(f"pl.{condition}"))
+        Accepts conditions like "watts > 100", "heartrate >= 60".
+        Only simple numeric comparisons are supported for safety.
+        """
+        import re
+
+        _SAFE_CONDITION = re.compile(
+            r'^([A-Za-z_][A-Za-z0-9_]*)\s*(==|!=|>=|<=|>|<)\s*([\d.]+)$'
+        )
+        match = _SAFE_CONDITION.match(condition.strip())
+        if not match:
+            raise ValueError(f"Unsafe or unsupported filter condition: {condition!r}")
+
+        col_name, op, val_str = match.groups()
+        val = float(val_str)
+
+        if not self._is_polars:
+            ops = {
+                '==': '__eq__', '!=': '__ne__', '>': '__gt__',
+                '>=': '__ge__', '<': '__lt__', '<=': '__le__',
+            }
+            mask = getattr(self._df[col_name], ops[op])(val)
+            return PolarsAdapter(self._df[mask])
+
+        expr_map = {
+            '==': pl.col(col_name) == val,
+            '!=': pl.col(col_name) != val,
+            '>': pl.col(col_name) > val,
+            '>=': pl.col(col_name) >= val,
+            '<': pl.col(col_name) < val,
+            '<=': pl.col(col_name) <= val,
+        }
+        result = self._df.filter(expr_map[op])
         return PolarsAdapter(result)
 
     def sort(self, by: str, descending: bool = False) -> "PolarsAdapter":

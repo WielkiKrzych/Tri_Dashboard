@@ -25,7 +25,7 @@ def render_smo2_thresholds_tab(target_df, training_notes, uploaded_file_name, cp
     if "hr" not in target_df.columns:
         for alias in ["heart_rate", "bpm", "heartrate"]:
             if alias in target_df.columns:
-                target_df.rename(columns={alias: "hr"}, inplace=True)
+                target_df = target_df.rename(columns={alias: "hr"})
                 break
 
     if "smo2" not in target_df.columns:
@@ -122,7 +122,7 @@ def render_smo2_thresholds_tab(target_df, training_notes, uploaded_file_name, cp
         if "confidence:" in note.lower():
             try:
                 confidence = int(note.split("confidence:")[1].split("%")[0].strip())
-            except:
+            except (ValueError, IndexError):
                 pass
 
     if agreement == "high":

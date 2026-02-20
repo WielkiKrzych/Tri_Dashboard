@@ -1,11 +1,20 @@
 import streamlit as st
 from io import BytesIO
 import os
+import re
 import logging
 import hashlib
 from typing import Optional, Tuple, Any
 
 import pandas as pd
+
+
+def sanitize_filename(name: str) -> str:
+    """Strip dangerous characters from uploaded filenames to prevent path traversal."""
+    # Keep only the basename (strip directories), then whitelist safe chars
+    basename = os.path.basename(name)
+    safe = re.sub(r'[^A-Za-z0-9_.\-]', '_', basename)
+    return safe[:128] if safe else "upload"
 
 # --- FRONTEND IMPORTS ---
 from modules.frontend.theme import ThemeManager
@@ -207,6 +216,7 @@ if rider_weight <= 0 or cp_input <= 0:
 
 if uploaded_file is not None:
     state.cleanup_old_data()
+    safe_filename = sanitize_filename(uploaded_file.name)
     training_notes = TrainingNotes()
 
     with st.spinner("Przetwarzanie danych..."):
@@ -259,7 +269,7 @@ if uploaded_file is not None:
     # Auto-save
     try:
         session_data = prepare_session_record(
-            uploaded_file.name, df_plot, metrics, np_header, if_header, tss_header
+            safe_filename, df_plot, metrics, np_header, if_header, tss_header
         )
         SessionStore().add_session(SessionRecord(**session_data))
     except Exception as e:
@@ -309,7 +319,7 @@ if uploaded_file is not None:
                 df_plot_resampled,
                 metrics,
                 training_notes,
-                uploaded_file.name,
+                safe_filename,
                 cp_input,
                 w_prime_input,
                 rider_weight,
@@ -357,7 +367,7 @@ if uploaded_file is not None:
             render_tab_content("hemo", df_plot)
         with t8:
             render_tab_content("drift_maps", df_plot)
-        filename = uploaded_file.name if uploaded_file else "manual_upload"
+        filename = safe_filename if uploaded_file else "manual_upload"
         with t9:
             render_tab_content("tte", df_plot, cp_input, filename)
 
@@ -389,10 +399,10 @@ if uploaded_file is not None:
         with t1:
             render_tab_content("hrv", df_clean_pl)
         with t2:
-            render_tab_content("smo2", df_plot, training_notes, uploaded_file.name)
+            render_tab_content("smo2", df_plot, training_notes, safe_filename)
         max_hr = int(208 - 0.7 * rider_age) if rider_age else 185
         with t3:
-            render_tab_content("vent", df_plot, training_notes, uploaded_file.name)
+            render_tab_content("vent", df_plot, training_notes, safe_filename)
         with t4:
             render_tab_content("thermal", df_plot)
         with t5:
@@ -400,7 +410,7 @@ if uploaded_file is not None:
                 "vent_thresholds",
                 df_plot,
                 training_notes,
-                uploaded_file.name,
+                safe_filename,
                 cp_input,
                 w_prime_input,
                 rider_weight,
@@ -408,15 +418,15 @@ if uploaded_file is not None:
             )
         with t6:
             render_tab_content(
-                "manual_thresholds", df_plot, training_notes, uploaded_file.name, cp_input, max_hr
+                "manual_thresholds", df_plot, training_notes, safe_filename, cp_input, max_hr
             )
         with t7:
             render_tab_content(
-                "smo2_thresholds", df_plot, training_notes, uploaded_file.name, cp_input
+                "smo2_thresholds", df_plot, training_notes, safe_filename, cp_input
             )
         with t8:
             render_tab_content(
-                "smo2_manual_thresholds", df_plot, training_notes, uploaded_file.name, cp_input
+                "smo2_manual_thresholds", df_plot, training_notes, safe_filename, cp_input
             )
         with t9:
             render_tab_content("ramp_archive")
@@ -445,7 +455,7 @@ if uploaded_file is not None:
             st.sidebar.download_button(
                 "📥 DOCX",
                 buf.getvalue(),
-                f"{uploaded_file.name}.docx",
+                f"{safe_filename}.docx",
                 mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             )
         except Exception as e:
@@ -467,7 +477,7 @@ if uploaded_file is not None:
                 None,
             )
             st.sidebar.download_button(
-                "📸 PNG", zip_data, f"{uploaded_file.name}.zip", mime="application/zip"
+                "📸 PNG", zip_data, f"{safe_filename}.zip", mime="application/zip"
             )
         except Exception as e:
             logger.warning(f"PNG export failed: {e}")
@@ -482,7 +492,7 @@ if uploaded_file is not None:
             st.sidebar.download_button(
                 "📥 Dane",
                 csv_session,
-                f"{uploaded_file.name}_dane.csv",
+                f"{safe_filename}_dane.csv",
                 mime="text/csv",
             )
         except Exception as e:
@@ -493,7 +503,7 @@ if uploaded_file is not None:
             st.sidebar.download_button(
                 "📥 Metryki",
                 csv_metrics,
-                f"{uploaded_file.name}_metryki.csv",
+                f"{safe_filename}_metryki.csv",
                 mime="text/csv",
             )
         except Exception as e:

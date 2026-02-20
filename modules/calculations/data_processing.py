@@ -2,10 +2,13 @@
 SRP: Moduł odpowiedzialny za przetwarzanie surowych danych treningowych.
 """
 from typing import Union, Any
+import logging
 import numpy as np
 import pandas as pd
 
 from .common import ensure_pandas, WINDOW_LONG, WINDOW_SHORT
+
+logger = logging.getLogger(__name__)
 
 
 def process_data(df: Union[pd.DataFrame, Any]) -> pd.DataFrame:
@@ -51,7 +54,8 @@ def process_data(df: Union[pd.DataFrame, Any]) -> pd.DataFrame:
         df_numeric = df_pd.select_dtypes(include=[np.number])
         df_resampled = df_numeric.resample('1s').mean()
         df_resampled = df_resampled.interpolate(method='linear').ffill().bfill()
-    except Exception:
+    except (ValueError, TypeError) as exc:
+        logger.warning("Resampling failed, using original data: %s", exc)
         df_resampled = df_pd
     
     df_resampled['time'] = df_resampled.index.total_seconds()

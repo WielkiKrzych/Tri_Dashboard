@@ -20,7 +20,8 @@ def render_smo2_manual_thresholds_tab(target_df, training_notes, uploaded_file_n
         st.error("Brak danych. Najpierw wgraj plik w sidebar.")
         return
 
-    # Normalize columns first
+    # Work on a copy to avoid mutating the caller's DataFrame
+    target_df = target_df.copy()
     target_df.columns = target_df.columns.str.lower().str.strip()
 
     if "smo2" not in target_df.columns:
@@ -35,7 +36,7 @@ def render_smo2_manual_thresholds_tab(target_df, training_notes, uploaded_file_n
     if "hr" not in target_df.columns:
         for alias in ["heart_rate", "heart rate", "bpm", "tętno", "heartrate", "heart_rate_bpm"]:
             if alias in target_df.columns:
-                target_df.rename(columns={alias: "hr"}, inplace=True)
+                target_df = target_df.rename(columns={alias: "hr"})
                 break
 
     # Wygładzanie

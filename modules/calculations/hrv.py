@@ -214,21 +214,19 @@ def validate_dfa_quality(
     return is_uncertain, reasons, quality_grade
 
 
-# Cache for DFA results to avoid recomputation
-dfa_cache = {}
+# Bounded cache for DFA results to avoid recomputation and memory leaks
+_DFA_CACHE_MAXSIZE = 32
+_dfa_cache: dict = {}
 
 
 def _generate_cache_key(
     df_pl, window_sec: int, step_sec: int, min_samples_hrv: int, alpha1_clip_range: tuple
 ) -> str:
     """Generate a unique cache key based on input parameters and data hash."""
-    import hashlib
-
     df = ensure_pandas(df_pl)
 
-    # Create a hash of the data
-    data_str = f"{df.shape}{df.columns.tolist()}{df.head(1).to_string()}{df.tail(1).to_string()}"
-    data_hash = hashlib.md5(data_str.encode()).hexdigest()[:16]
+    # Create a hash of the full data content
+    data_hash = str(pd.util.hash_pandas_object(df, index=True).sum())
 
     # Include parameters in key
     key = f"{data_hash}_{window_sec}_{step_sec}_{min_samples_hrv}_{alpha1_clip_range}"
@@ -259,9 +257,9 @@ def calculate_dynamic_dfa_v2(
     """
     # Check cache first
     cache_key = _generate_cache_key(df_pl, window_sec, step_sec, min_samples_hrv, alpha1_clip_range)
-    if cache_key in dfa_cache:
+    if cache_key in _dfa_cache:
         logger.debug("Using cached DFA results for key: %s...", cache_key[:16])
-        return dfa_cache[cache_key]
+        return _dfa_cache[cache_key]
 
     logger.debug("Executing calculate_dynamic_dfa_v2 logic...")
     df = ensure_pandas(df_pl)
@@ -380,8 +378,10 @@ def calculate_dynamic_dfa_v2(
             }
         )
 
-        # Store in cache
-        dfa_cache[cache_key] = (results, None)
+        # Store in bounded cache (evict oldest if full)
+        if len(_dfa_cache) >= _DFA_CACHE_MAXSIZE:
+            _dfa_cache.pop(next(iter(_dfa_cache)))
+        _dfa_cache[cache_key] = (results, None)
 
         return results, None
 

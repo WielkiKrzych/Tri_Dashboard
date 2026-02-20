@@ -3,20 +3,28 @@ Training notes — JSON persistence for per-session text annotations.
 """
 from pathlib import Path
 import json
+import re
 from datetime import datetime
+
 
 class TrainingNotes:
     """Zarządzanie notatkami do treningów"""
-    
+
     NOTES_DIR = Path('training_notes')
-    
+
     def __init__(self):
         self.NOTES_DIR.mkdir(exist_ok=True)
-    
+
     def get_notes_file(self, training_file):
-        """Pobierz plik notatek dla danego treningu"""
-        base_name = Path(training_file).stem
-        return self.NOTES_DIR / f"{base_name}_notes.json"
+        """Pobierz plik notatek dla danego treningu (path-traversal safe)."""
+        # Strip all path components; keep only the filename stem with safe chars
+        safe_stem = re.sub(r'[^A-Za-z0-9_.\-]', '_', Path(training_file).name)
+        safe_stem = Path(safe_stem).stem
+        notes_path = (self.NOTES_DIR / f"{safe_stem}_notes.json").resolve()
+        # Verify the resolved path stays inside NOTES_DIR
+        if not str(notes_path).startswith(str(self.NOTES_DIR.resolve())):
+            raise ValueError(f"Path traversal detected: {training_file!r}")
+        return notes_path
     
     def load_notes(self, training_file):
         """Załaduj notatki z JSON"""

@@ -25,7 +25,8 @@ import logging
 
 logger = logging.getLogger("Tri_Dashboard.SmO2Advanced")
 
-# Module-level result cache
+# Bounded module-level result cache (prevents unbounded memory growth)
+_SMO2_ANALYSIS_CACHE_MAXSIZE = 32
 _smo2_analysis_cache: dict = {}
 
 
@@ -402,6 +403,8 @@ def analyze_smo2_advanced(
     metrics.data_quality = "good" if metrics.slope_r2 > 0.3 else "low"
     metrics.drift_pct = calculate_smo2_drift(df, smo2_col, power_col)
 
+    if len(_smo2_analysis_cache) >= _SMO2_ANALYSIS_CACHE_MAXSIZE:
+        _smo2_analysis_cache.pop(next(iter(_smo2_analysis_cache)))
     _smo2_analysis_cache[cache_key] = metrics
     return metrics
 

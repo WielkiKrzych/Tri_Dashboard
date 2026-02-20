@@ -41,7 +41,8 @@ except ImportError:
 
 logger = logging.getLogger("Tri_Dashboard.SmO2Advanced")
 
-# Module-level result cache
+# Bounded module-level result cache (prevents unbounded memory growth)
+_SMO2_THRESHOLDS_CACHE_MAXSIZE = 32
 _smo2_thresholds_cache: dict = {}
 
 
@@ -607,5 +608,7 @@ def detect_smo2_thresholds_moxy(
         f"Ramp Test Pipeline: T1+T2_onset only, no T2_steady. Confidence: {total_confidence}%."
     )
 
+    if len(_smo2_thresholds_cache) >= _SMO2_THRESHOLDS_CACHE_MAXSIZE:
+        _smo2_thresholds_cache.pop(next(iter(_smo2_thresholds_cache)))
     _smo2_thresholds_cache[cache_key] = result
     return result

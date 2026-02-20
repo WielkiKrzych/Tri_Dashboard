@@ -29,6 +29,7 @@ def analyze_step_test(
 ) -> StepTestResult:
     """High-level orchestration of step test analysis."""
     result = StepTestResult()
+    df = df.copy()
     df.columns = df.columns.str.lower().str.strip()
     
     has_ve = ve_column in df.columns

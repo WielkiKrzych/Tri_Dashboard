@@ -208,7 +208,7 @@ def _detect_power_steps(power_arr: np.ndarray, duration_range: Tuple[int, int]) 
         window = 5
     
     # Smooth to find plateaus
-    smoothed = pd.Series(power_arr).rolling(window=window, center=True).mean().fillna(method='bfill').fillna(method='ffill').values
+    smoothed = pd.Series(power_arr).rolling(window=window, center=True).mean().bfill().ffill().values
     
     # Detect step changes using gradient
     gradient = np.gradient(smoothed)
@@ -256,7 +256,7 @@ def _detect_recovery_phases(power_arr: np.ndarray, threshold_pct: float = 0.20) 
         Number of recovery phases detected
     """
     window = 30
-    smoothed = pd.Series(power_arr).rolling(window=window, center=True).mean().fillna(method='bfill').fillna(method='ffill').values
+    smoothed = pd.Series(power_arr).rolling(window=window, center=True).mean().bfill().ffill().values
     
     recovery_count = 0
     i = 0

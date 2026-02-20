@@ -61,7 +61,7 @@ def detect_ve_only_thresholds(
         )
 
         vt_slope = np.gradient(
-            df_steps["vt_smooth"].fillna(method="ffill").values, df_steps["power"].values
+            df_steps["vt_smooth"].ffill().values, df_steps["power"].values
         )
         df_steps["vt_slope"] = vt_slope
         df_steps["vt_slope_smooth"] = (

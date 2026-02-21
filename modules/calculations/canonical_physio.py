@@ -14,6 +14,7 @@ This module provides:
 from dataclasses import dataclass, field
 from typing import Optional, Dict, Any, List
 import logging
+import numpy as np
 
 logger = logging.getLogger("Tri_Dashboard.CanonicalPhysio")
 
@@ -240,13 +241,15 @@ def build_canonical_physiology(
     if "acsm_5min" not in vo2max_candidates and time_series and weight_kg > 0:
         power_data = time_series.get("power_watts", [])
         if len(power_data) >= 300:
-            # Find 5-min MMP using rolling window
             window = 300
-            mmp_5m = 0
-            for i in range(len(power_data) - window + 1):
-                avg = sum(power_data[i : i + window]) / window
-                if avg > mmp_5m:
-                    mmp_5m = avg
+            power_arr = np.array(power_data)
+            rolling_max = np.max(power_arr[window - 1:] - np.cumsum(np.concatenate([np.zeros(1), np.cumsum(power_arr[:-1])])[:-window + 1]))
+            if window > 1:
+                cumsum = np.cumsum(power_arr)
+                rolling_means = (cumsum[window - 1:] - cumsum[:-window + 1]) / window
+                mmp_5m = float(np.max(rolling_means)) if len(rolling_means) > 0 else 0
+            else:
+                mmp_5m = float(np.max(power_arr)) if len(power_arr) > 0 else 0
             if mmp_5m > 0:
                 vo2max_candidates["mmp_5min"] = mmp_5m  # Will be converted
 
@@ -265,11 +268,13 @@ def build_canonical_physiology(
         power_data = time_series.get("power_watts", [])
         if len(power_data) >= 300:
             window = 300
-            ts_mmp5 = 0
-            for i in range(len(power_data) - window + 1):
-                avg = sum(power_data[i : i + window]) / window
-                if avg > ts_mmp5:
-                    ts_mmp5 = avg
+            power_arr = np.array(power_data)
+            if window > 1:
+                cumsum = np.cumsum(np.insert(power_arr, 0, 0))
+                rolling_means = (cumsum[window:] - cumsum[:-window]) / window
+                ts_mmp5 = float(np.max(rolling_means)) if len(rolling_means) > 0 else 0
+            else:
+                ts_mmp5 = float(np.max(power_arr)) if len(power_arr) > 0 else 0
             if ts_mmp5 > 0:
                 ts_vo2max = calculate_vo2max_acsm(ts_mmp5, weight_kg)
                 divergence = abs(physio.vo2max.value - ts_vo2max)

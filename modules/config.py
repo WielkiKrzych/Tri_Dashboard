@@ -74,3 +74,8 @@ class Config:
     MAX_CONFIDENCE = float(os.getenv("MAX_CONFIDENCE", "0.95"))
     LOWER_STEP_WEIGHT = float(os.getenv("LOWER_STEP_WEIGHT", "0.3"))
     UPPER_STEP_WEIGHT = float(os.getenv("UPPER_STEP_WEIGHT", "0.7"))
+
+    # Ramp test detection parameters
+    RAMP_MIN_STEP_DURATION = int(os.getenv("RAMP_MIN_STEP_DURATION", "120"))
+    RAMP_POWER_INCREMENT_MIN = int(os.getenv("RAMP_POWER_INCREMENT_MIN", "15"))
+    RAMP_POWER_INCREMENT_MAX = int(os.getenv("RAMP_POWER_INCREMENT_MAX", "40"))

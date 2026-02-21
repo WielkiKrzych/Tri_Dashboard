@@ -8,33 +8,35 @@ Usage:
 """
 import sys
 import argparse
+import logging
 from modules.config import Config
 from modules.db.session_store import SessionStore
 
+logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
+logger = logging.getLogger(__name__)
+
 def init_db(reset: bool = False):
     db_path = Config.DB_PATH
-    print(f"Target Database: {db_path}")
+    logger.info("Target Database: %s", db_path)
 
     if db_path.exists():
         if reset:
-            print("⚠️  --reset flag provided. Deleting existing database...")
+            logger.warning("--reset flag provided. Deleting existing database...")
             db_path.unlink()
-            print("✅ Database file deleted.")
+            logger.info("Database file deleted.")
         else:
-            print("ℹ️  Database already exists. Run with --reset to recreate.")
+            logger.info("Database already exists. Run with --reset to recreate.")
             return
 
-    # Initialize store (this triggers schema creation)
-    print("Initializing SessionStore...")
+    logger.info("Initializing SessionStore...")
     store = SessionStore()
     
-    # Verify
     if db_path.exists():
         tables = store.get_session_count()
-        print(f"✅ Database initialized successfully at {db_path}.")
-        print(f"   Current session count: {tables}")
+        logger.info("Database initialized successfully at %s.", db_path)
+        logger.info("  Current session count: %d", tables)
     else:
-        print("❌ Failed to create database file.")
+        logger.error("Failed to create database file.")
         sys.exit(1)
 
 if __name__ == "__main__":

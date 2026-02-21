@@ -18,10 +18,18 @@ import os
 import argparse
 import time
 import json
+import logging
 import pandas as pd
 import numpy as np
 from pathlib import Path
 from datetime import datetime
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 # --- KONFIGURACJA ---
 BASE_DIR = Path(__file__).parent
@@ -50,9 +58,9 @@ try:
     import mlx.nn as nn
     import mlx.optimizers as optim
     MLX_AVAILABLE = True
-    print("✅ Wykryto Apple Silicon (MLX). Gotowy do treningu.")
+    logger.info("Apple Silicon (MLX) detected. Ready for training.")
 except ImportError:
-    print("⚠️ Brak biblioteki MLX. Zainstaluj: pip install mlx")
+    logger.warning("MLX library not available. Install with: pip install mlx")
 
 
 # --- MODEL DEFINITION (musi być identyczny jak w ml_logic.py) ---
@@ -124,11 +132,11 @@ def load_data(filepath: Path) -> pd.DataFrame:
             df.columns = [c.split('.')[-1] for c in df.columns]
             return df
         else:
-            print(f"   -> ⚠️ Pusty plik: {filename}")
+            logger.warning("Empty file skipped: %s", filename)
             return pd.DataFrame()
             
     except Exception as e:
-        print(f"   -> ⚠️ Błąd odczytu {filename}: {e}")
+        logger.error("Error reading %s: %s", filename, e)
         return pd.DataFrame()
 
 
@@ -260,28 +268,28 @@ def save_to_session_store(filename: str, df: pd.DataFrame, hr_base, hr_thresh):
         store.add_session(record)
         
     except Exception as e:
-        print(f"   -> ⚠️ Błąd zapisu do DB: {e}")
+        logger.error("Database write error: %s", e)
 
 
 def get_folder_stats():
     """Wyświetla statystyki folderu treningi_csv."""
     if not DATA_FOLDER.exists():
-        print(f"❌ Folder '{DATA_FOLDER}' nie istnieje!")
+        logger.error("Folder does not exist: %s", DATA_FOLDER)
         return []
     
     files = list(DATA_FOLDER.glob("*.csv"))
     files += list(DATA_FOLDER.glob("*.txt"))
     files += list(DATA_FOLDER.glob("*.json"))
     
-    print(f"\n📂 Folder: {DATA_FOLDER}")
-    print(f"   Pliki CSV: {len(list(DATA_FOLDER.glob('*.csv')))}")
-    print(f"   Pliki JSON: {len(list(DATA_FOLDER.glob('*.json')))}")
-    print(f"   Pliki TXT: {len(list(DATA_FOLDER.glob('*.txt')))}")
-    print(f"   RAZEM: {len(files)} plików")
+    logger.info("Folder: %s", DATA_FOLDER)
+    logger.info("  CSV files: %d", len(list(DATA_FOLDER.glob('*.csv'))))
+    logger.info("  JSON files: %d", len(list(DATA_FOLDER.glob('*.json'))))
+    logger.info("  TXT files: %d", len(list(DATA_FOLDER.glob('*.txt'))))
+    logger.info("  Total: %d files", len(files))
     
     if files:
         total_size = sum(f.stat().st_size for f in files)
-        print(f"   Rozmiar: {total_size / (1024*1024):.1f} MB")
+        logger.info("  Size: %.1f MB", total_size / (1024*1024))
     
     return files
 
@@ -289,15 +297,15 @@ def get_folder_stats():
 def train_loop():
     """Główna pętla treningowa."""
     if not MLX_AVAILABLE:
-        print("❌ MLX wymagany do treningu. Przerwano.")
+        logger.error("MLX required for training. Aborting.")
         return
     
     files = get_folder_stats()
     if not files:
-        print(f"⚠️ Nie znaleziono plików w folderze '{DATA_FOLDER}'.")
+        logger.warning("No files found in folder: %s", DATA_FOLDER)
         return
 
-    print(f"\n🚀 Rozpoczynam przetwarzanie {len(files)} plików...\n")
+    logger.info("Starting processing of %d files...", len(files))
     files.sort()
 
     # Model
@@ -327,7 +335,7 @@ def train_loop():
     
     for idx, file_path in enumerate(files):
         filename = file_path.name
-        print(f"[{idx+1}/{len(files)}] {filename}")
+        logger.info("[%d/%d] Processing: %s", idx+1, len(files), filename)
         
         try:
             df_raw = load_data(file_path)
@@ -336,7 +344,7 @@ def train_loop():
 
             df = process_data(df_raw)
             if len(df) < 100:
-                print(f"   -> ⚠️ Za mało danych ({len(df)} rekordów)")
+                logger.warning("Insufficient data (%d records) for %s", len(df), filename)
                 continue
 
             results = {}
@@ -356,10 +364,10 @@ def train_loop():
                     in_tensor = mx.array([[watts/500.0, cadence_norm, 0.5]])
                     pred_hr = float(model(in_tensor)[0][0]) * 200.0
                     results[name] = pred_hr
-                    print(f"   -> {name} ({watts}W): {pred_hr:.1f} bpm ✓")
+                    logger.info("  %s (%dW): %.1f bpm ✓", name, watts, pred_hr)
                 else:
                     results[name] = None
-                    print(f"   -> {name} ({watts}W): Brak danych w tym zakresie")
+                    logger.warning("  %s (%dW): No data in this range", name, watts)
 
             # Zapisz historię
             update_history(results.get("BASE"), results.get("THRESH"), filename)
@@ -370,10 +378,10 @@ def train_loop():
             processed += 1
 
         except Exception as e:
-            print(f"   -> 💥 Błąd: {e}")
+            logger.error("Error processing %s: %s", filename, e)
 
     # Zapisz model
-    print("\n" + "-" * 50)
+    logger.info("-" * 50)
     params = model.parameters()
     flat_params = {}
     for layer_name, layer_params in params.items():
@@ -386,11 +394,11 @@ def train_loop():
     mx.savez(MODEL_FILE, **flat_params)
     
     total_time = time.time() - total_start
-    print(f"✅ GOTOWE!")
-    print(f"   Przetworzono: {processed}/{len(files)} plików")
-    print(f"   Czas: {total_time:.1f} sekund")
-    print(f"   Model: {MODEL_FILE}")
-    print(f"   Historia: {HISTORY_FILE}")
+    logger.info("DONE!")
+    logger.info("  Processed: %d/%d files", processed, len(files))
+    logger.info("  Time: %.1f seconds", total_time)
+    logger.info("  Model: %s", MODEL_FILE)
+    logger.info("  History: %s", HISTORY_FILE)
 
 
 def main():
@@ -413,7 +421,7 @@ Przykłady:
         train_loop()
     else:
         parser.print_help()
-        print("\n💡 Użyj --stats lub --train")
+        logger.info("Use --stats or --train flags")
 
 
 if __name__ == "__main__":

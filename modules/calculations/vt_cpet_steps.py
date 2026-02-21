@@ -6,6 +6,8 @@ from typing import Optional
 import numpy as np
 import pandas as pd
 
+from modules.config import Config
+
 
 def aggregate_step_data(
     data: pd.DataFrame,
@@ -167,8 +169,8 @@ def _find_ramp_start(raw_steps: list, min_power_watts: Optional[int], result: di
                 return i
         return 0
 
-    min_step_duration = 120
-    power_increment_range = (15, 40)
+    min_step_duration = Config.RAMP_MIN_STEP_DURATION
+    power_increment_range = (Config.RAMP_POWER_INCREMENT_MIN, Config.RAMP_POWER_INCREMENT_MAX)
 
     for i in range(len(raw_steps) - 2):
         step1 = raw_steps[i]

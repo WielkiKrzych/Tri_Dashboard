@@ -8,17 +8,14 @@ Uses diskcache as a simple alternative to Redis (no external dependencies).
 import hashlib
 import json
 import pickle
+import logging
 from functools import wraps
 from typing import Any, Callable, Optional, TypeVar
 from pathlib import Path
 import pandas as pd
 import numpy as np
 
-from functools import wraps
-from typing import Any, Callable, Optional, TypeVar
-from pathlib import Path
-import pandas as pd
-import numpy as np
+logger = logging.getLogger(__name__)
 
 # Try to use diskcache (file-based, no external dependencies)
 try:
@@ -85,15 +82,15 @@ def cache_result(ttl: int = 3600, key_func: Optional[Callable] = None):
                 result = cache.get(cache_key)
                 if result is not None:
                     return result
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("Cache read error for key %s: %s", cache_key, e)
 
             # Compute and cache
             result = func(*args, **kwargs)
             try:
                 cache.set(cache_key, result, expire=ttl)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("Cache write error for key %s: %s", cache_key, e)
 
             return result
 
@@ -153,8 +150,8 @@ def _invalidate_cache(func_name: str, args: tuple, kwargs: dict, key_func: Optio
 
     try:
         cache.delete(cache_key)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("Cache invalidation error for key %s: %s", cache_key, e)
 
 
 def clear_cache():

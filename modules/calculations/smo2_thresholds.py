@@ -18,12 +18,13 @@ T2_steady (MLSS_local) MUST NOT be detected in ramp tests.
 Results are cached per (DataFrame, parameters) to avoid redundant computation.
 """
 
-import hashlib
 import numpy as np
 import pandas as pd
 from typing import Dict, List, Optional
 from dataclasses import dataclass, field
 import logging
+
+from modules.cache_utils import make_cache_key as _cache_key
 
 try:
     from numba import jit
@@ -44,17 +45,6 @@ logger = logging.getLogger("Tri_Dashboard.SmO2Advanced")
 # Bounded module-level result cache (prevents unbounded memory growth)
 _SMO2_THRESHOLDS_CACHE_MAXSIZE = 32
 _smo2_thresholds_cache: dict = {}
-
-
-def _cache_key(*args) -> str:
-    """Generate a cache key from function arguments. DataFrames are hashed by content."""
-    parts = []
-    for a in args:
-        if isinstance(a, pd.DataFrame):
-            parts.append(str(pd.util.hash_pandas_object(a).sum()))
-        else:
-            parts.append(repr(a))
-    return hashlib.md5("|".join(parts).encode()).hexdigest()
 
 
 # =============================================================================

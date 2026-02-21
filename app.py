@@ -13,14 +13,19 @@ def sanitize_filename(name: str) -> str:
     """Strip dangerous characters from uploaded filenames to prevent path traversal."""
     # Keep only the basename (strip directories), then whitelist safe chars
     basename = os.path.basename(name)
-    safe = re.sub(r'[^A-Za-z0-9_.\-]', '_', basename)
+    safe = re.sub(r"[^A-Za-z0-9_.\-]", "_", basename)
     return safe[:128] if safe else "upload"
+
 
 # --- FRONTEND IMPORTS ---
 from modules.frontend.theme import ThemeManager
 from modules.frontend.state import StateManager
 from modules.frontend.layout import AppLayout
-from modules.frontend.components import UIComponents
+from modules.frontend.components import (
+    UIComponents,
+    render_header_metrics_fragment,
+    render_export_buttons_fragment,
+)
 
 # --- MODULE IMPORTS ---
 from modules.utils import load_data
@@ -28,6 +33,7 @@ from modules.ml_logic import MLX_AVAILABLE, predict_only, MODEL_FILE
 from modules.notes import TrainingNotes
 from modules.reports import generate_docx_report, export_all_charts_as_png
 from modules.db import SessionStore, SessionRecord
+from modules.cache_utils import get_session_store  # Use cached singleton
 from modules.reporting.persistence import check_git_tracking
 from modules.reporting.csv_export import export_session_csv, export_metrics_csv
 
@@ -46,10 +52,11 @@ logger = logging.getLogger(__name__)
 # UTILITY FUNCTIONS
 # =============================================================================
 
+
 def compute_file_hash(file) -> str:
     """
     Compute stable hash for file cache key.
-    
+
     Uses MD5 for speed (not cryptographic security needed).
     More stable than built-in hash() which can vary between runs.
     """
@@ -59,18 +66,15 @@ def compute_file_hash(file) -> str:
 def classify_and_cache_session(df_raw: pd.DataFrame, file_hash: str, uploaded_file):
     """Classify session type with caching in session_state."""
     cached_hash = st.session_state.get("current_file_hash")
-    
+
     if cached_hash == file_hash:
         # Cache hit - use stored values
-        return (
-            st.session_state.get("session_type"),
-            st.session_state.get("ramp_classification")
-        )
-    
+        return (st.session_state.get("session_type"), st.session_state.get("ramp_classification"))
+
     # Cache miss - classify new file
     session_type = classify_session_type(df_raw, uploaded_file.name)
     st.session_state["session_type"] = session_type
-    
+
     ramp_classification = None
     if "watts" in df_raw.columns or "power" in df_raw.columns:
         power_col = "watts" if "watts" in df_raw.columns else "power"
@@ -78,7 +82,7 @@ def classify_and_cache_session(df_raw: pd.DataFrame, file_hash: str, uploaded_fi
         if len(power) >= 300:
             ramp_classification = classify_ramp_test(power)
             st.session_state["ramp_classification"] = ramp_classification
-    
+
     st.session_state["current_file_hash"] = file_hash
     return session_type, ramp_classification
 
@@ -87,7 +91,7 @@ def render_session_badge(session_type, ramp_classification) -> None:
     """Render session type badge with confidence indicator."""
     if not session_type:
         return
-    
+
     # Determine badge styling based on session type
     if session_type == SessionType.RAMP_TEST and ramp_classification:
         confidence = ramp_classification.confidence
@@ -271,7 +275,7 @@ if uploaded_file is not None:
         session_data = prepare_session_record(
             safe_filename, df_plot, metrics, np_header, if_header, tss_header
         )
-        SessionStore().add_session(SessionRecord(**session_data))
+        get_session_store().add_session(SessionRecord(**session_data))
     except Exception as e:
         logger.warning(f"Auto-save failed: {e}")
 
@@ -279,10 +283,8 @@ if uploaded_file is not None:
     header_data = prepare_sticky_header_data(df_plot, metrics)
     UIComponents.render_sticky_header(header_data)
 
-    m1, m2, m3 = st.columns(3)
-    m1.metric("NP (Norm. Power)", f"{np_header:.0f} W")
-    m2.metric("TSS", f"{tss_header:.0f}", help=f"IF: {if_header:.2f}")
-    m3.metric("Praca [kJ]", f"{df_plot['watts'].sum() / 1000:.0f}")
+    # Header Metrics - using fragment for independent updates
+    render_header_metrics_fragment(np_header, if_header, tss_header, df_plot)
 
     # Session Type Badge with Confidence
     session_type = st.session_state.get("session_type")
@@ -421,9 +423,7 @@ if uploaded_file is not None:
                 "manual_thresholds", df_plot, training_notes, safe_filename, cp_input, max_hr
             )
         with t7:
-            render_tab_content(
-                "smo2_thresholds", df_plot, training_notes, safe_filename, cp_input
-            )
+            render_tab_content("smo2_thresholds", df_plot, training_notes, safe_filename, cp_input)
         with t8:
             render_tab_content(
                 "smo2_manual_thresholds", df_plot, training_notes, safe_filename, cp_input

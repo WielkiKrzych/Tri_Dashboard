@@ -92,18 +92,7 @@ def render_smo2_tab(target_df, training_notes, uploaded_file_name):
         "💡 **ANALIZA MANUALNA:** Zaznacz obszar na wykresie poniżej (kliknij i przeciągnij), aby sprawdzić nachylenie lokalne."
     )
 
-    def parse_time_to_seconds(t_str):
-        try:
-            parts = list(map(int, t_str.split(":")))
-            if len(parts) == 3:
-                return parts[0] * 3600 + parts[1] * 60 + parts[2]
-            if len(parts) == 2:
-                return parts[0] * 60 + parts[1]
-            if len(parts) == 1:
-                return parts[0]
-        except (ValueError, AttributeError):
-            return None
-        return None
+    from modules.ui.utils import parse_time_to_seconds, format_time
 
     with st.expander("🔧 Ręczne wprowadzenie zakresu czasowego (opcjonalne)", expanded=False):
         col_inp_1, col_inp_2 = st.columns(2)
@@ -127,14 +116,6 @@ def render_smo2_tab(target_df, training_notes, uploaded_file_name):
     # Użyj wartości z session_state
     startsec = st.session_state.smo2_start_sec
     endsec = st.session_state.smo2_end_sec
-
-    def format_time(s):
-        h = int(s // 3600)
-        m = int((s % 3600) // 60)
-        sec = int(s % 60)
-        if h > 0:
-            return f"{h:02d}:{m:02d}:{sec:02d}"
-        return f"{m:02d}:{sec:02d}"
 
     # Wycinanie danych
     mask = (target_df["time"] >= startsec) & (target_df["time"] <= endsec)

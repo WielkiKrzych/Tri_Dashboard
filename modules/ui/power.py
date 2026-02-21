@@ -6,10 +6,10 @@ import plotly.graph_objects as go
 import plotly.express as px
 import pandas as pd
 import numpy as np
-import hashlib
 from typing import Dict, Any, Optional
 from modules.config import Config
 from modules.plots import apply_chart_style
+from modules.ui.utils import hash_dataframe as _hash_dataframe, hash_params as _hash_params
 from modules.calculations import (
     calculate_power_duration_curve,
     calculate_fatigue_resistance_index,
@@ -25,22 +25,6 @@ from modules.calculations import (
     calculate_recovery_score,
     get_recovery_recommendation,
 )
-
-
-def _hash_dataframe(df: pd.DataFrame) -> str:
-    """Create a hash of DataFrame for cache key generation."""
-    if df is None or df.empty:
-        return "empty"
-    # Use shape and sample of data for hash
-    sample = df.head(100).to_json()
-    shape_str = f"{df.shape}_{list(df.columns)}"
-    return hashlib.md5(f"{shape_str}_{sample}".encode()).hexdigest()[:16]
-
-
-def _hash_params(**kwargs) -> str:
-    """Create a hash of parameters for cache key."""
-    param_str = str(sorted(kwargs.items()))
-    return hashlib.md5(param_str.encode()).hexdigest()[:16]
 
 
 @st.cache_data(ttl=3600, show_spinner=False)

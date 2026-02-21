@@ -41,21 +41,7 @@ def render_hr_tab(df):
     # ale slider na sekundach jest bardziej precyzyjny/prostszy w kodzie.
     # Dodamy formatowanie czasu w opisie.
     
-    # Konwersja czasu
-    def parse_time(t_str):
-        try:
-            parts = list(map(int, t_str.split(':')))
-            if len(parts) == 3: return parts[0]*3600 + parts[1]*60 + parts[2]
-            if len(parts) == 2: return parts[0]*60 + parts[1]
-            if len(parts) == 1: return parts[0]
-        except (ValueError, TypeError, AttributeError):
-            return None
-        return None
-    
-    def format_time(seconds):
-        m, s = divmod(int(seconds), 60)
-        h, m = divmod(m, 60)
-        return f"{h:02d}:{m:02d}:{s:02d}"
+    from modules.ui.utils import parse_time_to_seconds as parse_time, format_time
 
     min_time = df_chart['time'].min()
     max_time = df_chart['time'].max()

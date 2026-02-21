@@ -2,20 +2,12 @@
 Summary Calculations — pure math helpers, no Streamlit dependency.
 """
 
-import hashlib
 import pandas as pd
 import numpy as np
 from scipy import stats
 from typing import Tuple
 
-
-def _hash_dataframe(df: pd.DataFrame) -> str:
-    """Create a hash of DataFrame for cache key generation."""
-    if df is None or df.empty:
-        return "empty"
-    sample = df.head(100).to_json()
-    shape_str = f"{df.shape}_{list(df.columns)}"
-    return hashlib.md5(f"{shape_str}_{sample}".encode()).hexdigest()[:16]
+from modules.ui.utils import hash_dataframe as _hash_dataframe
 
 
 def _calculate_np(watts_series: pd.Series) -> float:

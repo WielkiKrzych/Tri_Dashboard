@@ -12,6 +12,31 @@ logger = logging.getLogger("Tri_Dashboard.ExecutiveSummary")
 
 
 # =============================================================================
+# SHARED HELPERS
+# =============================================================================
+
+
+def __safe_float(val: Any, default: float = 0.0) -> float:
+    """Safely convert a value to float, returning default on failure."""
+    if val is None or val == "brak danych":
+        return default
+    try:
+        return float(val)
+    except (ValueError, TypeError):
+        return default
+
+
+def _safe_int(val: Any, default: int = 0) -> int:
+    """Safely convert a value to int, returning default on failure."""
+    if val is None or val == "brak danych":
+        return default
+    try:
+        return int(float(val))
+    except (ValueError, TypeError):
+        return default
+
+
+# =============================================================================
 # DATA CLASSES
 # =============================================================================
 
@@ -151,24 +176,16 @@ def identify_main_limiter(
     canonical_physiology = canonical_physiology or {}
     
     scores = {"central": 0, "peripheral": 0, "metabolic": 0, "thermal": 0}
-    
-    def safe_float(val, default=0.0):
-        if val is None or val == "brak danych":
-            return default
-        try:
-            return float(val)
-        except (ValueError, TypeError):
-            return default
-    
+
     # ==========================================================================
     # BASIC THRESHOLD-BASED SCORING (legacy)
     # ==========================================================================
-    
-    vt1 = safe_float(thresholds.get("vt1_raw_midpoint"))
-    vt2 = safe_float(thresholds.get("vt2_raw_midpoint"))
-    smo2_lt2 = safe_float(smo2_manual.get("lt2_watts"))
-    cp = safe_float(cp_model.get("cp_watts"))
-    pa_hr = safe_float(kpi.get("pa_hr"))
+
+    vt1 = __safe_float(thresholds.get("vt1_raw_midpoint"))
+    vt2 = _safe_float(thresholds.get("vt2_raw_midpoint"))
+    smo2_lt2 = _safe_float(smo2_manual.get("lt2_watts"))
+    cp = _safe_float(cp_model.get("cp_watts"))
+    pa_hr = _safe_float(kpi.get("pa_hr"))
     
     # VT1/VT2 ratio check (central)
     if vt1 > 0 and vt2 > 0:
@@ -209,7 +226,7 @@ def identify_main_limiter(
     # ==========================================================================
     
     # HR-SmO2 coupling - strong negative correlation indicates central delivery limit
-    hr_coupling = safe_float(smo2_advanced.get("hr_coupling_r"))
+    hr_coupling = _safe_float(smo2_advanced.get("hr_coupling_r"))
     if hr_coupling < -0.75:
         # Strong negative correlation = HR going up while SmO2 goes down = central limit
         scores["central"] += 2
@@ -223,12 +240,12 @@ def identify_main_limiter(
         scores["peripheral"] += 2
     
     # SmO2 drift percentage
-    smo2_drift = safe_float(smo2_advanced.get("drift_pct"))
+    smo2_drift = _safe_float(smo2_advanced.get("drift_pct"))
     if abs(smo2_drift) > 8:
         scores["peripheral"] += 2
     
     # HR drift from cardio advanced
-    hr_drift_pct = safe_float(cardio_advanced.get("hr_drift_pct"))
+    hr_drift_pct = _safe_float(cardio_advanced.get("hr_drift_pct"))
     if hr_drift_pct > 10:
         scores["thermal"] += 2
     elif hr_drift_pct > 6:
@@ -236,7 +253,7 @@ def identify_main_limiter(
     
     # VO2max check from canonical - high VO2max with strong HR-SmO2 coupling = central
     summary = canonical_physiology.get("summary", {})
-    vo2max = safe_float(summary.get("vo2max"))
+    vo2max = _safe_float(summary.get("vo2max"))
     if vo2max > 55 and hr_coupling < -0.70:
         scores["central"] += 1  # High VO2max + preserved coupling = central system dictates
     
@@ -276,18 +293,9 @@ def build_signal_matrix(
     kpi: Dict[str, Any]
 ) -> Dict[str, Any]:
     """Build signal agreement matrix."""
-    
-    def safe_float(val, default=0.0):
-        if val is None or val == "brak danych":
-            return default
-        try:
-            return float(val)
-        except (ValueError, TypeError):
-            return default
-    
-    vt2 = safe_float(thresholds.get("vt2_raw_midpoint"))
-    smo2_lt2 = safe_float(smo2_manual.get("lt2_watts"))
-    pa_hr = safe_float(kpi.get("pa_hr"))
+    vt2 = _safe_float(thresholds.get("vt2_raw_midpoint"))
+    smo2_lt2 = _safe_float(smo2_manual.get("lt2_watts"))
+    pa_hr = _safe_float(kpi.get("pa_hr"))
     
     signals = []
     conflict_score = 0.0
@@ -439,18 +447,10 @@ def generate_training_cards(
         biomech_occlusion: Biomechanical occlusion data (metrics, classification)
     """
     biomech_occlusion = biomech_occlusion or {}
-    
-    def safe_int(val, default=0):
-        if val is None or val == "brak danych":
-            return default
-        try:
-            return int(float(val))
-        except (ValueError, TypeError):
-            return default
-    
-    vt1 = safe_int(thresholds.get("vt1_raw_midpoint"))
-    vt2 = safe_int(thresholds.get("vt2_raw_midpoint"))
-    cp = safe_int(cp_model.get("cp_watts"))
+
+    vt1 = _safe_int(thresholds.get("vt1_raw_midpoint"))
+    vt2 = _safe_int(thresholds.get("vt2_raw_midpoint"))
+    cp = _safe_int(cp_model.get("cp_watts"))
     
     limiter_type = limiter.get("limiter_type", "balanced")
     

@@ -4,6 +4,7 @@ Polars Adapter Module.
 Provides seamless interoperability between Pandas and Polars.
 Allows gradual migration without breaking existing code.
 """
+
 import logging
 from typing import Union, Any, Optional
 import numpy as np
@@ -13,6 +14,7 @@ logger = logging.getLogger(__name__)
 # Try to import Polars
 try:
     import polars as pl
+
     POLARS_AVAILABLE = True
 except ImportError:
     POLARS_AVAILABLE = False
@@ -22,7 +24,7 @@ import pandas as pd
 
 
 # Type alias for DataFrame compatibility
-DataFrame = Union[pd.DataFrame, 'pl.DataFrame'] if POLARS_AVAILABLE else pd.DataFrame
+DataFrame = Union[pd.DataFrame, "pl.DataFrame"] if POLARS_AVAILABLE else pd.DataFrame
 
 
 def is_polars_available() -> bool:
@@ -42,70 +44,70 @@ def is_pandas_df(df: Any) -> bool:
     return isinstance(df, pd.DataFrame)
 
 
-def to_polars(df: Any) -> 'pl.DataFrame':
+def to_polars(df: Any) -> "pl.DataFrame":
     """Convert any DataFrame-like object to Polars.
-    
+
     Args:
         df: Pandas DataFrame, Polars DataFrame, dict, or similar
-        
+
     Returns:
         Polars DataFrame
-        
+
     Raises:
         ImportError: If Polars is not installed
         TypeError: If conversion not possible
     """
     if not POLARS_AVAILABLE:
         raise ImportError("Polars is not installed. Run: pip install polars")
-    
+
     if is_polars_df(df):
         return df
-    
+
     if is_pandas_df(df):
         return pl.from_pandas(df)
-    
+
     if isinstance(df, dict):
         return pl.DataFrame(df)
-    
-    if hasattr(df, 'to_pandas'):
+
+    if hasattr(df, "to_pandas"):
         # Some libraries have to_pandas method
         return pl.from_pandas(df.to_pandas())
-    
+
     raise TypeError(f"Cannot convert {type(df)} to Polars DataFrame")
 
 
 def to_pandas(df: Any) -> pd.DataFrame:
     """Convert any DataFrame-like object to Pandas.
-    
+
     Args:
         df: Polars DataFrame, Pandas DataFrame, dict, or similar
-        
+
     Returns:
         Pandas DataFrame
     """
     if is_pandas_df(df):
         return df
-    
+
     if POLARS_AVAILABLE and is_polars_df(df):
         return df.to_pandas()
-    
+
     if isinstance(df, dict):
         return pd.DataFrame(df)
-    
-    if hasattr(df, 'to_pandas'):
+
+    if hasattr(df, "to_pandas"):
         return df.to_pandas()
-    
+
     raise TypeError(f"Cannot convert {type(df)} to Pandas DataFrame")
 
 
-def ensure_polars(df: Any) -> Optional['pl.DataFrame']:
+def ensure_polars(df: Any) -> Optional["pl.DataFrame"]:
     """Safely convert to Polars, returning None if not possible.
-    
+
     Use this when Polars is preferred but not required.
     """
     if not POLARS_AVAILABLE:
         return None
-    
+
     try:
         return to_polars(df)
     except (TypeError, Exception) as e:
@@ -115,7 +117,7 @@ def ensure_polars(df: Any) -> Optional['pl.DataFrame']:
 
 def ensure_pandas(df: Any) -> pd.DataFrame:
     """Safely convert to Pandas DataFrame.
-    
+
     This is the main compatibility function - use when you need
     to ensure Pandas format for Streamlit/Plotly.
     """
@@ -130,97 +132,91 @@ def ensure_pandas(df: Any) -> pd.DataFrame:
 # High-Performance Operations (Polars-first, Pandas fallback)
 # ============================================================
 
-def fast_rolling_mean(
-    df: DataFrame,
-    column: str,
-    window: int,
-    min_periods: int = 1
-) -> np.ndarray:
+
+def fast_rolling_mean(df: DataFrame, column: str, window: int, min_periods: int = 1) -> np.ndarray:
     """Fast rolling mean using Polars if available.
-    
+
     Falls back to Pandas if Polars not installed.
-    
+
     Returns numpy array for maximum compatibility.
     """
     if POLARS_AVAILABLE:
         try:
             pl_df = to_polars(df)
-            result = pl_df.select(
-                pl.col(column).rolling_mean(window_size=window, min_periods=min_periods)
-            ).to_numpy().flatten()
+            result = (
+                pl_df.select(
+                    pl.col(column).rolling_mean(window_size=window, min_periods=min_periods)
+                )
+                .to_numpy()
+                .flatten()
+            )
             return result
         except Exception:
             pass
-    
+
     # Pandas fallback
     pd_df = to_pandas(df)
     return pd_df[column].rolling(window=window, min_periods=min_periods).mean().values
 
 
 def fast_groupby_agg(
-    df: DataFrame,
-    group_col: str,
-    agg_col: str,
-    agg_func: str = 'mean'
+    df: DataFrame, group_col: str, agg_col: str, agg_func: str = "mean"
 ) -> pd.DataFrame:
     """Fast groupby aggregation using Polars if available.
-    
+
     Args:
         df: Input DataFrame
         group_col: Column to group by
         agg_col: Column to aggregate
         agg_func: Aggregation function ('mean', 'sum', 'max', 'min', 'count')
-        
+
     Returns:
         Pandas DataFrame with results (for Streamlit compatibility)
     """
     if POLARS_AVAILABLE:
         try:
             pl_df = to_polars(df)
-            
+
             agg_expr = {
-                'mean': pl.col(agg_col).mean(),
-                'sum': pl.col(agg_col).sum(),
-                'max': pl.col(agg_col).max(),
-                'min': pl.col(agg_col).min(),
-                'count': pl.col(agg_col).count(),
+                "mean": pl.col(agg_col).mean(),
+                "sum": pl.col(agg_col).sum(),
+                "max": pl.col(agg_col).max(),
+                "min": pl.col(agg_col).min(),
+                "count": pl.col(agg_col).count(),
             }.get(agg_func, pl.col(agg_col).mean())
-            
+
             result = pl_df.group_by(group_col).agg(agg_expr)
             return result.to_pandas()
         except Exception:
             pass
-    
+
     # Pandas fallback
     pd_df = to_pandas(df)
     return pd_df.groupby(group_col)[agg_col].agg(agg_func).reset_index()
 
 
 def fast_filter(
-    df: DataFrame,
-    column: str,
-    min_val: Optional[float] = None,
-    max_val: Optional[float] = None
+    df: DataFrame, column: str, min_val: Optional[float] = None, max_val: Optional[float] = None
 ) -> pd.DataFrame:
     """Fast filtering using Polars if available.
-    
+
     Returns Pandas DataFrame for compatibility.
     """
     if POLARS_AVAILABLE:
         try:
             pl_df = to_polars(df)
-            
+
             expr = pl.lit(True)
             if min_val is not None:
                 expr = expr & (pl.col(column) >= min_val)
             if max_val is not None:
                 expr = expr & (pl.col(column) <= max_val)
-            
+
             result = pl_df.filter(expr)
             return result.to_pandas()
         except Exception:
             pass
-    
+
     # Pandas fallback
     pd_df = to_pandas(df)
     mask = pd.Series([True] * len(pd_df))
@@ -231,13 +227,9 @@ def fast_filter(
     return pd_df[mask]
 
 
-def fast_read_csv(
-    path: str,
-    separator: str = ',',
-    **kwargs
-) -> pd.DataFrame:
+def fast_read_csv(path: str, separator: str = ",", **kwargs) -> pd.DataFrame:
     """Fast CSV reading using Polars if available.
-    
+
     Returns Pandas DataFrame for compatibility.
     """
     if POLARS_AVAILABLE:
@@ -246,7 +238,7 @@ def fast_read_csv(
             return pl_df.to_pandas()
         except Exception as e:
             logger.debug(f"Polars CSV read failed, using Pandas: {e}")
-    
+
     return pd.read_csv(path, sep=separator, **kwargs)
 
 
@@ -254,32 +246,31 @@ def fast_read_csv(
 # Power Calculation Optimizations
 # ============================================================
 
-def fast_normalized_power(
-    df: DataFrame,
-    power_column: str = 'watts',
-    window: int = 30
-) -> float:
+
+def fast_normalized_power(df: DataFrame, power_column: str = "watts", window: int = 30) -> float:
     """Calculate Normalized Power using fastest available method.
-    
+
     NP = 4th root of (mean of 4th power of 30s rolling average)
     """
     if POLARS_AVAILABLE:
         try:
             pl_df = to_polars(df)
-            
+
             # Rolling 30s average
-            rolling = pl_df.select(
-                pl.col(power_column).rolling_mean(window_size=window, min_periods=1)
-            ).to_numpy().flatten()
-            
+            rolling = (
+                pl_df.select(pl.col(power_column).rolling_mean(window_size=window, min_periods=1))
+                .to_numpy()
+                .flatten()
+            )
+
             # 4th power
             pow4 = np.power(rolling, 4)
-            
+
             # 4th root of mean
             return float(np.power(np.nanmean(pow4), 0.25))
         except Exception:
             pass
-    
+
     # Pandas fallback
     pd_df = to_pandas(df)
     rolling = pd_df[power_column].rolling(window=window, min_periods=1).mean()
@@ -288,49 +279,214 @@ def fast_normalized_power(
 
 
 def fast_power_duration_curve(
-    df: DataFrame,
-    durations: list[int],
-    power_column: str = 'watts'
+    df: DataFrame, durations: list[int], power_column: str = "watts"
 ) -> dict[int, Optional[float]]:
     """Calculate PDC using fastest available method.
-    
+
     Returns dict mapping duration (seconds) to max mean power.
     """
     results = {}
-    
+
     if POLARS_AVAILABLE:
         try:
             pl_df = to_polars(df)
             watts = pl_df.select(pl.col(power_column)).to_numpy().flatten()
-            
+
             for duration in durations:
                 if len(watts) < duration:
                     results[duration] = None
                     continue
-                
+
                 # Use Polars rolling max for efficiency
-                rolling = pl_df.select(
-                    pl.col(power_column).rolling_mean(window_size=duration, min_periods=duration)
-                ).to_numpy().flatten()
-                
+                rolling = (
+                    pl_df.select(
+                        pl.col(power_column).rolling_mean(
+                            window_size=duration, min_periods=duration
+                        )
+                    )
+                    .to_numpy()
+                    .flatten()
+                )
+
                 max_power = np.nanmax(rolling)
                 results[duration] = float(max_power) if not np.isnan(max_power) else None
-            
+
             return results
         except Exception:
             pass
-    
+
     # Pandas fallback
     pd_df = to_pandas(df)
     watts = pd_df[power_column]
-    
+
     for duration in durations:
         if len(watts) < duration:
             results[duration] = None
             continue
-        
+
         rolling = watts.rolling(window=duration, min_periods=duration).mean()
         max_power = rolling.max()
         results[duration] = float(max_power) if pd.notna(max_power) else None
-    
+
     return results
+
+
+def fast_rolling_std(df: DataFrame, column: str, window: int = 30) -> np.ndarray:
+    """Calculate rolling standard deviation using Polars.
+
+    10-50x faster than Pandas for large datasets.
+
+    Args:
+        df: Input DataFrame
+        column: Column name to calculate std for
+        window: Rolling window size
+
+    Returns:
+        numpy array with rolling std values
+    """
+    if POLARS_AVAILABLE:
+        try:
+            pl_df = to_polars(df)
+            result = (
+                pl_df.select(pl.col(column).rolling_std(window_size=window, min_periods=1))
+                .to_numpy()
+                .flatten()
+            )
+            return result
+        except Exception:
+            pass
+
+    # Pandas fallback
+    pd_df = to_pandas(df)
+    return pd_df[column].rolling(window=window, min_periods=1).std().values
+
+
+def fast_ewm_mean(df: DataFrame, column: str, alpha: float = 0.3) -> np.ndarray:
+    """Calculate exponential weighted mean using Polars.
+
+    Faster than Pandas ewm for large datasets.
+
+    Args:
+        df: Input DataFrame
+        column: Column name
+        alpha: Smoothing factor (0-1)
+
+    Returns:
+        numpy array with ewm values
+    """
+    if POLARS_AVAILABLE:
+        try:
+            pl_df = to_polars(df)
+            result = pl_df.select(pl.col(column).ewm_mean(alpha=alpha)).to_numpy().flatten()
+            return result
+        except Exception:
+            pass
+
+    # Pandas fallback
+    pd_df = to_pandas(df)
+    return pd_df[column].ewm(alpha=alpha).mean().values
+
+
+def fast_fill_na(df: DataFrame, strategy: str = "forward") -> DataFrame:
+    """Fill NA values using Polars for speed.
+
+    Args:
+        df: Input DataFrame
+        strategy: 'forward', 'backward', 'mean', 'zero'
+
+    Returns:
+        DataFrame with NA filled
+    """
+    if POLARS_AVAILABLE:
+        try:
+            pl_df = to_polars(df)
+
+            if strategy == "forward":
+                # Forward fill
+                fill_exprs = []
+                for col in pl_df.columns:
+                    fill_exprs.append(pl.col(col).fill_null(strategy="forward"))
+                return pl_df.with_columns(fill_exprs).to_pandas()
+            elif strategy == "backward":
+                fill_exprs = []
+                for col in pl_df.columns:
+                    fill_exprs.append(pl.col(col).fill_null(strategy="backward"))
+                return pl_df.with_columns(fill_exprs).to_pandas()
+            elif strategy == "zero":
+                fill_exprs = []
+                for col in pl_df.columns:
+                    fill_exprs.append(pl.col(col).fill_null(0))
+                return pl_df.with_columns(fill_exprs).to_pandas()
+
+        except Exception:
+            pass
+
+    # Pandas fallback
+    pd_df = to_pandas(df)
+
+    if strategy == "forward":
+        return pd_df.fillna(method="ffill")
+    elif strategy == "backward":
+        return pd_df.fillna(method="bfill")
+    elif strategy == "zero":
+        return pd_df.fillna(0)
+    elif strategy == "mean":
+        return pd_df.fillna(pd_df.mean())
+
+    return pd_df
+
+
+def fast_rolling_max(df: DataFrame, column: str, window: int = 30) -> np.ndarray:
+    """Calculate rolling maximum using Polars.
+
+    Args:
+        df: Input DataFrame
+        column: Column name
+        window: Rolling window size
+
+    Returns:
+        numpy array with rolling max values
+    """
+    if POLARS_AVAILABLE:
+        try:
+            pl_df = to_polars(df)
+            result = (
+                pl_df.select(pl.col(column).rolling_max(window_size=window, min_periods=1))
+                .to_numpy()
+                .flatten()
+            )
+            return result
+        except Exception:
+            pass
+
+    # Pandas fallback
+    pd_df = to_pandas(df)
+    return pd_df[column].rolling(window=window, min_periods=1).max().values
+
+
+def fast_rolling_min(df: DataFrame, column: str, window: int = 30) -> np.ndarray:
+    """Calculate rolling minimum using Polars.
+
+    Args:
+        df: Input DataFrame
+        column: Column name
+        window: Rolling window size
+
+    Returns:
+        numpy array with rolling min values
+    """
+    if POLARS_AVAILABLE:
+        try:
+            pl_df = to_polars(df)
+            result = (
+                pl_df.select(pl.col(column).rolling_min(window_size=window, min_periods=1))
+                .to_numpy()
+                .flatten()
+            )
+            return result
+        except Exception:
+            pass
+
+    # Pandas fallback
+    pd_df = to_pandas(df)
+    return pd_df[column].rolling(window=window, min_periods=1).min().values

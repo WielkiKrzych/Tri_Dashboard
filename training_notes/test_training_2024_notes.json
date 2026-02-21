@@ -60,6 +60,84 @@
       "metric": "power",
       "text": "Good effort here",
       "timestamp": "2026-02-20 07:39:03"
+    },
+    {
+      "time_minute": 10.0,
+      "metric": "power",
+      "text": "Good effort here",
+      "timestamp": "2026-02-20 17:48:27"
+    },
+    {
+      "time_minute": 10.0,
+      "metric": "power",
+      "text": "Good effort here",
+      "timestamp": "2026-02-20 17:48:35"
+    },
+    {
+      "time_minute": 10.0,
+      "metric": "power",
+      "text": "Good effort here",
+      "timestamp": "2026-02-20 17:48:43"
+    },
+    {
+      "time_minute": 10.0,
+      "metric": "power",
+      "text": "Good effort here",
+      "timestamp": "2026-02-20 17:48:50"
+    },
+    {
+      "time_minute": 10.0,
+      "metric": "power",
+      "text": "Good effort here",
+      "timestamp": "2026-02-20 17:48:58"
+    },
+    {
+      "time_minute": 10.0,
+      "metric": "power",
+      "text": "Good effort here",
+      "timestamp": "2026-02-20 17:49:05"
+    },
+    {
+      "time_minute": 10.0,
+      "metric": "power",
+      "text": "Good effort here",
+      "timestamp": "2026-02-20 17:54:27"
+    },
+    {
+      "time_minute": 10.0,
+      "metric": "power",
+      "text": "Good effort here",
+      "timestamp": "2026-02-20 17:54:35"
+    },
+    {
+      "time_minute": 10.0,
+      "metric": "power",
+      "text": "Good effort here",
+      "timestamp": "2026-02-20 17:58:01"
+    },
+    {
+      "time_minute": 10.0,
+      "metric": "power",
+      "text": "Good effort here",
+      "timestamp": "2026-02-20 19:05:05"
+    },
+    {
+      "time_minute": 10.0,
+      "metric": "power",
+      "text": "Good effort here",
+      "timestamp": "2026-02-20 19:05:13"
+    },
+    {
+      "time_minute": 10.0,
+      "metric": "power",
+      "text": "Good effort here",
+      "timestamp": "2026-02-20 19:05:20"
+    },
+    {
+      "time_minute": 10.0,
+      "metric": "power",
+      "text": "Good effort here",
+      "timestamp": "2026-02-20 19:05:28"
     }
   ]
 }

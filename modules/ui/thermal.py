@@ -4,18 +4,9 @@ Thermal / Environmental tab — core temperature estimate and heat-stress indica
 import streamlit as st
 import plotly.graph_objects as go
 import plotly.express as px
-import hashlib
 from typing import Optional
 from modules.calculations import calculate_thermal_decay
-
-
-def _hash_dataframe(df) -> str:
-    """Create a hash of DataFrame for cache key generation."""
-    if df is None or df.empty:
-        return "empty"
-    sample = df.head(100).to_json() if hasattr(df, 'to_json') else str(df)
-    shape_str = f"{df.shape}_{list(df.columns)}" if hasattr(df, 'shape') else str(df)
-    return hashlib.md5(f"{shape_str}_{sample}".encode()).hexdigest()[:16]
+from modules.ui.utils import hash_dataframe as _hash_dataframe
 
 
 @st.cache_data(ttl=3600, show_spinner=False)

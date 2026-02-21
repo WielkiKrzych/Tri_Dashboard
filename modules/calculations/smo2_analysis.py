@@ -15,7 +15,6 @@ Classifies limiters:
 Results are cached per (DataFrame, parameters) to avoid redundant computation.
 """
 
-import hashlib
 import numpy as np
 import pandas as pd
 from typing import Dict, Any, Optional, Tuple, List
@@ -23,22 +22,13 @@ from dataclasses import dataclass, field
 from scipy import stats
 import logging
 
+from modules.cache_utils import make_cache_key as _cache_key
+
 logger = logging.getLogger("Tri_Dashboard.SmO2Advanced")
 
 # Bounded module-level result cache (prevents unbounded memory growth)
 _SMO2_ANALYSIS_CACHE_MAXSIZE = 32
 _smo2_analysis_cache: dict = {}
-
-
-def _cache_key(*args) -> str:
-    """Generate a cache key from function arguments. DataFrames are hashed by content."""
-    parts = []
-    for a in args:
-        if isinstance(a, pd.DataFrame):
-            parts.append(str(pd.util.hash_pandas_object(a).sum()))
-        else:
-            parts.append(repr(a))
-    return hashlib.md5("|".join(parts).encode()).hexdigest()
 
 
 # =============================================================================

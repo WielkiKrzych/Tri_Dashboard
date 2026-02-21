@@ -170,6 +170,17 @@ def get_cache_stats() -> dict:
         return {"enabled": True, "error": "Could not get stats"}
 
 
+def make_cache_key(*args) -> str:
+    """Generate an in-memory cache key from arguments. DataFrames are hashed by content."""
+    parts = []
+    for a in args:
+        if isinstance(a, pd.DataFrame):
+            parts.append(str(pd.util.hash_pandas_object(a).sum()))
+        else:
+            parts.append(repr(a))
+    return hashlib.md5("|".join(parts).encode()).hexdigest()
+
+
 # Pre-configured cache decorators for common use cases
 
 cache_1h = cache_result(ttl=3600)  # 1 hour

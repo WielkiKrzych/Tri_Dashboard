@@ -1,12 +1,9 @@
 
 import pandas as pd
 import numpy as np
-import sys
-
-# Add project root to path
-sys.path.append('/Users/wielkikrzych/Desktop/Tri_Dashboard')
 
 from modules.calculations.thresholds import detect_vt_transition_zone
+
 
 def create_mock_data():
     """Create mock data simulating a ramp test (Trend + Low Noise)"""
@@ -46,40 +43,17 @@ def create_mock_data():
     
     return df
 
+
 def test_detection():
-    print("Generating clean mock data...")
+    """Test VT1/VT2 detection on clean mock data."""
     df = create_mock_data()
-    
-    print("Running detection...")
     vt1, vt2 = detect_vt_transition_zone(df)
     
-    print("\nResults:")
-    if vt1:
-        print(f"VT1 Zone: {vt1.range_watts[0]:.1f}-{vt1.range_watts[1]:.1f}W (Conf: {vt1.confidence:.2f})")
-    else:
-        print("VT1: Not detected")
-        
-    if vt2:
-        print(f"VT2 Zone: {vt2.range_watts[0]:.1f}-{vt2.range_watts[1]:.1f}W (Conf: {vt2.confidence:.2f})")
-    else:
-        print("VT2: Not detected")
-        
     # Assertions for clean data
-    if vt1:
-        # Should be very close to 200W
-        assert vt1.range_watts[0] > 180, f"VT1 start {vt1.range_watts[0]} too early"
-        assert vt1.range_watts[1] < 220, f"VT1 end {vt1.range_watts[1]} too late"
-    else:
-        assert False, "VT1 not detected on clean data"
-
-    if vt2:
-        # Should be very close to 300W
-        assert vt2.range_watts[0] > 280
-        assert vt2.range_watts[1] < 320
-    else:
-        assert False, "VT2 not detected on clean data"
-
-    print("\nVerification Passed!")
-
-if __name__ == "__main__":
-    test_detection()
+    assert vt1 is not None, "VT1 not detected on clean data"
+    assert vt1.range_watts[0] > 180, f"VT1 start {vt1.range_watts[0]} too early"
+    assert vt1.range_watts[1] < 220, f"VT1 end {vt1.range_watts[1]} too late"
+    
+    assert vt2 is not None, "VT2 not detected on clean data"
+    assert vt2.range_watts[0] > 280, f"VT2 start {vt2.range_watts[0]} too early"
+    assert vt2.range_watts[1] < 320, f"VT2 end {vt2.range_watts[1]} too late"

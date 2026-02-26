@@ -46,7 +46,9 @@ class StateManager:
 
     def cleanup_old_data(self) -> None:
         """Clean up old DataFrames from session state."""
-        keys_to_Check = ['_prev_df_plot', '_prev_df_resampled', '_prev_file_name', 'data_loaded']
+        keys_to_check = ['_prev_df_plot', '_prev_df_resampled', '_prev_file_name', 'data_loaded']
+        for key in keys_to_check:
+
         for key in keys_to_Check:
             if key in st.session_state:
                 del st.session_state[key]

@@ -56,6 +56,12 @@ def normalize_columns_pandas(df_pd: pd.DataFrame) -> pd.DataFrame:
     - 've' / 'ventilation' -> 'tymeventilation'
     - 'total_hemoglobin' -> 'thb'
     """
+    # Create a copy to avoid mutating the input DataFrame
+    df_pd = df_pd.copy()
+    
+    # Lowercase all columns first
+    df_pd.columns = [str(c).lower().strip() for c in df_pd.columns]
+
     # Lowercase all columns first
     df_pd.columns = [str(c).lower().strip() for c in df_pd.columns]
 

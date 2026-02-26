@@ -1,17 +1,13 @@
 
-import sys
-
-# Add project root to path
-sys.path.append('/Users/wielkikrzych/Desktop/Tri_Dashboard')
 
 from modules.calculations.repeatability import (
     calculate_repeatability_metrics,
     compare_session_to_baseline
 )
 
+
 def test_repeatability():
-    print("=== Test Repeatability Analysis ===\n")
-    
+    """Test repeatability analysis for session comparison."""
     # 1. Create a stable baseline (Low CV)
     # VT1 = 200, 202, 198
     sessions = [
@@ -22,8 +18,6 @@ def test_repeatability():
     
     stats = calculate_repeatability_metrics(sessions)
     vt1_stats = stats['vt1']
-    
-    print(f"VT1 Stats: Mean={vt1_stats['mean']}, CV={vt1_stats['cv']}%, Class={vt1_stats['class']}")
     
     # Check Math
     # Mean = 200
@@ -40,8 +34,6 @@ def test_repeatability():
     comp = compare_session_to_baseline(current, stats)
     
     res = comp['vt1']
-    print(f"Comparison: Current={res['current']}, Diff={res['pct_diff']}%, Sig={res['is_significant']}")
-    
     assert res['is_significant'] == True, "Should be significant change"
     assert "Change" in res['status'], "Status text should reflect change"
     
@@ -54,14 +46,8 @@ def test_repeatability():
     ]
     stats_u = calculate_repeatability_metrics(sessions_unstable)
     tau_u = stats_u['tau']
-    print(f"Tau Unstable Stats: Mean={tau_u['mean']}, CV={tau_u['cv']}%, Class={tau_u['class']}")
     
     # Mean ~ 31.6, Std ~ 12.5
     # CV ~ 40%
     assert tau_u['cv'] > 10.0, "CV should be high"
     assert tau_u['class'] == "Unstable", "Should be Unstable"
-    
-    print("\nRepeatability Verification Passed!")
-
-if __name__ == "__main__":
-    test_repeatability()

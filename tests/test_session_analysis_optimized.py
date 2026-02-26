@@ -42,8 +42,8 @@ def test_np_calculation_performance():
     assert abs(result_normal[2] - result_cached[2]) < 0.001
     
     # Cached should be significantly faster (at least 2x on second run)
-    print(f"\nPerformance: normal={time_normal:.3f}s, cached={time_cached:.3f}s")
-    print(f"Speedup: {time_normal/time_cached:.1f}x")
+    # Note: In CI environments, timing can be unpredictable
+    assert time_cached < time_normal or time_normal < 0.1, "Cache should provide speedup"
 
 
 def test_smo2_smoothing_inplace():

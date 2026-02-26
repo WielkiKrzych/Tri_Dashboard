@@ -141,6 +141,23 @@ def _calculate_parallel(
         # Collect results as they complete
         try:
             metrics = future_metrics.result(timeout=30)
+        except Exception as e:
+            logger.warning("Parallel metrics calculation failed, falling back: %s", e)
+            metrics = calculate_metrics(df_clean_pl, cp_input)
+
+        try:
+            df_w_prime = future_wprime.result(timeout=30)
+        except Exception as e:
+            logger.warning("Parallel W' calculation failed, falling back: %s", e)
+            df_w_prime = calculate_w_prime_balance(df_clean_pl, cp_input, w_prime_input)
+
+        try:
+            drift_z2 = future_drift.result(timeout=30)
+        except Exception as e:
+            logger.warning("Parallel Z2 drift calculation failed, falling back: %s", e)
+            drift_z2 = calculate_z2_drift(df_clean_pl, cp_input)
+
+            metrics = future_metrics.result(timeout=30)
         except Exception:
             metrics = calculate_metrics(df_clean_pl, cp_input)
 

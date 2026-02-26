@@ -62,6 +62,11 @@ def check_git_tracking(directory: str = "reports/ramp_tests"):
         return
 
     try:
+        # nosec B603: subprocess call is safe - static command with controlled args
+        result = subprocess.run(
+            ["git", "ls-files", directory], capture_output=True, text=True, check=False
+        )
+
         result = subprocess.run(
             ["git", "ls-files", directory], capture_output=True, text=True, check=False
         )

@@ -76,7 +76,17 @@ class AppLayout:
         params['crank_length'] = st.sidebar.number_input(
             "Długość korby [mm]", key="crank", on_change=self.state.save_settings_callback
         )
-        uploaded_file = st.sidebar.file_uploader("Wgraj plik (CSV / TXT)", type=['csv', 'txt'])
+        # File upload with size limit (50 MB max)
+        MAX_FILE_SIZE_MB = 50
+        uploaded_file = st.sidebar.file_uploader(
+            "Wgraj plik (CSV / TXT)", 
+            type=['csv', 'txt'],
+            accept_multiple_files=False
+        )
+        if uploaded_file and uploaded_file.size > MAX_FILE_SIZE_MB * 1024 * 1024:
+            st.sidebar.error(f"Plik za duży. Maksymalny rozmiar: {MAX_FILE_SIZE_MB} MB")
+            uploaded_file = None
+
             
         return uploaded_file, params
 

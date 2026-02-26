@@ -14,6 +14,29 @@ class UIComponents:
     @staticmethod
     def show_breadcrumb(group: str, section: str = None) -> None:
         """Render a breadcrumb navigation aid."""
+        # Escape user-provided strings to prevent XSS
+        safe_group = html.escape(str(group))
+        safe_section = html.escape(str(section)) if section else None
+        
+        if safe_section:
+            html_content = f"""
+            <div class="breadcrumb-nav">
+                🏠 Dashboard <span class="separator">›</span> 
+                {safe_group} <span class="separator">›</span> 
+                <span class="current">{safe_section}</span>
+            </div>
+            """
+        else:
+            html_content = f"""
+            <div class="breadcrumb-nav">
+                🏠 Dashboard <span class="separator">›</span> 
+                <span class="current">{safe_group}</span>
+            </div>
+            """
+        st.markdown(html_content, unsafe_allow_html=True)
+
+    def show_breadcrumb(group: str, section: str = None) -> None:
+        """Render a breadcrumb navigation aid."""
         if section:
             html = f"""
             <div class="breadcrumb-nav">

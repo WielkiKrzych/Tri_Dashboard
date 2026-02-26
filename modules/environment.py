@@ -121,6 +121,27 @@ class EnvironmentService:
             if response.status_code != 200:
                 return None
             
+            # Validate API response structure before key access
+            main_data = data.get('main', {})
+            wind_data = data.get('wind', {})
+            weather_list = data.get('weather', [{}])
+            
+            if not main_data:
+                logger.warning("Weather API response missing 'main' data")
+                return None
+            
+            return WeatherData(
+                temperature=main_data.get('temp', 20.0),
+                humidity=main_data.get('humidity', 60.0),
+                wind_speed=wind_data.get('speed', 0) * 3.6,  # m/s to km/h
+                feels_like=main_data.get('feels_like', main_data.get('temp', 20.0)),
+                description=weather_list[0].get('description', 'Unknown'),
+                location=data.get('name', 'Unknown'),
+                timestamp=datetime.now()
+            )
+
+                return None
+            
             return WeatherData(
                 temperature=data['main']['temp'],
                 humidity=data['main']['humidity'],

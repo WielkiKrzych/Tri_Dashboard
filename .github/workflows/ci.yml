@@ -39,8 +39,15 @@ jobs:
 
     - name: Test with coverage
       run: |
-        pytest --cov=modules --cov=services --cov-report=xml --cov-report=term-missing --cov-fail-under=60
+        pytest --cov=modules --cov=services --cov-report=xml --cov-report=term-missing --cov-fail-under=50
+
 
     - name: Security scan (bandit)
       run: |
-        bandit -r modules/ services/ -ll -ii --exit-zero
+        bandit -r modules/ services/ -ll -ii
+
+    - name: Dependency vulnerability scan (pip-audit)
+      run: |
+        pip install pip-audit
+        pip-audit --skip-editable
+

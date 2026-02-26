@@ -119,8 +119,6 @@ class TestVO2maxConsistency:
             f"CRITICAL: UI VO2max ({vo2max_ui:.2f}) != PDF VO2max ({vo2max_pdf:.2f})"
         )
 
-        print(f"✅ UI VO2max = PDF VO2max = {vo2max_ui:.2f} ml/kg/min")
-
     def test_metadata_structure(self, sample_power_data):
         """Test that VO2max metadata contains all required fields."""
         from modules.calculations.metrics import calculate_vo2max
@@ -147,7 +145,3 @@ class TestVO2maxConsistency:
 
         assert metadata["method"] == "rolling_300s_mean_max"
         assert metadata["confidence"] == 0.70
-
-
-if __name__ == "__main__":
-    pytest.main([__file__, "-v"])

@@ -1,14 +1,12 @@
 
 import pandas as pd
 import numpy as np
-import sys
-
-# Add project root to path
-sys.path.append('/Users/wielkikrzych/Desktop/Tri_Dashboard')
 
 from modules.calculations.kinetics import generate_state_timeline
 
+
 def create_interval_segment(start, duration, mode="STEADY"):
+    """Create a mock dataframe segment for testing state machine."""
     t = np.arange(start, start+duration)
     
     # Initialize defaults
@@ -36,9 +34,9 @@ def create_interval_segment(start, duration, mode="STEADY"):
         
     return pd.DataFrame({'time': t, 'watts': watts, 'hr': hr, 'smo2': smo2})
 
+
 def test_state_machine():
-    print("=== Test State Machine ===\n")
-    
+    """Test state machine detection for steady/non-steady/recovery states."""
     # Construct a session: Steady -> Work (Non-Steady) -> Rest (Recovery)
     # 0-180: Steady
     # 180-360: Work
@@ -52,14 +50,9 @@ def test_state_machine():
     # Generate timeline
     timeline = generate_state_timeline(full_df, window_size_sec=30, step_sec=30)
     
-    print("Detected Segments:")
-    for seg in timeline:
-        print(f"  {seg['start']}-{seg['end']}s: {seg['state']} (Conf: {seg['confidence']:.2f})")
-        
-    if not timeline:
-        print("FAIL: No segments detected")
-        sys.exit(1)
-
+    # Verify segments were detected
+    assert len(timeline) > 0, "No segments detected"
+    
     # 1. First segment (should cover 0-100s range primarily)
     first_state = timeline[0]['state']
     assert first_state in ['STEADY_STATE', 'RAMP_UP'], f"Start should be STEADY, got {first_state}"
@@ -74,9 +67,8 @@ def test_state_machine():
         if overlap_end > overlap_start:
             mid_states.append(s['state'])
             
-    print(f"Mid States overlap [200-340]: {mid_states}")
     has_non_steady = any(s in ['NON_STEADY', 'FATIGUE'] for s in mid_states)
-    assert has_non_steady, "Middle section should contain NON_STEADY or FATIGUE"
+    assert has_non_steady, f"Middle section should contain NON_STEADY or FATIGUE, got {mid_states}"
     
     # 3. End section (Recovery) ~ 360+
     # Find overlapping states
@@ -85,11 +77,5 @@ def test_state_machine():
         if s['end'] > 400: # Ends well into recovery
              end_states.append(s['state'])
              
-    print(f"End States overlap [400+]: {end_states}")
     has_recovery = any(s == 'RECOVERY' for s in end_states)
-    assert has_recovery, "End section should contain RECOVERY"
-    
-    print("\nState Machine Verification Passed!")
-
-if __name__ == "__main__":
-    test_state_machine()
+    assert has_recovery, f"End section should contain RECOVERY, got {end_states}"

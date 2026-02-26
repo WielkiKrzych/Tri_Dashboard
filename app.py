@@ -1,4 +1,11 @@
 import streamlit as st
+import html
+import hashlib
+import logging
+import re
+from datetime import datetime, timedelta
+from typing import Optional, Tuple, Any
+
 from io import BytesIO
 import os
 import re
@@ -58,6 +65,20 @@ def compute_file_hash(file) -> str:
     Compute stable hash for file cache key.
 
     Uses MD5 for speed (not cryptographic security needed).
+    Hashes actual file content for cache integrity.
+    """
+    file.seek(0)  # Reset position
+    content_hash = hashlib.md5()
+    # Hash content in chunks for memory efficiency
+    for chunk in iter(lambda: file.read(8192), b''):
+        content_hash.update(chunk)
+    file.seek(0)  # Reset for subsequent reads
+    return content_hash.hexdigest()[:16]
+
+    """
+    Compute stable hash for file cache key.
+
+    Uses MD5 for speed (not cryptographic security needed).
     More stable than built-in hash() which can vary between runs.
     """
     return hashlib.md5(f"{file.name}:{file.size}".encode()).hexdigest()[:16]
@@ -108,6 +129,11 @@ def render_session_badge(session_type, ramp_classification) -> None:
         else:
             msg = f"Rozpoznano: <b>Sesja treningowa</b>"
     else:
+        bg_color = "rgba(149, 165, 166, 0.2)"
+        # Escape session_type to prevent XSS
+        safe_type = html.escape(str(session_type))
+        msg = f"Typ sesji: <b>{safe_type}</b>"
+
         bg_color = "rgba(149, 165, 166, 0.2)"
         msg = f"Typ sesji: <b>{session_type}</b>"
 

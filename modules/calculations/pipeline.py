@@ -405,6 +405,7 @@ def integrate_signals(analysis: IndependentAnalysisResults) -> IntegrationResult
     # SmO₂ MODULATION (not detection!)
     # SmO₂ is a LOCAL signal - it can only CONFIRM or QUESTION VT
     # SmO₂ does NOT create independent thresholds
+    # [Issue #8] Using RELATIVE thresholds based on % of Pmax
     # =========================================================
     if smo2_result and result.vt1:
         result.conflicts.signals_analyzed.append("SmO2 (LOCAL)")
@@ -416,57 +417,83 @@ def integrate_signals(analysis: IndependentAnalysisResults) -> IntegrationResult
             vt1_mid = result.vt1.midpoint_watts
             deviation = smo2_drop_power - vt1_mid
             result.smo2_deviation_vt1 = deviation
-
-            # SmO₂ MODULATES VT based on agreement
-            if abs(deviation) <= 10:
-                # SmO₂ CONFIRMS VT → boost confidence, narrow range
-                result.vt1.confidence = min(0.95, result.vt1.confidence + 0.15)
-                # Narrow the range (higher certainty)
-                shrink = 0.1
-                mid = result.vt1.midpoint_watts
-                width = result.vt1.width_watts
-                result.vt1.lower_watts = mid - width * (0.5 - shrink)
-                result.vt1.upper_watts = mid + width * (0.5 - shrink)
-                result.vt1.sources.append("SmO2 ✓")
-                result.integration_notes.append(
-                    f"✓ SmO₂ (LOCAL) potwierdza VT1 (różnica: {deviation:.0f} W) → confidence +0.15"
-                )
-            elif abs(deviation) <= 20:
-                # SmO₂ slightly off → minor confidence reduction
-                result.vt1.confidence = max(0.3, result.vt1.confidence - 0.05)
-                result.integration_notes.append(
-                    f"ℹ️ SmO₂ (LOCAL) bliski VT1 (różnica: {deviation:.0f} W) → confidence -0.05"
-                )
-            else:
-                # SmO₂ significantly different → conflict, reduce confidence
-                conflict_type = ConflictType.SMO2_EARLY if deviation < 0 else ConflictType.SMO2_LATE
-                result.conflicts.conflicts.append(
-                    SignalConflict(
-                        conflict_type=conflict_type,
-                        severity=ConflictSeverity.WARNING,
-                        signal_a="SmO2 (LOCAL)",
-                        signal_b="VE",
-                        description=f"SmO₂ (LOCAL) różni się od VT1 o {deviation:.0f} W",
-                        physiological_interpretation=(
-                            "SmO₂ jest sygnałem LOKALNYM (jeden mięsień). "
-                            "Rozbieżność z VT może oznaczać różnicę między lokalną a systemową odpowiedzią."
-                        ),
-                        magnitude=abs(deviation),
-                        confidence_penalty=0.15,
+            
+            # [Issue #8] Calculate relative deviation as % of Pmax
+            # Estimate Pmax from VT2 or VT1 (VT2 ≈ 80% Pmax, VT1 ≈ 60% Pmax)
+            estimated_pmax = 0
+            if result.vt2 and result.vt2.midpoint_watts:
+                estimated_pmax = result.vt2.midpoint_watts / 0.80
+            elif vt1_mid:
+                estimated_pmax = vt1_mid / 0.60
+            
+            # Relative thresholds based on % of Pmax
+            if estimated_pmax > 0:
+                relative_deviation_pct = abs(deviation) / estimated_pmax
+                
+                # ±3% Pmax = confirm, ±5% Pmax = minor, >5% Pmax = conflict
+                CONFIRM_THRESHOLD = 0.03  # 3% of Pmax
+                MINOR_THRESHOLD = 0.05    # 5% of Pmax
+                
+                if relative_deviation_pct <= CONFIRM_THRESHOLD:
+                    # SmO₂ CONFIRMS VT → boost confidence, narrow range
+                    result.vt1.confidence = min(0.95, result.vt1.confidence + 0.15)
+                    shrink = 0.1
+                    mid = result.vt1.midpoint_watts
+                    width = result.vt1.width_watts
+                    result.vt1.lower_watts = mid - width * (0.5 - shrink)
+                    result.vt1.upper_watts = mid + width * (0.5 - shrink)
+                    result.vt1.sources.append("SmO2 ✓")
+                    result.integration_notes.append(
+                        f"✓ SmO₂ (LOCAL) potwierdza VT1 (różnica: {deviation:.0f}W = {relative_deviation_pct*100:.1f}% Pmax) → confidence +0.15"
                     )
-                )
-                result.vt1.confidence = max(0.3, result.vt1.confidence - 0.1)
-                # Widen the range (lower certainty)
-                expand = 0.15
-                mid = result.vt1.midpoint_watts
-                width = result.vt1.width_watts
-                result.vt1.lower_watts = mid - width * (0.5 + expand)
-                result.vt1.upper_watts = mid + width * (0.5 + expand)
-                result.integration_notes.append(
-                    f"⚠️ SmO₂ (LOCAL) konflikt z VT1: {deviation:.0f} W → confidence -0.1, range +15%"
-                )
+                elif relative_deviation_pct <= MINOR_THRESHOLD:
+                    # SmO₂ slightly off → minor confidence reduction
+                    result.vt1.confidence = max(0.3, result.vt1.confidence - 0.05)
+                    result.integration_notes.append(
+                        f"ℹ️ SmO₂ (LOCAL) bliski VT1 (różnica: {deviation:.0f}W = {relative_deviation_pct*100:.1f}% Pmax) → confidence -0.05"
+                    )
+                else:
+                    # SmO₂ significantly different → conflict
+                    conflict_type = ConflictType.SMO2_EARLY if deviation < 0 else ConflictType.SMO2_LATE
+                    result.conflicts.conflicts.append(
+                        SignalConflict(
+                            conflict_type=conflict_type,
+                            severity=ConflictSeverity.WARNING,
+                            signal_a="SmO2 (LOCAL)",
+                            signal_b="VE",
+                            description=f"SmO₂ (LOCAL) różni się od VT1 o {deviation:.0f}W ({relative_deviation_pct*100:.1f}% Pmax)",
+                            physiological_interpretation=(
+                                "SmO₂ jest sygnałem LOKALNYM (jeden mięsień). "
+                                "Rozbieżność z VT może oznaczać różnicę między lokalną a systemową odpowiedzią."
+                            ),
+                            magnitude=abs(deviation),
+                            confidence_penalty=0.15,
+                        )
+                    )
+                    result.vt1.confidence = max(0.3, result.vt1.confidence - 0.1)
+                    expand = 0.15
+                    mid = result.vt1.midpoint_watts
+                    width = result.vt1.width_watts
+                    result.vt1.lower_watts = mid - width * (0.5 + expand)
+                    result.vt1.upper_watts = mid + width * (0.5 + expand)
+                    result.integration_notes.append(
+                        f"⚠️ SmO₂ (LOCAL) konflikt z VT1: {deviation:.0f}W ({relative_deviation_pct*100:.1f}% Pmax) → confidence -0.1"
+                    )
+            else:
+                # Fallback to fixed thresholds if Pmax unknown
+                if abs(deviation) <= 10:
+                    result.vt1.confidence = min(0.95, result.vt1.confidence + 0.15)
+                    result.integration_notes.append(
+                        f"✓ SmO₂ (LOCAL) potwierdza VT1 (różnica: {deviation:.0f}W) → confidence +0.15"
+                    )
+                elif abs(deviation) <= 20:
+                    result.vt1.confidence = max(0.3, result.vt1.confidence - 0.05)
+                else:
+                    result.vt1.confidence = max(0.3, result.vt1.confidence - 0.1)
+                    result.integration_notes.append(
+                        f"⚠️ SmO₂ (LOCAL) konflikt z VT1: {deviation:.0f}W → confidence -0.1"
+                    )
         else:
-            # No SmO₂ drop detected → cannot modulate, note this
             result.integration_notes.append(
                 "ℹ️ SmO₂ (LOCAL): brak wyraźnego spadku - brak modulacji VT"
             )

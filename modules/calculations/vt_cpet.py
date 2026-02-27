@@ -18,6 +18,7 @@ from .vt_cpet_preprocessing import preprocess_cpet_data
 from .vt_cpet_steps import aggregate_step_data
 from .vt_cpet_gas_exchange import detect_gas_exchange_thresholds
 from .vt_cpet_ve_only import detect_ve_only_thresholds
+from .common import validate_threshold_vs_pmax
 
 
 def detect_vt_vslope_savgol(
@@ -83,6 +84,7 @@ def detect_vt_cpet(
         "analysis_notes": [],
         "validation": {"vt1_lt_vt2": False, "ve_vo2_rises_first": False},
         "ramp_start_step": None,
+        "cross_validation": None,  # [Issue #7]
     }
 
     cols = {
@@ -109,22 +111,127 @@ def detect_vt_cpet(
         return result
     result["df_steps"] = df_steps
 
+    # 3.5 [Issue #7] Cross-validation between detection methods
+    cross_validation = {
+        "enabled": False,
+        "vt1_methods": [],
+        "vt2_methods": [],
+        "vt1_deviation_watts": None,
+        "vt2_deviation_watts": None,
+        "warning": None,
+    }
+
     # 3. Detect thresholds
     if has_vo2 and has_vco2:
         detect_gas_exchange_thresholds(df_steps, result)
+        
+        # [Issue #7] Store gas exchange results for cross-validation
+        cross_validation["enabled"] = True
+        if result.get("vt1_watts"):
+            cross_validation["vt1_methods"].append({
+                "method": "gas_exchange",
+                "value": result["vt1_watts"],
+                "confidence": 0.7,  # Default confidence for gas exchange
+            })
+        if result.get("vt2_watts"):
+            cross_validation["vt2_methods"].append({
+                "method": "gas_exchange",
+                "value": result["vt2_watts"],
+                "confidence": 0.7,
+            })
+        
+        # Also run VE-only method for comparison
+        ve_result = {"vt1_watts": None, "vt2_watts": None, "analysis_notes": []}
+        detect_ve_only_thresholds(df_steps, data, cols, ve_result)
+        
+        if ve_result.get("vt1_watts"):
+            cross_validation["vt1_methods"].append({
+                "method": "ve_only",
+                "value": ve_result["vt1_watts"],
+                "confidence": 0.6,  # Lower confidence for VE-only
+            })
+        if ve_result.get("vt2_watts"):
+            cross_validation["vt2_methods"].append({
+                "method": "ve_only",
+                "value": ve_result["vt2_watts"],
+                "confidence": 0.6,
+            })
     else:
         detect_ve_only_thresholds(df_steps, data, cols, result)
 
-    # 4. Global fallback defaults (both paths)
-    if result["vt1_watts"] is None:
-        vt1_power = int(np.percentile(df_steps["power"].values, 60))
-        result["vt1_watts"] = vt1_power
-        result["analysis_notes"].append(f"VT1 not detected - using 60th percentile ({vt1_power}W)")
+    # [Issue #7] Calculate weighted average if multiple methods
+    if len(cross_validation["vt1_methods"]) >= 2:
+        methods = cross_validation["vt1_methods"]
+        total_conf = sum(m["confidence"] for m in methods)
+        if total_conf > 0:
+            weighted_vt1 = sum(m["value"] * m["confidence"] for m in methods) / total_conf
+            deviation = max(m["value"] for m in methods) - min(m["value"] for m in methods)
+            cross_validation["vt1_deviation_watts"] = deviation
+            
+            if deviation > 30:
+                cross_validation["warning"] = (
+                    f"⚠️ VT1 methods deviate by {deviation:.0f}W - results uncertain"
+                )
+                result["analysis_notes"].append(cross_validation["warning"])
+            else:
+                # Use weighted average as final value
+                result["vt1_watts"] = int(weighted_vt1)
+                result["analysis_notes"].append(
+                    f"VT1 cross-validated: weighted average {int(weighted_vt1)}W "
+                    f"(deviation: {deviation:.0f}W)"
+                )
 
-    if result["vt2_watts"] is None:
-        vt2_power = int(np.percentile(df_steps["power"].values, 80))
+    if len(cross_validation["vt2_methods"]) >= 2:
+        methods = cross_validation["vt2_methods"]
+        total_conf = sum(m["confidence"] for m in methods)
+        if total_conf > 0:
+            weighted_vt2 = sum(m["value"] * m["confidence"] for m in methods) / total_conf
+            deviation = max(m["value"] for m in methods) - min(m["value"] for m in methods)
+            cross_validation["vt2_deviation_watts"] = deviation
+            
+            if deviation > 30:
+                if cross_validation["warning"]:
+                    cross_validation["warning"] += f", VT2 deviates by {deviation:.0f}W"
+                else:
+                    cross_validation["warning"] = (
+                        f"⚠️ VT2 methods deviate by {deviation:.0f}W - results uncertain"
+                    )
+                result["analysis_notes"].append(
+                    f"⚠️ VT2 methods deviate by {deviation:.0f}W"
+                )
+            else:
+                result["vt2_watts"] = int(weighted_vt2)
+                result["analysis_notes"].append(
+                    f"VT2 cross-validated: weighted average {int(weighted_vt2)}W "
+                    f"(deviation: {deviation:.0f}W)"
+                )
+
+    result["cross_validation"] = cross_validation
+
+    # 4. Global fallback defaults (both paths) [Issue #3]
+    # Use Pmax-relative formula for physiological plausibility
+    pmax = df_steps["power"].max() if len(df_steps) > 0 else 0
+    
+    VT1_PMAX_RATIO_MIN = 0.55  # 55% of Pmax
+    VT1_PMAX_RATIO_MAX = 0.65  # 65% of Pmax
+    VT2_PMAX_RATIO_MIN = 0.75  # 75% of Pmax
+    VT2_PMAX_RATIO_MAX = 0.85  # 85% of Pmax
+    
+    if result["vt1_watts"] is None and pmax > 0:
+        # Use midpoint of physiological range
+        vt1_power = int(pmax * ((VT1_PMAX_RATIO_MIN + VT1_PMAX_RATIO_MAX) / 2))
+        result["vt1_watts"] = vt1_power
+        result["analysis_notes"].append(
+            f"VT1 not detected - using Pmax-relative estimate ({vt1_power}W = 60% of {pmax}W Pmax)"
+        )
+    
+    if result["vt2_watts"] is None and pmax > 0:
+        # Use midpoint of physiological range
+        vt2_power = int(pmax * ((VT2_PMAX_RATIO_MIN + VT2_PMAX_RATIO_MAX) / 2))
         result["vt2_watts"] = vt2_power
-        result["analysis_notes"].append(f"VT2 not detected - using 80th percentile ({vt2_power}W)")
+        result["analysis_notes"].append(
+            f"VT2 not detected - using Pmax-relative estimate ({vt2_power}W = 80% of {pmax}W Pmax)"
+        )
 
     # 5. Physiological validation
     if result["vt1_watts"] >= result["vt2_watts"]:
@@ -134,5 +241,15 @@ def detect_vt_cpet(
 
     if result["vt1_step"] and result["vt2_step"]:
         result["validation"]["ve_vo2_rises_first"] = result["vt1_step"] < result["vt2_step"]
+
+    # 6. [Issue #2] VT2 vs Pmax sanity check
+    if result["vt2_watts"] is not None and pmax > 0:
+        validation = validate_threshold_vs_pmax(
+            result["vt2_watts"], pmax, "VT2", max_ratio=0.95
+        )
+        if not validation["is_valid"]:
+            result["analysis_notes"].append(validation["message"])
+            result["vt2_confidence_penalty"] = validation["confidence_penalty"]
+            result["vt2_unreliable"] = True
 
     return result

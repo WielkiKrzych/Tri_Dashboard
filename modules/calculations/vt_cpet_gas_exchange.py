@@ -77,37 +77,66 @@ def detect_gas_exchange_thresholds(df_steps: pd.DataFrame, result: dict) -> None
 
             if vt2_idx < len(df_steps):
                 rer_at_vt2 = df_steps.loc[vt2_idx, "rer"]
-
-                if pd.notna(rer_at_vt2) and 0.95 <= rer_at_vt2 <= 1.15:
-                    result["vt2_watts"] = int(df_steps.loc[vt2_idx, "power"])
-                    result["vt2_ve"] = round(df_steps.loc[vt2_idx, "ve"], 1)
-                    result["vt2_vo2"] = (
-                        round(df_steps.loc[vt2_idx, "vo2"], 2)
-                        if "vo2" in df_steps.columns
-                        else None
-                    )
-                    result["vt2_step"] = int(df_steps.loc[vt2_idx, "step"])
-                    result["vt2_pct_vo2max"] = (
-                        round(df_steps.loc[vt2_idx, "vo2"] / vo2max * 100, 1)
-                        if vo2max > 0 and "vo2" in df_steps.columns
-                        else None
-                    )
-                    if "hr" in df_steps.columns and pd.notna(df_steps.loc[vt2_idx, "hr"]):
-                        result["vt2_hr"] = int(df_steps.loc[vt2_idx, "hr"])
-                    if "br" in df_steps.columns and pd.notna(df_steps.loc[vt2_idx, "br"]):
-                        result["vt2_br"] = int(df_steps.loc[vt2_idx, "br"])
+                
+                # [Issue #1] RER validation for VT2
+                RER_IDEAL_MIN = 0.95
+                RER_IDEAL_MAX = 1.15
+                RER_REJECT_MAX = 1.25
+                
+                rer_valid = pd.notna(rer_at_vt2)
+                rer_in_ideal_range = rer_valid and RER_IDEAL_MIN <= rer_at_vt2 <= RER_IDEAL_MAX
+                rer_extreme = rer_valid and rer_at_vt2 > RER_REJECT_MAX
+                
+                # Calculate confidence penalty
+                confidence_penalty = 0.0
+                if rer_valid and not rer_in_ideal_range:
+                    if rer_extreme:
+                        # RER > 1.25: reject VT2 entirely
+                        result["analysis_notes"].append(
+                            f"⚠️ VT2 candidate rejected: RER={rer_at_vt2:.2f} > {RER_REJECT_MAX} (hyperventilation artifact)"
+                        )
+                        return  # Skip VT2 detection
+                    elif rer_at_vt2 < RER_IDEAL_MIN:
+                        # RER < 0.95: likely submaximal effort, reduce confidence
+                        confidence_penalty = 0.25
+                        result["analysis_notes"].append(
+                            f"ℹ️ VT2 RER={rer_at_vt2:.2f} < {RER_IDEAL_MIN} (submaximal?) → confidence -0.25"
+                        )
+                    else:
+                        # RER 1.15-1.25: approaching hyperventilation, moderate penalty
+                        confidence_penalty = 0.15
+                        result["analysis_notes"].append(
+                            f"ℹ️ VT2 RER={rer_at_vt2:.2f} > {RER_IDEAL_MAX} → confidence -0.15"
+                        )
+                
+                # Store VT2 with confidence penalty
+                result["vt2_watts"] = int(df_steps.loc[vt2_idx, "power"])
+                result["vt2_ve"] = round(df_steps.loc[vt2_idx, "ve"], 1)
+                result["vt2_vo2"] = (
+                    round(df_steps.loc[vt2_idx, "vo2"], 2)
+                    if "vo2" in df_steps.columns
+                    else None
+                )
+                result["vt2_step"] = int(df_steps.loc[vt2_idx, "step"])
+                result["vt2_pct_vo2max"] = (
+                    round(df_steps.loc[vt2_idx, "vo2"] / vo2max * 100, 1)
+                    if vo2max > 0 and "vo2" in df_steps.columns
+                    else None
+                )
+                result["vt2_rer"] = round(rer_at_vt2, 2) if rer_valid else None
+                result["vt2_confidence_penalty"] = confidence_penalty
+                
+                if "hr" in df_steps.columns and pd.notna(df_steps.loc[vt2_idx, "hr"]):
+                    result["vt2_hr"] = int(df_steps.loc[vt2_idx, "hr"])
+                if "br" in df_steps.columns and pd.notna(df_steps.loc[vt2_idx, "br"]):
+                    result["vt2_br"] = int(df_steps.loc[vt2_idx, "br"])
+                
+                if rer_in_ideal_range:
                     result["analysis_notes"].append(
-                        f"VT2 detected at step {result['vt2_step']} (RER={rer_at_vt2:.2f})"
+                        f"VT2 detected at step {result['vt2_step']} (RER={rer_at_vt2:.2f} ✓)"
                     )
-                else:
-                    result["vt2_watts"] = int(df_steps.loc[vt2_idx, "power"])
-                    result["vt2_ve"] = round(df_steps.loc[vt2_idx, "ve"], 1)
-                    result["vt2_step"] = int(df_steps.loc[vt2_idx, "step"])
-                    if "hr" in df_steps.columns and pd.notna(df_steps.loc[vt2_idx, "hr"]):
-                        result["vt2_hr"] = int(df_steps.loc[vt2_idx, "hr"])
-                    if "br" in df_steps.columns and pd.notna(df_steps.loc[vt2_idx, "br"]):
-                        result["vt2_br"] = int(df_steps.loc[vt2_idx, "br"])
-                    rer_str = f"{rer_at_vt2:.2f}" if pd.notna(rer_at_vt2) else "N/A"
+                elif rer_valid:
+                    rer_str = f"{rer_at_vt2:.2f}"
                     result["analysis_notes"].append(
-                        f"VT2 detected but RER={rer_str} (expected ~1.0)"
+                        f"VT2 detected at step {result['vt2_step']} (RER={rer_str}, confidence reduced)"
                     )

@@ -114,11 +114,17 @@ def detect_vt_from_steps(
         range_width = upper_power - lower_power
         stability_confidence = max(0.0, STABILITY_CONFIDENCE_MAX - range_width / 100)
 
+        # [Issue #9] Variance penalty with unbiased estimator and minimum sample size
+        MIN_SAMPLES_FOR_VARIANCE_PENALTY = 4
+        
         step_ve_values = [s["avg_ve"] for s in stages[v1_start_idx:v1_idx]]
-        if len(step_ve_values) > 1:
-            ve_variance = np.var(step_ve_values)
+        
+        if len(step_ve_values) >= MIN_SAMPLES_FOR_VARIANCE_PENALTY:
+            # Use unbiased variance estimator (ddof=1)
+            ve_variance = np.var(step_ve_values, ddof=1)
             variance_penalty = min(0.5, ve_variance / 20)
         else:
+            # Too few samples - variance would be unreliable, skip penalty
             variance_penalty = 0.0
 
         total_confidence = min(

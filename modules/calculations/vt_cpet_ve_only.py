@@ -544,8 +544,10 @@ def _find_breakpoint_segmented(
 ) -> Optional[int]:
     """
     Find optimal breakpoint using piecewise linear regression.
-
-    Tests each potential breakpoint and returns the one minimizing total SSE.
+    
+    [Issue #6] Uses adaptive slope ratio threshold based on signal variance:
+    - Low CV (stable athletes): threshold = 1.05 + 0.02 * CV
+    - This allows detection in fit athletes with subtle transitions
 
     Args:
         x: Independent variable (power)
@@ -564,6 +566,16 @@ def _find_breakpoint_segmented(
 
     if len(x) < 2 * min_segment_size:
         return None
+
+    # Calculate coefficient of variation for adaptive threshold [Issue #6]
+    y_mean = np.mean(y)
+    y_std = np.std(y)
+    cv = y_std / y_mean if y_mean != 0 else 0
+    
+    # Adaptive threshold: base 1.05 + 0.02 * CV
+    # - Low CV (0.1): threshold = 1.07 (sensitive)
+    # - High CV (0.5): threshold = 1.15 (conservative)
+    adaptive_slope_threshold = 1.05 + 0.02 * cv
 
     best_idx = None
     best_sse = np.inf
@@ -585,7 +597,7 @@ def _find_breakpoint_segmented(
 
             slope_ratio = slope2 / slope1 if slope1 != 0 else slope2
 
-            if total_sse < best_sse and slope_ratio > 1.1:
+            if total_sse < best_sse and slope_ratio > adaptive_slope_threshold:
                 best_sse = total_sse
                 best_idx = i
 

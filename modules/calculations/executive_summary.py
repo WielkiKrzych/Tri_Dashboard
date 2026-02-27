@@ -16,7 +16,7 @@ logger = logging.getLogger("Tri_Dashboard.ExecutiveSummary")
 # =============================================================================
 
 
-def __safe_float(val: Any, default: float = 0.0) -> float:
+def _safe_float(val: Any, default: float = 0.0) -> float:
     """Safely convert a value to float, returning default on failure."""
     if val is None or val == "brak danych":
         return default
@@ -181,7 +181,7 @@ def identify_main_limiter(
     # BASIC THRESHOLD-BASED SCORING (legacy)
     # ==========================================================================
 
-    vt1 = __safe_float(thresholds.get("vt1_raw_midpoint"))
+    vt1 = _safe_float(thresholds.get("vt1_raw_midpoint"))
     vt2 = _safe_float(thresholds.get("vt2_raw_midpoint"))
     smo2_lt2 = _safe_float(smo2_manual.get("lt2_watts"))
     cp = _safe_float(cp_model.get("cp_watts"))

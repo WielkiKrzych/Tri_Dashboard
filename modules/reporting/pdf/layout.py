@@ -811,7 +811,7 @@ def build_page_executive_verdict(
     occlusion_index = biomech_metrics.get("occlusion_index", 0)
     torque_10 = biomech_metrics.get("torque_at_minus_10")
     torque_20 = biomech_metrics.get("torque_at_minus_20")
-    occlusion_level = biomech_occlusion.get("classification", {}).get("level", "unknown")
+    occlusion_level = (biomech_occlusion.get("classification") or {}).get("level", "unknown")
     
     # Thermoregulation
     thermo_metrics = thermo_analysis.get("metrics", {})
@@ -1326,9 +1326,10 @@ def build_page_cover(
     w_prime_kj = cp_model.get("w_prime_kj", "brak danych")
     pmax = metadata.get("pmax_watts", "brak danych")
     
-    # Calculate Upper Aerobic range (VT1_onset to RCP_onset) with W unit
+    # Calculate Upper Aerobic range as Z3 Tempo: midpoint(VT1_onset, RCP_onset) → RCP_onset
     if vt1_onset_watts and rcp_onset_watts:
-        upper_aerobic_range = f"{int(vt1_onset_watts)}–{int(rcp_onset_watts)} W"
+        z3_lower = int((vt1_onset_watts + rcp_onset_watts) / 2)
+        upper_aerobic_range = f"{z3_lower}–{int(rcp_onset_watts)} W"
     else:
         upper_aerobic_range = "brak danych"
     

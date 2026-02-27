@@ -142,7 +142,7 @@ def _hash_arg(arg: Any) -> str:
     elif isinstance(arg, dict):
         return f"DICT:{len(arg)}"
     else:
-    return str(arg)
+        return str(arg)
 
 
 def _invalidate_cache(func_name: str, args: tuple, kwargs: dict, key_func: Optional[Callable]):

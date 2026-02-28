@@ -1371,7 +1371,10 @@ def build_page_cover(
     
     data = [
         ["Parametr", "Wartość", "Interpretacja"],
-        ["VT1 (Próg tlenowy)", f"{vt1_watts} W", "Strefa komfortowa"],
+        ["VT1 (Próg tlenowy)", f"{vt1_watts} W", "Strefa równowagi tlenowej"],
+        ["VT2 (Próg beztlenowy)", f"{vt2_watts} W", "Strefa progowa"],
+        ["Zakres Upper Aerobic", upper_aerobic_range, "Strefa tempo/threshold"],
+        ["Critical Power (CP)", f"{cp_watts} W", "Moc krytyczna"],
         ["VT2 (Próg beztlenowy)", f"{vt2_watts} W", "Strefa wysiłku"],
         ["Zakres Upper Aerobic", upper_aerobic_range, "Strefa tempo/threshold"],
         ["Critical Power (CP)", f"{cp_watts} W", "Moc progowa"],
@@ -1419,7 +1422,7 @@ def build_page_cover(
     elements.append(Spacer(1, 4 * mm))
 
     elements.append(Paragraph(
-        "Strefy obliczone na podstawie VT2 (100% = moc progowa). "
+        "Strefy obliczone na podstawie VT2 (100% = moc krytyczna). "
         "Przed zastosowaniem skonsultuj je z trenerem, który może dostosować je do Twoich celów.",
         styles["small"]
     ))
@@ -2893,7 +2896,7 @@ def build_page_zones(
     
     # === USAGE NOTE ===
     elements.append(Paragraph(
-        "Strefy obliczone na podstawie VT2 (100% = moc progowa). "
+        "Strefy obliczone na podstawie VT2 (100% = moc krytyczna). "
         "Przed zastosowaniem skonsultuj je z trenerem, który może dostosować je do Twoich celów.",
         styles["body"]
     ))

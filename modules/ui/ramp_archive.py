@@ -1,15 +1,21 @@
 """
 Ramp Test Archive UI.
 
-Displays a list of executed Ramp Tests from the CSV index.
-Allows downloading and regenerating PDF reports with manual overrides.
+Single place for saving JSON reports and generating PDF with manual overrides.
 """
+import logging
 import streamlit as st
 import pandas as pd
 import os
 
-from modules.reporting.persistence import load_ramp_test_report, generate_ramp_test_pdf
+from modules.reporting.persistence import (
+    load_ramp_test_report,
+    generate_ramp_test_pdf,
+    save_ramp_test_report,
+)
 from modules.manual_overrides import get_manual_overrides, to_dict
+
+logger = logging.getLogger(__name__)
 
 
 def _count_manual_values(overrides: dict) -> int:
@@ -53,19 +59,120 @@ def _build_overrides(edited_test_date, subject_name: str, subject_anthropometry:
     return overrides
 
 
+def _render_save_json_section() -> None:
+    """
+    Render the JSON save section when pending pipeline result exists.
+
+    This replaces the old render_report_section from vent_thresholds_report.py.
+    """
+    pending_result = st.session_state.get("pending_pipeline_result")
+    if pending_result is None:
+        return
+
+    st.markdown("---")
+    st.subheader("💾 Zapisz Raport JSON")
+    st.info(
+        "💡 Analiza zakończona. Zapisz raport JSON, a następnie wygeneruj PDF poniżej."
+    )
+
+    overrides = to_dict(get_manual_overrides())
+    manual_count = _count_manual_values(overrides)
+
+    can_save = True
+    if manual_count == 0:
+        st.warning(
+            "⚠️ **Brak wartości manualnych!** Raport zostanie zapisany wyłącznie "
+            "z wartościami automatycznymi (algorytm)."
+        )
+        bypass_warning = st.checkbox(
+            "Zapisz raport mimo braku wartości manualnych",
+            key="bypass_manual_warning",
+            help="Wartości manualne mają wyższy poziom zaufania. "
+            "Dodaj je w zakładkach Vent - Progi Manuals / SmO2 - Progi Manuals.",
+        )
+        if not bypass_warning:
+            can_save = False
+            st.caption(
+                "Aby dodać wartości manualne, przejdź do **Vent - Progi Manuals** "
+                "lub **SmO2 - Progi Manuals**."
+            )
+    else:
+        st.success(
+            f"✅ Wykryto {manual_count} wartości manualnych - zostaną użyte w raporcie"
+        )
+
+    if not can_save:
+        return
+
+    if not st.button(
+        "💾 ZAPISZ RAPORT JSON", type="primary", use_container_width=True
+    ):
+        return
+
+    st.session_state["report_generation_requested"] = True
+    with st.spinner("Zapisywanie raportu..."):
+        try:
+            source_df = st.session_state.get("pending_source_df")
+            file_name = st.session_state.get("pending_uploaded_file_name", "unknown")
+
+            session_type = st.session_state.get("session_type")
+            ramp_classification = st.session_state.get("ramp_classification")
+            ramp_confidence = (
+                ramp_classification.confidence if ramp_classification else 1.0
+            )
+
+            manual_overrides = to_dict(get_manual_overrides())
+
+            save_result = save_ramp_test_report(
+                pending_result,
+                notes=f"User-triggered save from UI. File: {file_name}",
+                session_type=session_type,
+                ramp_confidence=ramp_confidence,
+                source_file=file_name,
+                source_df=source_df,
+                manual_overrides=manual_overrides,
+            )
+
+            saved_path = save_result.get("path", "")
+
+            if save_result.get("gated"):
+                reason = save_result.get("reason", "unknown")
+                st.error(f"❌ Raport NIE zapisany: {reason}")
+            elif save_result.get("deduplicated"):
+                st.warning("⚠️ Raport dla tego pliku już istnieje")
+            elif saved_path:
+                st.success("✅ Raport JSON zapisany pomyślnie!")
+                st.info(f"📁 JSON: `{saved_path}`")
+                st.balloons()
+                st.session_state.pop("pending_pipeline_result", None)
+                st.rerun()
+            else:
+                st.error("❌ Nieznany błąd zapisu")
+
+        except Exception as e:
+            st.error(f"❌ Błąd zapisu raportu: {e}")
+            logger.warning("Report save failed: %s", e)
+
+
 def render_ramp_archive():
     """Render the Ramp Test Archive view."""
-    st.header("🗄️ Archiwum Raportów Ramp Test")
+    st.header("🗄️ Ramp Archive")
 
-    # 1. Locate Index CSV
+    # ===================================================================
+    # SAVE JSON SECTION (visible when pending pipeline result exists)
+    # ===================================================================
+    _render_save_json_section()
+
+    # ===================================================================
+    # ARCHIVE TABLE
+    # ===================================================================
     base_dir = "reports/ramp_tests"
     index_path = os.path.join(base_dir, "index.csv")
 
     if not os.path.exists(index_path):
-        st.info("Brak wykonanych testów. Przeprowadź analizę, aby zobaczyć raporty tutaj.")
+        st.info("Brak zapisanych raportów. Wgraj plik i przeprowadź analizę.")
         return
 
-    # 2. Load Index
     try:
         df = pd.read_csv(index_path)
     except Exception as e:
@@ -73,24 +180,20 @@ def render_ramp_archive():
         return
 
     if df.empty:
-        st.info("Brak wykonanych testów.")
+        st.info("Brak zapisanych raportów.")
         return
 
-    # 3. Display Table
     st.markdown("### Historia Analiz")
 
-    # Sort by date descending
     if "test_date" in df.columns:
         df["test_date"] = pd.to_datetime(df["test_date"])
         df = df.sort_values(by="test_date", ascending=False)
 
-    # Ensure pdf_path is string
     if "pdf_path" not in df.columns:
         df["pdf_path"] = ""
     else:
         df["pdf_path"] = df["pdf_path"].fillna("").astype(str)
 
-    # Add visual indicator for PDF availability
     def _check_pdf_exists(path: str) -> str:
         if not path or not path.strip() or path.lower() == "nan":
             return "❌"
@@ -98,11 +201,9 @@ def render_ramp_archive():
 
     df["PDF"] = df["pdf_path"].apply(_check_pdf_exists)
 
-    # Select columns to display
     display_cols = ["test_date", "session_id", "athlete_id", "PDF", "method_version"]
     display_cols = [c for c in display_cols if c in df.columns]
 
-    # Interactive dataframe
     selection = st.dataframe(
         df[display_cols],
         use_container_width=True,
@@ -111,9 +212,11 @@ def render_ramp_archive():
         on_select="rerun",
     )
 
-    st.caption("💡 Kliknij na wiersz, aby zobaczyć szczegóły i opcje PDF")
+    st.caption("💡 Kliknij na wiersz, aby zobaczyć szczegóły i wygenerować PDF")
 
-    # 4. Handle Selection
+    # ===================================================================
+    # SELECTED REPORT DETAILS
+    # ===================================================================
     if not (selection and selection.selection.rows):
         return
 
@@ -129,14 +232,12 @@ def render_ramp_archive():
         st.error(f"Plik raportu nie istnieje: {json_path}")
         return
 
-    # Load canonical JSON
     try:
         report_data = load_ramp_test_report(json_path)
     except Exception as e:
         st.error(f"Błąd odczytu raportu: {e}")
         return
 
-    # Display basic JSON info
     meta = report_data.get("metadata", {})
     session_id = record.get("session_id", "unknown")
 
@@ -149,7 +250,7 @@ def render_ramp_archive():
         st.write(f"**Notatka:** {meta.get('notes', '-')}")
 
     # ===================================================================
-    # METRYKA DOKUMENTU EDITOR (editable fields for PDF title page)
+    # METRYKA DOKUMENTU EDITOR
     # ===================================================================
     st.divider()
     st.markdown("### ✏️ Edycja Metryki Dokumentu")
@@ -203,7 +304,8 @@ def render_ramp_archive():
         st.warning(
             "⚠️ Brak wartości manualnych. PDF zostanie wygenerowany wyłącznie "
             "z wartościami automatycznymi (algorytm). "
-            "Aby dodać wartości manualne, przejdź do **Vent - Progi Manuals** lub **SmO2 - Progi Manuals**."
+            "Aby dodać wartości manualne, przejdź do **Vent - Progi Manuals** "
+            "lub **SmO2 - Progi Manuals**."
         )
 
     # ===================================================================
@@ -216,7 +318,6 @@ def render_ramp_archive():
     btn_col1, btn_col2 = st.columns(2)
 
     with btn_col1:
-        # Download existing PDF (if available)
         if pdf_exists:
             try:
                 with open(pdf_path, "rb") as f:
@@ -233,7 +334,6 @@ def render_ramp_archive():
                 st.error(f"Błąd odczytu PDF: {e}")
 
     with btn_col2:
-        # Generate / Regenerate PDF with manual overrides
         button_label = (
             "⚡ Generuj PDF z wartościami manualnymi"
             if pdf_exists

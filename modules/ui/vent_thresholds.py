@@ -15,7 +15,6 @@ from modules.calculations.quality import check_step_test_protocol
 from modules.calculations.pipeline import run_ramp_test_pipeline
 from models.results import ValidityLevel
 
-from .vent_thresholds_report import render_report_section
 from .vent_thresholds_display import render_threshold_cards, render_theory_section
 from .vent_thresholds_charts import render_cpet_charts
 from .vent_thresholds_timeline import render_threshold_timeline
@@ -153,8 +152,6 @@ def render_vent_thresholds_tab(
             logger.error("Pipeline failed: %s", e)
 
     # 5. Sub-sections
-    render_report_section()
-
     st.markdown("---")
     st.subheader("🤖 Wykryte Progi Wentylacyjne (CPET)")
     cpet_result = st.session_state.get("cpet_vt_result", {})

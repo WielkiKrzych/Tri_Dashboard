@@ -58,6 +58,9 @@ class SmO2AdvancedMetrics:
     slope_r2: float = 0.0
     data_quality: str = "unknown"
 
+    # Feldmann 4-phase model (Phase 1 = initial rise, Phase 2 = stable, Phase 3 = desat, Phase 4 = rapid desat)
+    phase1_to_phase2_power: Optional[float] = None  # Watts at end of initial rise
+    phase1_to_phase2_smo2: Optional[float] = None  # SmO2 at phase transition
 
 # =============================================================================
 # LIMITER THRESHOLDS
@@ -77,6 +80,61 @@ LIMITER_THRESHOLDS = {
 # METRIC CALCULATIONS
 # =============================================================================
 
+def detect_feldmann_phase_transition(
+    df: pd.DataFrame,
+    smo2_col: str = "SmO2",
+    power_col: str = "watts",
+    window: int = 10,
+) -> Tuple[Optional[float], Optional[float]]:
+    """
+    Detect Phase 1 -> Phase 2 transition in Feldmann 4-phase model.
+
+    Feldmann 4-phase model (2022):
+    - Phase 1: Initial SmO2 rise (hyperemia/warm-up)
+    - Phase 2: Stable SmO2 (plateau)
+    - Phase 3: Linear desaturation (T1/T2 zone)
+    - Phase 4: Rapid desaturation (above T2)
+
+    This function detects where Phase 1 ends (peak SmO2 before decline starts).
+
+    Returns: (power_at_transition, smo2_at_transition) or (None, None) if not detectable
+    """
+    if smo2_col not in df.columns or power_col not in df.columns:
+        return None, None
+
+    smo2 = df[smo2_col].values
+    power = df[power_col].values
+
+    if len(smo2) < window * 3:
+        return None, None
+
+    from scipy.ndimage import uniform_filter1d
+    smo2_smooth = uniform_filter1d(smo2, size=window)
+
+    early_cutoff = max(window * 2, len(smo2) // 4)
+    early_smo2 = smo2_smooth[:early_cutoff]
+
+    if len(early_smo2) == 0:
+        return None, None
+
+    peak_idx = np.argmax(early_smo2)
+
+    if peak_idx >= len(smo2) - window:
+        return None, None
+
+    post_peak_smo2 = smo2_smooth[peak_idx:peak_idx + window * 2]
+    if len(post_peak_smo2) < window:
+        return None, None
+
+    slope_after_peak = np.polyfit(np.arange(len(post_peak_smo2)), post_peak_smo2, 1)[0]
+
+    if slope_after_peak >= 0:
+        return None, None
+
+    transition_power = float(power[peak_idx])
+    transition_smo2 = float(smo2[peak_idx])
+
+    return transition_power, transition_smo2
 
 def calculate_smo2_slope(
     df: pd.DataFrame,
@@ -384,6 +442,11 @@ def analyze_smo2_advanced(
     metrics.slope_per_100w, metrics.slope_r2 = calculate_smo2_slope(df, smo2_col, power_col)
     metrics.halftime_reoxy_sec = calculate_halftime_reoxygenation(df, smo2_col, time_col, power_col)
     metrics.hr_coupling_r = calculate_hr_coupling_index(df, smo2_col, hr_col)
+
+    # Feldmann 4-phase model: detect Phase 1 -> Phase 2 transition
+    metrics.phase1_to_phase2_power, metrics.phase1_to_phase2_smo2 = detect_feldmann_phase_transition(
+        df, smo2_col, power_col
+    )
 
     limiter_type, confidence, interpretation = classify_smo2_limiter(metrics)
     metrics.limiter_type = limiter_type

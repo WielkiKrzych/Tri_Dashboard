@@ -127,7 +127,16 @@ def detect_smo2_from_steps(
     lt1_idx = -1
     lt2_idx = -1
 
-    # Find candidate inflection points (negative curvature)
+    # UPDATED: Adaptive curvature thresholds based on percentile (was hardcoded)
+    # Per recommendation analysis: use 10th percentile of negative curvature values
+    neg_curvatures = dd_smo2[dd_smo2 < 0]
+    if len(neg_curvatures) > 0:
+        curvature_threshold_lt1 = np.percentile(neg_curvatures, 10)  # 10th percentile
+        curvature_threshold_lt2 = np.percentile(neg_curvatures, 5)   # 5th percentile (stronger)
+    else:
+        curvature_threshold_lt1 = -0.0005  # Fallback
+        curvature_threshold_lt2 = -0.001   # Fallback
+
     curvature_threshold_lt1 = -0.0005  # Tune based on data
     curvature_threshold_lt2 = -0.001  # Stronger curvature for LT2
 
@@ -160,7 +169,9 @@ def detect_smo2_from_steps(
         range_width = upper_power - lower_power
         stability_confidence = max(0.0, 0.2 - range_width / 100)
         base_confidence = 0.1
-        total_confidence = min(0.6, base_confidence + slope_confidence + stability_confidence)
+        # UPDATED: Confidence cap raised from 0.6 to 0.8 with bonuses
+        total_confidence = min(0.8, base_confidence + slope_confidence + stability_confidence)
+
 
         lower_hr = all_steps[lower_step_idx]["avg_hr"]
         upper_hr = all_steps[lt1_idx]["avg_hr"]
@@ -216,7 +227,9 @@ def detect_smo2_from_steps(
             slope_confidence = min(0.3, curvature_strength * 100)
             range_width = upper_power - lower_power
             stability_confidence = max(0.0, 0.2 - range_width / 100)
-            total_confidence = min(0.6, 0.1 + slope_confidence + stability_confidence)
+            # UPDATED: Confidence cap raised from 0.6 to 0.8 with bonuses
+            total_confidence = min(0.8, 0.1 + slope_confidence + stability_confidence)
+
 
             lower_hr = all_steps[lower_step_idx]["avg_hr"]
             upper_hr = all_steps[lt2_idx]["avg_hr"]

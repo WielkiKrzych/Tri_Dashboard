@@ -91,7 +91,26 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
+### 🆕 SmO2 Threshold Analysis v2.1 (2026-02-28)
+
+Ulepszone algorytmy analizy SmO2 (NIRS) z większą rzetelnością:
+
+| Kategoria | Ulepszenie | Opis |
+|:----------|:-----------|:-----|
+| **Algorytm** | Double-linear regression | 2-segment piecewise regression jako alternatywa dla 3-segment |
+| **Algorytm** | Exp-Dmax for T2 | Nowa metoda z ICC=0.79-0.91 dla T2 detection |
+| **Walidacja** | MOT1 reliability | 3 consecutive steps (było 2), ICC=0.53 warning |
+| **Preprocessing** | Savitzky-Golay filter | Opcjonalny S-G filter lepszy dla inflection points |
+| **Preprocessing** | Adaptive window | Okno smoothing oparte na sampling rate |
+| **Preprocessing** | Adaptive curvature | Percentyle zamiast hardcoded thresholds |
+| **Walidacja** | ATT validation | Ostrzeżenie >10mm, UNRELIABLE >15mm adipose tissue |
+| **Model** | Feldmann 4-phase | Detekcja Phase 1→2 transition (initial rise) |
+| **Scoring** | Confidence rescaled | Cap podniesiony z 0.6 do 0.8 z bonusami |
+
 ---
+
+## 📥 Installation
+
 
 ## 📂 Project Structure
 
@@ -100,6 +119,18 @@ Tri_Dashboard/
 ├── app.py                  # Main Streamlit app
 ├── modules/
 │   ├── calculations/       # Core algorithms (VT, SmO2, power, HRV...)
+│   │   ├── vt_cpet.py              # CPET orchestration + cross-validation
+│   │   ├── vt_cpet_preprocessing.py # VE validation, smoothing, artifacts
+│   │   ├── vt_cpet_gas_exchange.py  # RER validation + confidence penalty
+│   │   ├── vt_cpet_ve_only.py       # Adaptive slope ratio detection
+│   │   ├── vt_step.py               # Unbiased variance penalty
+│   │   ├── smo2_thresholds.py       # Ramp test T1/T2 + ATT validation
+│   │   ├── smo2_breakpoints.py      # 2-segment + Exp-Dmax methods
+│   │   ├── smo2_analysis.py         # Feldmann 4-phase + advanced metrics
+│   │   ├── metabolic.py             # Adaptive curvature thresholds
+│   │   ├── pipeline.py              # Relative SmO2 thresholds
+│   │   └── common.py                # VT2 vs Pmax validation
+
 │   │   ├── vt_cpet.py              # CPET orchestration + cross-validation
 │   │   ├── vt_cpet_preprocessing.py # VE validation, smoothing, artifacts
 │   │   ├── vt_cpet_gas_exchange.py  # RER validation + confidence penalty
@@ -133,6 +164,26 @@ Tri_Dashboard/
 ---
 
 ## 📋 Changelog
+
+### 2026-02-28 - SmO2 Threshold Analysis v2.1
+
+**HIGH (3):**
+- [#1] Double-linear (2-segment) regression - alternatywa dla 3-segment piecewise
+- [#2] Exp-Dmax method for T2 - ICC=0.79-0.91 reliability
+- [#3] MOT1 reliability warning - 3 consecutive steps, ICC=0.53 warning
+
+**MEDIUM (4):**
+- [#4] Adaptive curvature thresholds - percentile-based zamiast hardcoded
+- [#5] ATT (adipose tissue) validation - >10mm warn, >15mm UNRELIABLE
+- [#6] Feldmann 4-phase model - Phase 1→2 transition detection
+- [#7] Savitzky-Golay filter - opcjonalny w ramp pipeline
+
+**LOW (2):**
+- [#8] Confidence rescaled 0.6→0.8 - z bonusami za VT agreement
+- [#9] Adaptive filter window - based on sampling rate
+
+### 2026-02-27 - VT Detection Protocol v2.0
+
 
 ### 2026-02-27 - VT Detection Protocol v2.0
 

@@ -149,6 +149,10 @@ class SmO2ThresholdResult:
     method: str = "moxy_3point"
     step_data: List[Dict] = field(default_factory=list)
 
+    # ATT (Adipose Tissue Thickness) validation
+    att_mm: Optional[float] = None  # mm
+    att_warning: bool = False  # True if ATT > 10mm
+    att_unreliable: bool = False  # True if ATT > 15mm
 
 # =============================================================================
 # THRESHOLD DETECTION
@@ -167,6 +171,8 @@ def detect_smo2_thresholds_moxy(
     vt1_watts: Optional[int] = None,
     rcp_onset_watts: Optional[int] = None,
     rcp_steady_watts: Optional[int] = None,
+    att_mm: Optional[float] = None,  # Adipose tissue thickness in mm
+    smoothing_method: str = "median",  # "median" or "savgol"
 ) -> SmO2ThresholdResult:
     """
     RAMP TEST SmO₂ THRESHOLD DETECTION (Senior Physiologist + Signal Processing).
@@ -195,6 +201,22 @@ def detect_smo2_thresholds_moxy(
 
     result = SmO2ThresholdResult()
 
+    # ATT (Adipose Tissue Thickness) validation
+    # Per Contreras-Briceno 2023: ATT > 10mm reduces signal quality, > 15mm unreliable
+    if att_mm is not None:
+        result.att_mm = att_mm
+        if att_mm > 15:
+            result.att_unreliable = True
+            result.att_warning = True
+            result.analysis_notes.append(
+                f"CRITICAL: ATT={att_mm}mm > 15mm - SmO2 readings UNRELIABLE"
+            )
+        elif att_mm > 10:
+            result.att_warning = True
+            result.analysis_notes.append(
+                f"WARNING: ATT={att_mm}mm > 10mm - reduced signal quality"
+            )
+
     # Normalize columns
     df = df.copy()
     df.columns = df.columns.str.lower().str.strip()
@@ -212,16 +234,29 @@ def detect_smo2_thresholds_moxy(
         return result
 
     # =========================================================================
-    # 1. PREPROCESSING: MEDIAN SMOOTHING (30-45s)
+    # 1. PREPROCESSING: SMOOTHING (30-45s)
+    # UPDATED: Added Savitzky-Golay filter option and adaptive window
     # =========================================================================
 
-    window = min(45, max(30, len(df) // 40))
+    # Adaptive window based on sampling rate (aim for 15-20 data points minimum)
+    if time_col in df.columns and df[time_col].max() > df[time_col].min():
+        sample_rate = len(df) / (df[time_col].max() - df[time_col].min())
+    else:
+        sample_rate = 1.0
+    target_window_sec = 30
+    window = max(5, int(target_window_sec * sample_rate))
+    window = min(45, window)
     if window % 2 == 0:
         window += 1
 
-    df["smo2_smooth"] = (
-        df[smo2_col].rolling(window=window, center=True, min_periods=1).median()
-    )
+    if smoothing_method == "savgol":
+        from scipy.signal import savgol_filter
+        polyorder = min(3, window - 1)
+        df["smo2_smooth"] = savgol_filter(df[smo2_col], window_length=window, polyorder=polyorder)
+    else:
+        df["smo2_smooth"] = (
+            df[smo2_col].rolling(window=window, center=True, min_periods=1).median()
+        )
 
     if time_col in df.columns:
         df["step"] = (df[time_col] // step_duration_sec).astype(int)
@@ -311,6 +346,7 @@ def detect_smo2_thresholds_moxy(
 
     # =========================================================================
     # 4. SmO₂_T1 DETECTION (LT1 analog)
+    # NOTE: MOT1 has LOW RELIABILITY (ICC = 0.53 per Contreras-Briceno 2023)
     # =========================================================================
 
     t1_idx = None
@@ -320,11 +356,12 @@ def detect_smo2_thresholds_moxy(
     t1_power_min = vt1_watts * 0.85 if vt1_watts else 0
     t1_power_max = vt1_watts * 1.15 if vt1_watts else max_power
 
-    for i in range(1, len(step_df) - 1):
+    for i in range(1, len(step_df) - 2):
         row = step_df.iloc[i]
         next_row = step_df.iloc[i + 1]
+        next_next_row = step_df.iloc[i + 2]
 
-        if row["is_last_step"] or next_row["is_last_step"]:
+        if row["is_last_step"] or next_row["is_last_step"] or next_next_row["is_last_step"]:
             continue
 
         if row["cv"] > 6.0:
@@ -336,7 +373,7 @@ def detect_smo2_thresholds_moxy(
         if vt1_watts and not (t1_power_min <= row["power"] <= t1_power_max):
             continue
 
-        trend_ok = row["trend"] < -0.4 and next_row["trend"] < -0.4
+        trend_ok = row["trend"] < -0.4 and next_row["trend"] < -0.4 and next_next_row["trend"] < -0.4
         cv_ok = row["cv"] < 4.0
         hr_linear = True
         if row["hr_slope"] is not None:
@@ -379,10 +416,14 @@ def detect_smo2_thresholds_moxy(
         result.t1_trend = round(row["trend"], 2)
         result.t1_sd = round(row["sd"], 2)
         result.t1_step = int(row["step"])
-        flag = "🟢 Systemic" if t1_is_systemic else "🟡 Local"
+        flag = "🟢 Systemic" if t1_is_systemic else "🟡 Local (orientacyjny)"
         result.analysis_notes.append(
             f"SmO₂ T1: {result.t1_watts}W @ {result.t1_smo2}% "
             f"(slope={result.t1_trend}%/min, CV={row['cv']:.1f}%) [{flag}]"
+        )
+        # ICC reliability warning per Contreras-Briceno 2023
+        result.analysis_notes.append(
+            "⚠️ T1 (MOT1) has LOW RELIABILITY (ICC = 0.53) - use as orientation only"
         )
 
     # =========================================================================

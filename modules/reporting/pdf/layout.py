@@ -1306,7 +1306,8 @@ def build_page_cover(
     styles: Dict,
     is_conditional: bool = False,
     vt1_onset_watts: Optional[int] = None,
-    rcp_onset_watts: Optional[int] = None
+    rcp_onset_watts: Optional[int] = None,
+    training_zones: Optional[Dict[str, Any]] = None
 ) -> List:
     """Build Page 1: Cover / Summary.
     
@@ -1382,57 +1383,43 @@ def build_page_cover(
     elements.append(table)
     elements.append(Spacer(1, 8 * mm))
     
-    # === ZONES TABLE (integrated into 1.1) ===
+    # === ZONES TABLE (6-zone VT2-based model, matching UI) ===
     elements.append(Paragraph("Strefy Treningowe", styles["heading"]))
     elements.append(Spacer(1, 3 * mm))
-    
-    vt1_raw = thresholds.get("vt1_watts", "brak danych")
-    vt2_raw = thresholds.get("vt2_watts", "brak danych")
-    
-    # Parse numbers for zone calculation
-    try:
-        vt1 = float(vt1_raw) if vt1_raw != "brak danych" else 0
-        vt2 = float(vt2_raw) if vt2_raw != "brak danych" else 0
-    except (ValueError, TypeError):
-        vt1 = 0
-        vt2 = 0
-    
-    # Calculate zones
-    if vt1 and vt2:
-        z1_max = int(vt1 * 0.8)
-        z2_min = z1_max
-        z2_max = int(vt1)
-        z3_min = z2_max
-        z3_max = int(vt2)
-        # Z4 (Threshold) - widened range based on VT1 (was VT1-VT2, now 106-120% of VT1)
-        z4_min = int(vt1 * 1.06)
-        z4_max = int(vt1 * 1.20)
-        
-        zones_data = [
-            ["Strefa", "Zakres [W]", "Opis", "Cel treningowy"],
-            ["Z1 Recovery", f"< {z1_max}", "Bardzo łatwy", "Regeneracja"],
-            ["Z2 Endurance", f"{z2_min}–{z2_max}", "Komfortowy", "Baza tlenowa"],
-            ["Z3 Tempo", f"{z3_min}–{z3_max}", "Umiarkowany", "Wytrzymałość"],
-            ["Z4 Threshold", f"{z4_min}–{z4_max}", "Ciężki", "Próg"],
-            ["Z5 VO₂max", f"> {z5_min}", "Maksymalny", "Pułap Tlenowy"],
-        ]
+
+    if training_zones and training_zones.get("power"):
+        pz = training_zones["power"]
+        hz = training_zones["hr"]
+        desc = training_zones["description"]
+
+        zone_keys = ["Z1", "Z2", "Z3", "Z4", "Z5", "Z6"]
+        zones_data = [["Strefa", "Moc [W]", "Tętno [bpm]", "Fizjologia"]]
+
+        for zk in zone_keys:
+            p_low, p_high = pz.get(zk, (0, 0))
+            hr_range = hz.get(zk, (None, None))
+            hr_str = f"{hr_range[0]} – {hr_range[1]}" if hr_range[0] is not None else "—"
+            zones_data.append([zk, f"{p_low} – {p_high} W", hr_str, desc.get(zk, "")])
+
+        zones_table = Table(zones_data, colWidths=[25 * mm, 40 * mm, 35 * mm, 45 * mm])
     else:
         zones_data = [
-            ["Strefa", "Zakres [W]", "Opis", "Cel treningowy"],
-            ["Z1 Recovery", "-", "Bardzo łatwy", "Regeneracja"],
-            ["Z2 Endurance", "-", "Komfortowy", "Baza tlenowa"],
-            ["Z3 Tempo", "-", "Umiarkowany", "Wytrzymałość"],
-            ["Z4 Threshold", "-", "Ciężki", "Próg"],
-            ["Z5 VO₂max", "-", "Maksymalny", "Pułap Tlenowy"],
+            ["Strefa", "Moc [W]", "Tętno [bpm]", "Fizjologia"],
+            ["Z1", "-", "-", "Regeneracja"],
+            ["Z2", "-", "-", "Baza tlenowa"],
+            ["Z3", "-", "-", "Tempo / Sweet Spot"],
+            ["Z4", "-", "-", "Próg FTP"],
+            ["Z5", "-", "-", "VO2max"],
+            ["Z6", "-", "-", "Beztlenowa"],
         ]
-    
-    zones_table = Table(zones_data, colWidths=[35 * mm, 35 * mm, 35 * mm, 40 * mm])
+        zones_table = Table(zones_data, colWidths=[25 * mm, 40 * mm, 35 * mm, 45 * mm])
+
     zones_table.setStyle(get_table_style())
     elements.append(zones_table)
     elements.append(Spacer(1, 4 * mm))
-    
+
     elements.append(Paragraph(
-        "Powyższe strefy są obliczone automatycznie na podstawie wykrytych progów VT1 i VT2. "
+        "Strefy obliczone na podstawie VT2 (100% = moc progowa). "
         "Przed zastosowaniem skonsultuj je z trenerem, który może dostosować je do Twoich celów.",
         styles["small"]
     ))
@@ -1692,21 +1679,36 @@ def build_page_smo2(smo2_data, smo2_manual, figure_paths, styles):
     lt2 = smo2_manual.get("lt2_watts", "---")
     lt1_hr = smo2_manual.get("lt1_hr", "---")
     lt2_hr = smo2_manual.get("lt2_hr", "---")
-    
+    lt1_smo2_pct = smo2_manual.get("lt1_smo2", "---")
+    lt2_smo2_pct = smo2_manual.get("lt2_smo2", "---")
+
     def fmt(val):
         if val in ("brak danych", None, "---"): return "---"
         try: return f"{float(val):.0f}"
         except (ValueError, TypeError): return str(val)
-    
+
+    def fmt_pct(val):
+        if val in ("brak danych", None, "---", 0, "0", "0.0"): return ""
+        try: return f"SmO₂: {float(val):.1f}%"
+        except (ValueError, TypeError): return ""
+
     elements.append(Paragraph("<b>PROGI OKSYGENACJI MIĘŚNIOWEJ</b>", styles["subheading"]))
     elements.append(Spacer(1, 2 * mm))
-    
+
+    lt1_smo2_line = fmt_pct(lt1_smo2_pct)
+    lt2_smo2_line = fmt_pct(lt2_smo2_pct)
+
     lt1_card = [Paragraph("<font size='9' color='#7F8C8D'>SmO₂ LT1</font>", styles["center"]),
                 Paragraph(f"<font size='14'><b>{fmt(lt1)} W</b></font>", styles["center"]),
                 Paragraph(f"<font size='9'>@ {fmt(lt1_hr)} bpm</font>", styles["center"])]
+    if lt1_smo2_line:
+        lt1_card.append(Paragraph(f"<font size='9' color='#1ABC9C'>{lt1_smo2_line}</font>", styles["center"]))
+
     lt2_card = [Paragraph("<font size='9' color='#7F8C8D'>SmO₂ LT2</font>", styles["center"]),
                 Paragraph(f"<font size='14'><b>{fmt(lt2)} W</b></font>", styles["center"]),
                 Paragraph(f"<font size='9'>@ {fmt(lt2_hr)} bpm</font>", styles["center"])]
+    if lt2_smo2_line:
+        lt2_card.append(Paragraph(f"<font size='9' color='#E74C3C'>{lt2_smo2_line}</font>", styles["center"]))
     
     lt1_table = Table([[lt1_card]], colWidths=[85 * mm])
     lt1_table.setStyle(TableStyle([('BACKGROUND', (0, 0), (-1, -1), HexColor("#E8F6F3")), ('BOX', (0, 0), (-1, -1), 1, HexColor("#1ABC9C")), ('TOPPADDING', (0, 0), (-1, -1), 6), ('BOTTOMPADDING', (0, 0), (-1, -1), 6)]))
@@ -2846,71 +2848,56 @@ def build_page_limiter_radar(
 
 def build_page_zones(
     thresholds: Dict[str, Any],
-    styles: Dict
+    styles: Dict,
+    training_zones: Optional[Dict[str, Any]] = None
 ) -> List:
-    """Build Page 5: Training Zones.
-    
+    """Build Page 5: Training Zones (6-zone VT2-based model).
+
     Contains:
-    - Zones table based on VT1/VT2
+    - Zones table with power, HR, and physiology
     - Zone descriptions
     """
     elements = []
-    
+
     elements.append(Paragraph("<font size='14'>1.2 STREFY TRENINGOWE</font>", styles["center"]))
     elements.append(Spacer(1, 6 * mm))
-    
-    vt1_raw = thresholds.get("vt1_watts", "brak danych")
-    vt2_raw = thresholds.get("vt2_watts", "brak danych")
-    
-    # Parse numbers for zone calculation
-    try:
-        vt1 = float(vt1_raw) if vt1_raw != "brak danych" else 0
-        vt2 = float(vt2_raw) if vt2_raw != "brak danych" else 0
-    except (ValueError, TypeError):
-        vt1 = 0
-        vt2 = 0
-    
-    # Calculate zones
-    if vt1 and vt2:
-        z1_max = int(vt1 * 0.8)
-        z2_min = z1_max
-        z2_max = int(vt1)
-        z3_min = z2_max
-        z3_max = int(vt2)
-        # Z4 (Threshold) - widened range based on VT1 (was VT1-VT2, now 106-120% of VT1)
-        z4_min = int(vt1 * 1.06)
-        z4_max = int(vt1 * 1.20)
-        
-        data = [
-            ["Strefa", "Zakres [W]", "Opis", "Cel treningowy"],
-            ["Z1 Recovery", f"< {z1_max}", "Bardzo łatwy", "Regeneracja"],
-            ["Z2 Endurance", f"{z2_min}–{z2_max}", "Komfortowy", "Baza tlenowa"],
-            ["Z3 Tempo", f"{z3_min}–{z3_max}", "Umiarkowany", "Wytrzymałość"],
-            ["Z4 Threshold", f"{z4_min}–{z4_max}", "Ciężki", "Próg"],
-            ["Z5 VO₂max", f"> {z5_min}", "Maksymalny", "Pułap Tlenowy"],
-        ]
+
+    if training_zones and training_zones.get("power"):
+        pz = training_zones["power"]
+        hz = training_zones["hr"]
+        desc = training_zones["description"]
+
+        zone_keys = ["Z1", "Z2", "Z3", "Z4", "Z5", "Z6"]
+        data = [["Strefa", "Moc [W]", "Tętno [bpm]", "Fizjologia"]]
+
+        for zk in zone_keys:
+            p_low, p_high = pz.get(zk, (0, 0))
+            hr_range = hz.get(zk, (None, None))
+            hr_str = f"{hr_range[0]} – {hr_range[1]}" if hr_range[0] is not None else "—"
+            data.append([zk, f"{p_low} – {p_high} W", hr_str, desc.get(zk, "")])
     else:
         data = [
-            ["Strefa", "Zakres [W]", "Opis", "Cel treningowy"],
-            ["Z1 Recovery", "-", "Bardzo łatwy", "Regeneracja"],
-            ["Z2 Endurance", "-", "Komfortowy", "Baza tlenowa"],
-            ["Z3 Tempo", "-", "Umiarkowany", "Wytrzymałość"],
-            ["Z4 Threshold", "-", "Ciężki", "Próg"],
-            ["Z5 VO₂max", "-", "Maksymalny", "Pułap Tlenowy"],
+            ["Strefa", "Moc [W]", "Tętno [bpm]", "Fizjologia"],
+            ["Z1", "-", "-", "Regeneracja"],
+            ["Z2", "-", "-", "Baza tlenowa"],
+            ["Z3", "-", "-", "Tempo / Sweet Spot"],
+            ["Z4", "-", "-", "Próg FTP"],
+            ["Z5", "-", "-", "VO2max"],
+            ["Z6", "-", "-", "Beztlenowa"],
         ]
-    
-    table = Table(data, colWidths=[35 * mm, 35 * mm, 35 * mm, 40 * mm])
+
+    table = Table(data, colWidths=[25 * mm, 40 * mm, 35 * mm, 45 * mm])
     table.setStyle(get_table_style())
     elements.append(table)
     elements.append(Spacer(1, 8 * mm))
     
     # === USAGE NOTE ===
     elements.append(Paragraph(
-        "Powyższe strefy są obliczone automatycznie na podstawie wykrytych progów VT1 i VT2. "
+        "Strefy obliczone na podstawie VT2 (100% = moc progowa). "
         "Przed zastosowaniem skonsultuj je z trenerem, który może dostosować je do Twoich celów.",
         styles["body"]
     ))
-    
+
     return elements
 
 

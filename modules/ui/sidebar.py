@@ -169,7 +169,6 @@ def render_sidebar(settings_manager: SettingsManager) -> Tuple[RiderSettings, Op
 def render_export_section(
     data_loaded: bool,
     uploaded_file: Optional[object],
-    generate_docx_fn,
     export_png_fn,
     export_summary_pdf_fn,
     export_args: dict,
@@ -179,56 +178,29 @@ def render_export_section(
     Args:
         data_loaded: Whether data is loaded
         uploaded_file: Uploaded file object
-        generate_docx_fn: Function to generate DOCX report
         export_png_fn: Function to export PNG charts
         export_summary_pdf_fn: Function to export Summary page to PDF
         export_args: Arguments for export functions
     """
-    from io import BytesIO
-
     st.sidebar.markdown("---")
     st.sidebar.header("📄 Export Raportu")
 
     if data_loaded and uploaded_file is not None:
-        col_docx, col_png = st.sidebar.columns(2)
-
-        with col_docx:
-            if st.session_state.get("report_generation_requested", False):
-                try:
-                    docx_doc = generate_docx_fn(**export_args["docx"])
-                    if docx_doc:
-                        docx_buffer = BytesIO()
-                        docx_doc.save(docx_buffer)
-                        docx_buffer.seek(0)
-
-                        st.sidebar.download_button(
-                            label="📥 Pobierz Raport DOCX",
-                            data=docx_buffer.getvalue(),
-                            file_name=f"Raport_{uploaded_file.name.split('.')[0]}.docx",
-                            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                            use_container_width=True,
-                        )
-                except Exception as e:
-                    st.sidebar.error(f"Błąd DOCX: {e}")
-            else:
-                st.sidebar.info("📄 Raport DOCX: Kliknij 'GENERUJ RAPORT', aby przygotować plik.")
-
-        with col_png:
-            if st.session_state.get("report_generation_requested", False):
-                try:
-                    png_zip = export_png_fn(**export_args["png"])
-                    if png_zip:
-                        st.sidebar.download_button(
-                            label="📸 Pobierz Wykresy PNG (ZIP)",
-                            data=png_zip,
-                            file_name=f"Wykresy_{uploaded_file.name.split('.')[0]}.zip",
-                            mime="application/zip",
-                            use_container_width=True,
-                        )
-                except Exception as e:
-                    st.sidebar.error(f"Błąd PNG: {e}")
-            else:
-                st.sidebar.info("📸 Wykresy PNG: Kliknij 'GENERUJ RAPORT', aby przygotować paczkę.")
+        if st.session_state.get("report_generation_requested", False):
+            try:
+                png_zip = export_png_fn(**export_args["png"])
+                if png_zip:
+                    st.sidebar.download_button(
+                        label="📸 Pobierz Wykresy PNG (ZIP)",
+                        data=png_zip,
+                        file_name=f"Wykresy_{uploaded_file.name.split('.')[0]}.zip",
+                        mime="application/zip",
+                        use_container_width=True,
+                    )
+            except Exception as e:
+                st.sidebar.error(f"Błąd PNG: {e}")
+        else:
+            st.sidebar.info("📸 Wykresy PNG: Kliknij 'GENERUJ RAPORT', aby przygotować paczkę.")
 
         # Export Summary PDF button
         st.sidebar.markdown("---")

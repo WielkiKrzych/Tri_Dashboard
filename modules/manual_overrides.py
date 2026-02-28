@@ -31,6 +31,10 @@ class ManualOverrides:
     # SmO2 Thresholds (Watts)
     smo2_lt1: Optional[float] = None
     smo2_lt2: Optional[float] = None
+
+    # SmO2 Oxygenation (%) at thresholds
+    smo2_lt1_smo2: Optional[float] = None
+    smo2_lt2_smo2: Optional[float] = None
     
     # Physiological Parameters
     vo2max: Optional[float] = None
@@ -85,6 +89,8 @@ def get_manual_overrides() -> ManualOverrides:
         # SmO2 from Manual SmO2 tab
         smo2_lt1=_get("smo2_lt1_m"),
         smo2_lt2=_get("smo2_lt2_m"),
+        smo2_lt1_smo2=_get("smo2_lt1_smo2_m"),
+        smo2_lt2_smo2=_get("smo2_lt2_smo2_m"),
         
         # From Sidebar
         cp=_get("cp_in") or _get("cp_input"),
@@ -159,6 +165,8 @@ def to_dict(overrides: ManualOverrides) -> Dict[str, Any]:
         # SmO2
         "smo2_lt1_m": overrides.smo2_lt1,
         "smo2_lt2_m": overrides.smo2_lt2,
+        "smo2_lt1_smo2_m": overrides.smo2_lt1_smo2,
+        "smo2_lt2_smo2_m": overrides.smo2_lt2_smo2,
         
         # Physio
         "cp_input": overrides.cp,

@@ -38,11 +38,10 @@ from modules.frontend.components import (
 from modules.utils import load_data
 from modules.ml_logic import MLX_AVAILABLE, predict_only, MODEL_FILE
 from modules.notes import TrainingNotes
-from modules.reports import generate_docx_report, export_all_charts_as_png
+from modules.reports import export_all_charts_as_png
 from modules.db import SessionStore, SessionRecord
 from modules.cache_utils import get_session_store  # Use cached singleton
 from modules.reporting.persistence import check_git_tracking
-from modules.reporting.csv_export import export_session_csv, export_metrics_csv
 
 # --- DOMAIN IMPORTS ---
 from modules.domain import SessionType, classify_session_type, classify_ramp_test
@@ -457,83 +456,29 @@ if uploaded_file is not None:
         with t9:
             render_tab_content("ramp_archive")
 
-    # DOCX / PNG Export
+    # PNG Export
     st.sidebar.markdown("---")
     st.sidebar.header("📄 Export Raportu")
-    c1, c2 = st.sidebar.columns(2)
-    with c1:
-        try:
-            docx = generate_docx_report(
-                metrics,
-                df_plot,
-                df_plot_resampled,
-                uploaded_file,
-                cp_input,
-                vt1_watts,
-                vt2_watts,
-                rider_weight,
-                vt1_vent,
-                vt2_vent,
-                w_prime_input,
-            )
-            buf = BytesIO()
-            docx.save(buf)
-            st.sidebar.download_button(
-                "📥 DOCX",
-                buf.getvalue(),
-                f"{safe_filename}.docx",
-                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            )
-        except Exception as e:
-            logger.warning(f"DOCX export failed: {e}")
-    with c2:
-        try:
-            zip_data = export_all_charts_as_png(
-                df_plot,
-                df_plot_resampled,
-                cp_input,
-                vt1_watts,
-                vt2_watts,
-                metrics,
-                rider_weight,
-                uploaded_file,
-                None,
-                None,
-                None,
-                None,
-            )
-            st.sidebar.download_button(
-                "📸 PNG", zip_data, f"{safe_filename}.zip", mime="application/zip"
-            )
-        except Exception as e:
-            logger.warning(f"PNG export failed: {e}")
-
-    # CSV Export
-    st.sidebar.markdown("---")
-    st.sidebar.header("📊 Export CSV")
-    c3, c4 = st.sidebar.columns(2)
-    with c3:
-        try:
-            csv_session = export_session_csv(df_plot)
-            st.sidebar.download_button(
-                "📥 Dane",
-                csv_session,
-                f"{safe_filename}_dane.csv",
-                mime="text/csv",
-            )
-        except Exception as e:
-            logger.warning("CSV session export failed: %s", e)
-    with c4:
-        try:
-            csv_metrics = export_metrics_csv(metrics)
-            st.sidebar.download_button(
-                "📥 Metryki",
-                csv_metrics,
-                f"{safe_filename}_metryki.csv",
-                mime="text/csv",
-            )
-        except Exception as e:
-            logger.warning("CSV metrics export failed: %s", e)
+    try:
+        zip_data = export_all_charts_as_png(
+            df_plot,
+            df_plot_resampled,
+            cp_input,
+            vt1_watts,
+            vt2_watts,
+            metrics,
+            rider_weight,
+            uploaded_file,
+            None,
+            None,
+            None,
+            None,
+        )
+        st.sidebar.download_button(
+            "📸 PNG", zip_data, f"{safe_filename}.zip", mime="application/zip"
+        )
+    except Exception as e:
+        logger.warning(f"PNG export failed: {e}")
 
 
 else:

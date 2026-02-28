@@ -127,6 +127,14 @@ def save_ramp_test_report(
     # 1. Prepare data dictionary
     data = result.to_dict()
 
+    # 1.0.1 Enrich smo2_manual with SmO2 % values from manual_overrides
+    if manual_overrides and "smo2_manual" in data:
+        smo2_m = data["smo2_manual"]
+        if manual_overrides.get("smo2_lt1_smo2_m") and manual_overrides["smo2_lt1_smo2_m"] > 0:
+            smo2_m["lt1_smo2"] = manual_overrides["smo2_lt1_smo2_m"]
+        if manual_overrides.get("smo2_lt2_smo2_m") and manual_overrides["smo2_lt2_smo2_m"] > 0:
+            smo2_m["lt2_smo2"] = manual_overrides["smo2_lt2_smo2_m"]
+
     # 1.1 Add time series if source_df is available
     if source_df is not None and len(source_df) > 0:
         df_ts = source_df.copy()

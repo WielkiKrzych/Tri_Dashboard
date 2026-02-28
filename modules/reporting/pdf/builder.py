@@ -305,7 +305,9 @@ def map_ramp_json_to_pdf_data(report_json: Dict[str, Any], manual_overrides: Opt
         "lt1_watts": get_num("smo2_manual", "lt1_watts", ["lt1_watts"]),
         "lt2_watts": get_num("smo2_manual", "lt2_watts", ["lt2_watts"]),
         "lt1_hr": get_num("smo2_manual", "lt1_hr", ["lt1_hr"]),
-        "lt2_hr": get_num("smo2_manual", "lt2_hr", ["lt2_hr"])
+        "lt2_hr": get_num("smo2_manual", "lt2_hr", ["lt2_hr"]),
+        "lt1_smo2": get_num("smo2_manual", "lt1_smo2", ["lt1_smo2"]),
+        "lt2_smo2": get_num("smo2_manual", "lt2_smo2", ["lt2_smo2"]),
     }
     
     # SmO2 LT1/LT2 override from session_state
@@ -316,6 +318,14 @@ def map_ramp_json_to_pdf_data(report_json: Dict[str, Any], manual_overrides: Opt
     if manual_overrides.get("smo2_lt2_m") and manual_overrides["smo2_lt2_m"] > 0:
         mapped_smo2_manual["lt2_watts"] = str(int(manual_overrides["smo2_lt2_m"]))
         logger.info(f"PDF: SmO2 LT2 overridden to {mapped_smo2_manual['lt2_watts']} W (manual)")
+
+    if manual_overrides.get("smo2_lt1_smo2_m") and manual_overrides["smo2_lt1_smo2_m"] > 0:
+        mapped_smo2_manual["lt1_smo2"] = str(manual_overrides["smo2_lt1_smo2_m"])
+        logger.info(f"PDF: SmO2 LT1 smo2%% overridden to {mapped_smo2_manual['lt1_smo2']}%% (manual)")
+
+    if manual_overrides.get("smo2_lt2_smo2_m") and manual_overrides["smo2_lt2_smo2_m"] > 0:
+        mapped_smo2_manual["lt2_smo2"] = str(manual_overrides["smo2_lt2_smo2_m"])
+        logger.info(f"PDF: SmO2 LT2 smo2%% overridden to {mapped_smo2_manual['lt2_smo2']}%% (manual)")
 
     # 7. KPI mapping - use CANONICAL VO2max and cardio_advanced for EF/Pa:Hr
     m_data = _safe(report_json.get("metrics"))
@@ -417,6 +427,57 @@ def map_ramp_json_to_pdf_data(report_json: Dict[str, Any], manual_overrides: Opt
     if manual_overrides.get("rcp_onset_watts"):
         rcp_onset_watts = manual_overrides["rcp_onset_watts"]
     
+    # Calculate 6-zone training zones (same formula as UI manual_thresholds.py)
+    training_zones = None
+    try:
+        # VT2 watts: try thresholds first, fallback to smo2_manual LT2
+        _vt2_raw = mapped_thresholds.get("vt2_watts", "brak danych")
+        vt2_z = float(_vt2_raw) if _vt2_raw not in ("brak danych", None, "") else 0
+        if vt2_z == 0:
+            _lt2_raw = mapped_smo2_manual.get("lt2_watts", 0)
+            vt2_z = float(_lt2_raw) if _lt2_raw not in ("brak danych", None, "", "---", 0) else 0
+
+        # VT2 HR: try thresholds first, fallback to smo2_manual LT2 HR
+        _hr_raw = mapped_thresholds.get("vt2_hr", "brak danych")
+        vt2_hr_z = float(_hr_raw) if _hr_raw not in ("brak danych", None, "") else 0
+        if vt2_hr_z == 0:
+            _lt2_hr_raw = mapped_smo2_manual.get("lt2_hr", 0)
+            vt2_hr_z = float(_lt2_hr_raw) if _lt2_hr_raw not in ("brak danych", None, "", "---", 0) else 0
+
+        # Max HR: from time_series or estimated
+        ts_hr = report_json.get("time_series", {}).get("hr_bpm", [])
+        max_hr_z = int(max(ts_hr)) if ts_hr else (int(vt2_hr_z * 1.15) if vt2_hr_z else 0)
+
+        if vt2_z > 0 and vt2_hr_z > 0:
+            training_zones = {
+                "power": {
+                    "Z1": (0, int(vt2_z * 0.55)),
+                    "Z2": (int(vt2_z * 0.55) + 1, int(vt2_z * 0.75)),
+                    "Z3": (int(vt2_z * 0.75) + 1, int(vt2_z * 0.90)),
+                    "Z4": (int(vt2_z * 0.90) + 1, int(vt2_z * 1.05)),
+                    "Z5": (int(vt2_z * 1.05) + 1, int(vt2_z * 1.20)),
+                    "Z6": (int(vt2_z * 1.20) + 1, int(vt2_z * 1.50)),
+                },
+                "hr": {
+                    "Z1": (0, int(vt2_hr_z * 0.72)),
+                    "Z2": (int(vt2_hr_z * 0.72) + 1, int(vt2_hr_z * 0.81)),
+                    "Z3": (int(vt2_hr_z * 0.81) + 1, int(vt2_hr_z * 0.92)),
+                    "Z4": (int(vt2_hr_z * 0.92) + 1, int(vt2_hr_z * 1.00)),
+                    "Z5": (int(vt2_hr_z * 1.01), max_hr_z),
+                    "Z6": (None, None),
+                },
+                "description": {
+                    "Z1": "Regeneracja",
+                    "Z2": "Baza tlenowa",
+                    "Z3": "Tempo / Sweet Spot",
+                    "Z4": "Próg FTP",
+                    "Z5": "VO2max",
+                    "Z6": "Beztlenowa",
+                },
+            }
+    except Exception as e:
+        logger.warning(f"Training zones calculation failed: {e}")
+
     return {
         "metadata": mapped_meta,
         "thresholds": mapped_thresholds,
@@ -425,6 +486,7 @@ def map_ramp_json_to_pdf_data(report_json: Dict[str, Any], manual_overrides: Opt
         "smo2_manual": mapped_smo2_manual,
         "confidence": mapped_confidence,
         "kpi": mapped_kpi,
+        "training_zones": training_zones,
         "cardio_advanced": cardio_advanced_data,
         "vent_advanced": vent_advanced_data,
         "smo2_advanced": smo2_advanced_data,
@@ -617,7 +679,8 @@ def build_ramp_pdf(
         styles=styles,
         is_conditional=config.is_conditional,
         vt1_onset_watts=pdf_data.get("vt1_onset_watts"),
-        rcp_onset_watts=pdf_data.get("rcp_onset_watts")
+        rcp_onset_watts=pdf_data.get("rcp_onset_watts"),
+        training_zones=pdf_data.get("training_zones")
     ))
     story.append(PageBreak())
     

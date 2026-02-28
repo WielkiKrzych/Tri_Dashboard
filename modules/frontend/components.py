@@ -138,69 +138,23 @@ def render_export_buttons_fragment(
     Export buttons rarely change after data is loaded,
     so this fragment minimizes unnecessary reruns.
     """
-    from modules.reports import generate_docx_report, export_all_charts_as_png
-    from modules.reporting.csv_export import export_session_csv, export_metrics_csv
-    from io import BytesIO
+    from modules.reports import export_all_charts_as_png
 
-    col1, col2 = st.columns(2)
-    with col1:
-        try:
-            docx = generate_docx_report(
-                metrics,
-                df_plot,
-                df_plot_resampled,
-                uploaded_file,
-                cp_input,
-                vt1_watts,
-                vt2_watts,
-                rider_weight,
-                vt1_vent,
-                vt2_vent,
-                w_prime_input,
-            )
-            buf = BytesIO()
-            docx.save(buf)
-            st.download_button(
-                "📥 DOCX",
-                buf.getvalue(),
-                f"{safe_filename}.docx",
-                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            )
-        except Exception as e:
-            st.warning(f"DOCX export issue: {e}")
-
-    with col2:
-        try:
-            zip_data = export_all_charts_as_png(
-                df_plot,
-                df_plot_resampled,
-                cp_input,
-                vt1_watts,
-                vt2_watts,
-                metrics,
-                rider_weight,
-                uploaded_file,
-                None,
-                None,
-                None,
-                None,
-            )
-            st.download_button("📸 PNG", zip_data, f"{safe_filename}.zip", mime="application/zip")
-        except Exception as e:
-            st.warning(f"PNG export issue: {e}")
-
-    col3, col4 = st.columns(2)
-    with col3:
-        try:
-            csv_session = export_session_csv(df_plot)
-            st.download_button("📥 Dane", csv_session, f"{safe_filename}_dane.csv", mime="text/csv")
-        except Exception as e:
-            st.warning(f"CSV session export issue: {e}")
-    with col4:
-        try:
-            csv_metrics = export_metrics_csv(metrics)
-            st.download_button(
-                "📥 Metryki", csv_metrics, f"{safe_filename}_metryki.csv", mime="text/csv"
-            )
-        except Exception as e:
-            st.warning(f"CSV metrics export issue: {e}")
+    try:
+        zip_data = export_all_charts_as_png(
+            df_plot,
+            df_plot_resampled,
+            cp_input,
+            vt1_watts,
+            vt2_watts,
+            metrics,
+            rider_weight,
+            uploaded_file,
+            None,
+            None,
+            None,
+            None,
+        )
+        st.download_button("📸 PNG", zip_data, f"{safe_filename}.zip", mime="application/zip")
+    except Exception as e:
+        st.warning(f"PNG export issue: {e}")

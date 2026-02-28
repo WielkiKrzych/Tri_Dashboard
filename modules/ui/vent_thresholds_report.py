@@ -1,5 +1,7 @@
 """
 Vent Thresholds — report generation button and save validation.
+
+Saves JSON report only. PDF generation is handled in Ramp Archive.
 """
 import logging
 import streamlit as st
@@ -15,11 +17,13 @@ def render_report_section() -> None:
 
     Reads pending_pipeline_result and related keys from st.session_state.
     Shows validation warnings, manual-override count, and GENERUJ RAPORT button.
+    Saves JSON only — PDF generation is done from Ramp Archive tab.
     """
     st.markdown("---")
     st.subheader("📄 Generowanie Raportu")
     st.info(
-        "💡 Raport NIE generuje się automatycznie. Kliknij przycisk poniżej, aby wygenerować i zapisać raport."
+        "💡 Raport NIE generuje się automatycznie. Kliknij przycisk poniżej, aby zapisać raport. "
+        "PDF wygenerujesz w zakładce **Ramp Archive**."
     )
 
     pending_result = st.session_state.get("pending_pipeline_result")

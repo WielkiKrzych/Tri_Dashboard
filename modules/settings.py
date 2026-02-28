@@ -9,16 +9,16 @@ class SettingsManager:
     def __init__(self, file_path=SETTINGS_FILE):
         self.file_path = file_path
         self.default_settings = {
-            "rider_weight": 95.0,
+            "rider_weight": 97.0,
             "rider_height": 180,
             "rider_age": 30,
             "is_male": True,
-            "cp": 415,
+            "cp": 420,
             "w_prime": 31000,
-            "vt1_watts": 300,
-            "vt2_watts": 405,
-            "vt1_vent": 71.0,
-            "vt2_vent": 109.0,
+            "vt1_watts": 320,
+            "vt2_watts": 410,
+            "vt1_vent": 73.0,
+            "vt2_vent": 105.0,
             "crank_length": 165.0
         }
 

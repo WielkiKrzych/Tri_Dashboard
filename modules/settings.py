@@ -14,7 +14,7 @@ class SettingsManager:
             "rider_age": 30,
             "is_male": True,
             "cp": 420,
-            "w_prime": 31000,
+            "w_prime": 15600,
             "vt1_watts": 320,
             "vt2_watts": 410,
             "vt1_vent": 73.0,

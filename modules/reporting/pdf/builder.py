@@ -274,6 +274,30 @@ def map_ramp_json_to_pdf_data(report_json: Dict[str, Any], manual_overrides: Opt
         "warnings": interp.get("warnings", []),
         "notes": interp.get("notes", [])
     }
+    
+    # === CP vs VT2 Validation Warning ===
+    # Get numeric values for comparison
+    try:
+        cp_watts = float(mapped_cp["cp_watts"]) if mapped_cp["cp_watts"] not in ["brak danych", None, ""] else None
+    except (ValueError, TypeError):
+        cp_watts = None
+    try:
+        vt2_watts = float(mapped_thresholds["vt2_watts"]) if mapped_thresholds["vt2_watts"] not in ["brak danych", None, ""] else None
+    except (ValueError, TypeError):
+        vt2_watts = None
+    
+    if vt2_watts and cp_watts and vt2_watts > 0 and cp_watts > 0:
+        diff_pct = abs(cp_watts - vt2_watts) / vt2_watts * 100
+        if cp_watts > vt2_watts * 1.02:  # More than 2% above VT2
+            mapped_confidence["warnings"].append(
+                f"⚠️ CP ({cp_watts:.0f}W) > VT2 ({vt2_watts:.0f}W) o więcej niż 2% - "
+                f"zweryfikuj kalibrację PDC. Różnica: {cp_watts - vt2_watts:.0f}W ({diff_pct:.1f}%)"
+            )
+            logger.warning(f"PDF: CP ({cp_watts}W) > VT2 ({vt2_watts}W) by {diff_pct:.1f}%")
+        elif cp_watts > vt2_watts * 0.98:  # Within 2% of VT2 - likely correct
+            mapped_confidence["warnings"].append(
+                f"ℹ️ CP ({cp_watts:.0f}W) blisko VT2 ({vt2_watts:.0f}W) - różnica {diff_pct:.1f}%"
+            )
 
     # 6. SmO2 Manual
     smo2_manual = _safe(report_json.get("smo2_manual"))

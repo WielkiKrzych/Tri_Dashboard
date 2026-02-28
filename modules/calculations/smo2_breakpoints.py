@@ -22,7 +22,7 @@ import pandas as pd
 from scipy import stats
 from scipy.optimize import curve_fit
 from scipy.signal import savgol_filter
-from typing import Tuple, Optional, List
+from typing import Tuple, Optional, List, Dict
 from dataclasses import dataclass, field
 
 
@@ -389,6 +389,105 @@ def detect_exp_dmax(
         return result
 
     return result
+
+
+def detect_t2_exp_dmax(
+    power: List[float],
+    smo2: List[float],
+    min_last_segment: int = 3,
+) -> Optional[Dict]:
+    """
+    Detect T2 using Exp-Dmax method.
+
+    Exp-Dmax algorithm (modified Dmax):
+    1. Fit exponential curve: y = a * exp(b * x) + c
+    2. Draw line from first point to last point
+    3. Find point with maximum distance to line
+
+    Args:
+        power: List of power values (watts)
+        smo2: List of SmO2 values (percent)
+        min_last_segment: Minimum points after breakpoint for validity
+
+    Returns:
+        Dict with:
+        - t2_power: float (watts)
+        - t2_smo2: float (percent)
+        - distance: float
+        - slope_at_t2: float (percent per watt)
+        - confidence: float (0.79-0.91 per ICC from literature)
+        - method: str = "exp_dmax"
+        Or None if detection fails
+    """
+    if len(power) < 30 or len(smo2) < 30:
+        return None
+
+    if len(power) != len(smo2):
+        return None
+
+    x = np.array(power)
+    y = np.array(smo2)
+
+    # Fit exponential curve: y = a * exp(b * x) + c
+    try:
+        # Initial parameter estimates
+        y_range = y.max() - y.min()
+        a_init = -y_range  # Negative because SmO2 decreases
+        b_init = -0.01
+        c_init = y.max()
+
+        popt, _ = curve_fit(
+            _exp_func,
+            x,
+            y,
+            p0=[a_init, b_init, c_init],
+            bounds=([-np.inf, -1, -np.inf], [0, 0, np.inf]),
+            maxfev=5000,
+        )
+        a, b, c = popt
+
+        # Calculate exponential curve values
+        y_exp = _exp_func(x, a, b, c)
+
+        # Line from first to last point
+        x_first, y_first = x[0], y_exp[0]
+        x_last, y_last = x[-1], y_exp[-1]
+
+        # Find point of maximum perpendicular distance
+        max_dist = 0
+        max_dist_idx = 0
+
+        for i in range(len(x)):
+            # Distance from point to line
+            dist = _point_to_line_distance(
+                x[i], y_exp[i], x_first, y_first, x_last, y_last
+            )
+            if dist > max_dist:
+                max_dist = dist
+                max_dist_idx = i
+
+        # Validate: enough points after breakpoint
+        points_after = len(x) - max_dist_idx - 1
+        if points_after < min_last_segment:
+            return None
+
+        # Calculate slope at T2
+        if max_dist_idx < len(x) - 1:
+            slope_at_t2 = (y[-1] - y[max_dist_idx]) / (x[-1] - x[max_dist_idx])
+        else:
+            slope_at_t2 = 0.0
+
+        return {
+            "t2_power": float(x[max_dist_idx]),
+            "t2_smo2": float(y[max_dist_idx]),
+            "distance": float(max_dist),
+            "slope_at_t2": float(slope_at_t2),
+            "confidence": 0.85,  # Default confidence based on ICC range 0.79-0.91
+            "method": "exp_dmax"
+        }
+
+    except (RuntimeError, ValueError):
+        return None
 
 
 def _exp_func(x: np.ndarray, a: float, b: float, c: float) -> np.ndarray:

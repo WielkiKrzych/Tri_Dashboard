@@ -35,8 +35,32 @@ PREMIUM_COLORS = {
     "light_gray": HexColor("#BDC3C7"),
 }
 
+# ==============================================================================
+# CONFIDENCE-AWARE LANGUAGE HELPERS
+# ==============================================================================
 
-# ============================================================================
+def get_confidence_prefix(confidence: float) -> str:
+    """Get Polish language qualifier based on confidence level."""
+    if confidence < 0.5:
+        return "Niepewne: "
+    elif confidence < 0.7:
+        return "Sugeruje: "
+    elif confidence < 0.85:
+        return "Prawdopodobnie: "
+    else:
+        return ""  # High confidence - direct statement
+
+
+def get_confidence_suffix(confidence: float) -> str:
+    """Get uncertainty note based on confidence level."""
+    if confidence < 0.5:
+        return " (niska pewność, wymaga weryfikacji)"
+    elif confidence < 0.7:
+        return " (umiarkowana pewność)"
+    else:
+        return ""
+
+
 # PREMIUM HELPER FUNCTIONS
 # ============================================================================
 
@@ -1494,11 +1518,13 @@ def build_page_thresholds(
     vt1_range = thresholds.get("vt1_range_watts", "brak danych")
     vt1_hr = thresholds.get("vt1_hr", "brak danych")
     vt1_ve = thresholds.get("vt1_ve", "brak danych")
+    vt1_br = thresholds.get("vt1_br", "brak danych")
     
     vt2_watts = thresholds.get("vt2_watts", "brak danych")
     vt2_range = thresholds.get("vt2_range_watts", "brak danych")
     vt2_hr = thresholds.get("vt2_hr", "brak danych")
     vt2_ve = thresholds.get("vt2_ve", "brak danych")
+    vt2_br = thresholds.get("vt2_br", "brak danych")
     
     def format_thresh(mid, rng):
         if mid == "brak danych": return mid
@@ -1513,12 +1539,12 @@ def build_page_thresholds(
             return str(val)
 
     data = [
-        ["Próg", "Moc [W]", "HR [bpm]", "VE [L/min]"],
-        ["VT1 (Próg tlenowy)", format_thresh(vt1_watts, vt1_range), fmt(vt1_hr), fmt(vt1_ve)],
-        ["VT2 (Próg beztlenowy)", format_thresh(vt2_watts, vt2_range), fmt(vt2_hr), fmt(vt2_ve)],
+        ["Próg", "Moc [W]", "HR [bpm]", "VE [L/min]", "BR [br/min]"],
+        ["VT1 (Próg tlenowy)", format_thresh(vt1_watts, vt1_range), fmt(vt1_hr), fmt(vt1_ve), fmt(vt1_br)],
+        ["VT2 (Próg beztlenowy)", format_thresh(vt2_watts, vt2_range), fmt(vt2_hr), fmt(vt2_ve), fmt(vt2_br)],
     ]
     
-    table = Table(data, colWidths=[50 * mm, 50 * mm, 30 * mm, 30 * mm])
+    table = Table(data, colWidths=[42 * mm, 42 * mm, 28 * mm, 28 * mm, 28 * mm])
     table.setStyle(get_table_style())
     elements.append(table)
     # === EDUCATION BLOCK: VT1/VT2 ===
@@ -1591,8 +1617,8 @@ def build_page_smo2(smo2_data, smo2_manual, figure_paths, styles):
     card1 = build_metric_card("DESATURATION RATE", f"{slope:.1f}", "%/100W", slope_interp, slope_color)
     
     if halftime:
-        ht_color = "#E74C3C" if halftime > 60 else ("#F39C12" if halftime > 30 else "#2ECC71")
-        ht_interp = "Wolna reoksygenacja" if halftime > 60 else ("Umiarkowana" if halftime > 30 else "Szybka")
+        ht_color = "#2ECC71" if halftime < 15 else ("#F39C12" if halftime <= 30 else "#E74C3C")
+        ht_interp = "Świetny (<15s)" if halftime < 15 else ("Normalny (15-30s)" if halftime <= 30 else "Wolny (>30s)")
         card2 = build_metric_card("REOXY HALF-TIME", f"{halftime:.0f}", "sekund", ht_interp, ht_color)
     else:
         card2 = build_metric_card("REOXY HALF-TIME", "---", "sekund", "Brak danych", "#7F8C8D")
@@ -1722,7 +1748,7 @@ def build_page_smo2(smo2_data, smo2_manual, figure_paths, styles):
     # Interpret metrics for benchmark
     slope_interp_full = "Typowe dla limitu centralnego" if slope < -4 else ("Umiarkowane - balans C/P" if slope < -2 else "Stabilne - limit lokalny")
     if halftime:
-        ht_interp_full = "Elite (<25s)" if halftime < 25 else ("OK ale nie elite" if halftime < 50 else "Wolna - priorytet interwały")
+        ht_interp_full = "Świetny (<15s)" if halftime < 15 else ("Normalny (15-30s)" if halftime <= 30 else "Wolny (>30s)")
     else:
         ht_interp_full = "Brak danych"
     coup_interp_full = "Silna dominacja serca (centralny)" if abs(coupling) > 0.6 else ("Zrównoważona" if abs(coupling) > 0.3 else "Dominacja obwodowa (lokalna)")
@@ -2004,10 +2030,10 @@ def build_page_interpretation(
     elements.append(Spacer(1, 6 * mm))
     
     # === TEMPO ZONE ===
-    elements.append(Paragraph("Strefa Tempo", styles["heading"]))
+    elements.append(Paragraph("Strefa Tempo/Sweet Spot", styles["heading"]))
     elements.append(Paragraph(
         f"Strefa między <b>{vt1_watts}</b> a <b>{vt2_watts} W</b> to Twoja strefa 'tempo'. "
-        "Jest idealna do treningu wytrzymałościowego i poprawy progu. "
+        "Intensywne treningi wytrzymałościowe na granicy progu mleczanowego. "
         "W tej strefie możesz spędzać znaczną część czasu treningowego bez nadmiernego zmęczenia.",
         styles["body"]
     ))

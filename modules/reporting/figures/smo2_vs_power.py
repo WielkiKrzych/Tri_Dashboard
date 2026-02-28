@@ -12,6 +12,7 @@ Chart shows:
 - Footer with test_id and method version
 """
 import matplotlib.pyplot as plt
+import numpy as np
 from typing import Dict, Any, Optional
 
 from .common import (
@@ -20,6 +21,40 @@ from .common import (
     create_empty_figure,
     get_color
 )
+
+
+def filter_smo2_artifacts(power, smo2, window=5, threshold=10):
+    """Filter SmO2 artifacts using rolling median.
+    
+    Removes single-point spikes >threshold% deviation from rolling median.
+    
+    Args:
+        power: Power data array
+        smo2: SmO2 data array
+        window: Rolling window size (default 5)
+        threshold: Max allowed deviation % from median (default 10)
+    
+    Returns:
+        Filtered power and smo2 arrays
+    """
+    if len(smo2) < window * 2:
+        return np.array(power), np.array(smo2)
+    
+    try:
+        import pandas as pd
+        df = pd.DataFrame({"power": power, "smo2": smo2})
+        df["smo2_median"] = df["smo2"].rolling(window, center=True, min_periods=1).median()
+        df["deviation"] = abs(df["smo2"] - df["smo2_median"])
+        filtered = df[df["deviation"] < threshold]
+        return filtered["power"].values, filtered["smo2"].values
+    except ImportError:
+        # Fallback without pandas: use numpy-only approach
+        smo2_arr = np.array(smo2)
+        from scipy.ndimage import median_filter
+        smo2_median = median_filter(smo2_arr, size=window, mode='nearest')
+        deviation = np.abs(smo2_arr - smo2_median)
+        mask = deviation < threshold
+        return np.array(power)[mask], smo2_arr[mask]
 
 
 def generate_smo2_power_chart(
@@ -78,6 +113,13 @@ def generate_smo2_power_chart(
     # Handle missing data
     if not power_data or not smo2_data:
         return create_empty_figure("Brak danych SmO₂", "SmO₂ vs Moc", output_path, **cfg)
+    
+    # Filter artifacts: remove points >10% deviation from rolling median
+    power_data, smo2_data = filter_smo2_artifacts(power_data, smo2_data, window=5, threshold=10)
+    
+    # Handle case where filtering removed all points
+    if len(power_data) == 0 or len(smo2_data) == 0:
+        return create_empty_figure("Brak danych SmO₂ po filtrowaniu", "SmO₂ vs Moc", output_path, **cfg)
     
     # Get SmO2 drop point from smo2_context
     drop_point = smo2_context.get("drop_point", {})

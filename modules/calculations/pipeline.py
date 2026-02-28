@@ -741,6 +741,32 @@ def run_ramp_test_pipeline(
         if p_col in df_p.columns and h_col in df_p.columns:
             if smo2_manual_lt1 is not None:
                 try:
+                    # Use linear interpolation for HR consistency with VT detection
+                    hr_values = df_p[h_col].dropna().values
+                    power_values = df_p[p_col].dropna().values
+                    if len(hr_values) > 2 and len(power_values) > 2:
+                        smo2_manual_lt1_hr = float(np.interp(hr_values, power_values, smo2_manual_lt1))
+                    else:
+                        idx = (df_p[p_col] - smo2_manual_lt1).abs().idxmin()
+                        smo2_manual_lt1_hr = float(df_p.loc[idx, h_col])
+                except Exception as e:
+                    logger.debug(f"Failed to find LT1 HR: {e}")
+
+            if smo2_manual_lt2 is not None:
+                try:
+                    # Use linear interpolation for HR consistency with VT detection
+                    hr_values = df_p[h_col].dropna().values
+                    power_values = df_p[p_col].dropna().values
+                    if len(hr_values) > 2 and len(power_values) > 2:
+                        smo2_manual_lt2_hr = float(np.interp(hr_values, power_values, smo2_manual_lt2))
+                    else:
+                        idx = (df_p[p_col] - smo2_manual_lt2).abs().idxmin()
+                        smo2_manual_lt2_hr = float(df_p.loc[idx, h_col])
+                except Exception as e:
+                    logger.debug(f"Failed to find LT2 HR: {e}")
+
+            if smo2_manual_lt1 is not None:
+                try:
                     idx = (df_p[p_col] - smo2_manual_lt1).abs().idxmin()
                     smo2_manual_lt1_hr = float(df_p.loc[idx, h_col])
                 except Exception as e:

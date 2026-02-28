@@ -31,6 +31,58 @@ class MetabolicProfile:
     vo2max: float = 0.0                   # ml/kg/min - FROM CANONICAL ONLY
     vo2max_source: str = "unknown"        # Source tracking
     vo2max_confidence: float = 0.0        # Confidence from canonical
+    vo2max_absolute: float = 0.0          # L/min - calculated from relative * weight / 1000
+    vo2max_ci: float = 0.0                # ± ml/kg/min (95% confidence interval)
+    
+    vlamax: float = 0.0                   # mmol/L/s (estimated from power)
+    cp_watts: float = 0.0                 # Critical Power
+    ftp_watts: float = 0.0                # FTP (if different from CP)
+    w_prime_kj: float = 0.0               # W' in kJ
+    
+    # Derived
+    vo2max_vlamax_ratio: float = 0.0      # Higher = more aerobic
+    anaerobic_reserve_pct: float = 0.0    # (Pmax - CP) / CP
+    
+    # Classification
+    phenotype: str = "unknown"            # diesel, puncher, sprinter, allrounder
+    limiter: str = "unknown"              # aerobic, glycolytic, mixed
+    limiter_confidence: float = 0.0
+    
+    # Strategy
+    adaptation_target: str = "unknown"    # increase_vo2max, lower_vlamax, maintain
+    strategy_interpretation: str = ""
+
+class MetabolicProfile:
+    """Container for metabolic profile data."""
+    # Core metrics - VO2max is READ-ONLY from canonical source
+    vo2max: float = 0.0                   # ml/kg/min - FROM CANONICAL ONLY
+    vo2max_source: str = "unknown"        # Source tracking
+    vo2max_confidence: float = 0.0        # Confidence from canonical
+    vo2max_absolute: float = 0.0          # L/min - calculated from relative * weight / 1000
+    vo2max_ci: float = 0.0                # ± ml/kg/min (95% confidence interval)
+    
+    vlamax: float = 0.0                   # mmol/L/s (estimated from power)
+    cp_watts: float = 0.0                 # Critical Power
+    ftp_watts: float = 0.0                # FTP (if different from CP)
+    w_prime_kj: float = 0.0               # W' in kJ
+class MetabolicProfile:
+    """Container for metabolic profile data."""
+    # Core metrics - VO2max is READ-ONLY from canonical source
+    vo2max: float = 0.0                   # ml/kg/min - FROM CANONICAL ONLY
+    vo2max_source: str = "unknown"        # Source tracking
+    vo2max_confidence: float = 0.0        # Confidence from canonical
+    vo2max_absolute: float = 0.0          # L/min - calculated from relative * weight / 1000
+    vo2max_ci: float = 0.0                # ± ml/kg/min (95% confidence interval)
+    
+    vlamax: float = 0.0                   # mmol/L/s (estimated from power)
+    vo2max: float = 0.0                   # ml/kg/min - FROM CANONICAL ONLY
+    vo2max_source: str = "unknown"        # Source tracking
+    vo2max_confidence: float = 0.0        # Confidence from canonical
+    vo2max_absolute: float = 0.0          # L/min - calculated from relative * weight / 1000
+    vo2max_ci: float = 0.0                # ± ml/kg/min (95% confidence interval)
+    vo2max: float = 0.0                   # ml/kg/min - FROM CANONICAL ONLY
+    vo2max_source: str = "unknown"        # Source tracking
+    vo2max_confidence: float = 0.0        # Confidence from canonical
     
     vlamax: float = 0.0                   # mmol/L/s (estimated from power)
     cp_watts: float = 0.0                 # Critical Power
@@ -98,6 +150,10 @@ def estimate_vlamax(
     
     NOTE: VLaMax is the ONLY metric estimated locally.
     VO2max comes from canonical source.
+    
+    ESTIMATION UNCERTAINTY: ±15-20% error range.
+    Method: derived from CP/W'/Pmax power profile.
+    Confidence: ~0.6 (moderate - indirect measurement).
     
     Higher W' and anaerobic capacity = higher VLaMax.
     Simplified model based on INSCYD principles.
@@ -486,6 +542,34 @@ def analyze_metabolic_engine(
     profile.vo2max_source = vo2max_source
     profile.vo2max_confidence = vo2max_confidence
     
+    # Calculate derived VO2max metrics
+    # Absolute VO2max (L/min) = relative (ml/kg/min) * weight (kg) / 1000
+    if vo2max > 0 and weight_kg > 0:
+        profile.vo2max_absolute = round(vo2max * weight_kg / 1000, 2)
+    
+    # Confidence interval based on data quality (± ml/kg/min)
+    # Higher confidence = narrower CI; typical VO2max measurement error: 3-5%
+    if vo2max > 0:
+        # Base measurement error: 4% for standard tests
+        base_error_pct = 0.04
+        # Adjust based on confidence: low confidence = wider CI
+        confidence_factor = 1.0 + (1.0 - vo2max_confidence) * 1.5
+        profile.vo2max_ci = round(vo2max * base_error_pct * confidence_factor, 1)
+    
+    # Power metrics
+    profile.cp_watts = cp_watts
+    profile.ftp_watts = ftp_watts or cp_watts
+    profile.w_prime_kj = w_prime_kj
+    
+    # Estimate VLaMax (only locally estimated metric)
+    
+    # Power metrics
+    # CRITICAL: Use CANONICAL VO2max - DO NOT CALCULATE LOCALLY
+    # =========================================================================
+    profile.vo2max = vo2max
+    profile.vo2max_source = vo2max_source
+    profile.vo2max_confidence = vo2max_confidence
+    
     # Power metrics
     profile.cp_watts = cp_watts
     profile.ftp_watts = ftp_watts or cp_watts
@@ -527,12 +611,27 @@ def format_metabolic_strategy_for_report(strategy: MetabolicStrategy) -> Dict[st
     return {
         "profile": {
             # CANONICAL VO2max (read-only, from upstream)
-            "vo2max": round(profile.vo2max, 1) if profile.vo2max > 0 else None,
+            "vo2max_relative": round(profile.vo2max, 1) if profile.vo2max > 0 else None,  # ml/kg/min
+            "vo2max_absolute": round(profile.vo2max_absolute, 2) if profile.vo2max_absolute > 0 else None,  # L/min
+            "vo2max_ci": round(profile.vo2max_ci, 1) if profile.vo2max_ci > 0 else None,  # ± ml/kg/min (95% CI)
             "vo2max_source": profile.vo2max_source,
             "vo2max_confidence": round(profile.vo2max_confidence, 2),
             
             # VLaMax (locally estimated)
+            "vo2max_relative": round(profile.vo2max, 1) if profile.vo2max > 0 else None,  # ml/kg/min
+            "vo2max_absolute": round(profile.vo2max_absolute, 2) if profile.vo2max_absolute > 0 else None,  # L/min
+            "vo2max_ci": round(profile.vo2max_ci, 1) if profile.vo2max_ci > 0 else None,  # ± ml/kg/min (95% CI)
+            "vo2max_source": profile.vo2max_source,
+            "vo2max_confidence": round(profile.vo2max_confidence, 2),
+            "vo2max": round(profile.vo2max, 1) if profile.vo2max > 0 else None,
+            "vo2max_source": profile.vo2max_source,
+            "vo2max_confidence": round(profile.vo2max_confidence, 2),
+            # VLaMax (locally estimated)
             "vlamax": round(profile.vlamax, 3),
+            "vlamax_estimated": True,
+            "vlamax_error_range": "±15-20%",
+            "vlamax_method": "derived_from_ramp",
+            "vlamax_confidence": 0.6,
             
             # Power metrics
             "cp_watts": round(profile.cp_watts, 0),

@@ -578,17 +578,25 @@ def build_page_executive_summary(
     interpretation = limiter.get("interpretation", [])
     subtitle = limiter.get("subtitle", "")
     
+    # Get confidence from confidence_panel (0-100 -> 0.0-1.0)
+    overall_confidence = confidence_panel.get("overall_score", 100) / 100.0
+    
+    # Apply confidence-aware language to verdict
+    verdict_with_confidence = get_confidence_prefix(overall_confidence) + verdict + get_confidence_suffix(overall_confidence)
+    
     # Card content
     verdict_content = [
         Paragraph(f"<font size='14'><b>{limiter_icon} DOMINUJĄCY LIMITER: {limiter_name}</b></font>", styles["heading"]),
         Paragraph(f"<font size='10' color='#7F8C8D'>{subtitle}</font>", styles["body"]),
         Spacer(1, 2 * mm),
-        Paragraph(f"<b>{verdict}</b>", styles["body"]),
+        Paragraph(f"<b>{verdict_with_confidence}</b>", styles["body"]),
         Spacer(1, 2 * mm),
     ]
     
     for line in interpretation[:3]:
-        verdict_content.append(Paragraph(f"• {line}", styles["body"]))
+        # Apply confidence-aware language to each interpretation line
+        line_with_confidence = get_confidence_prefix(overall_confidence) + line + get_confidence_suffix(overall_confidence)
+        verdict_content.append(Paragraph(f"• {line_with_confidence}", styles["body"]))
     
     verdict_table = Table([[verdict_content]], colWidths=[170 * mm])
     verdict_table.setStyle(TableStyle([
@@ -882,25 +890,28 @@ def build_page_executive_verdict(
     
     profile_description = ", ".join(profile_parts)
     
-    # Generate main interpretation
+    # Confidence score - get it first to apply confidence-aware language
+    confidence_score = smo2_advanced.get("limiter_confidence", 0.5)
+    
+    # Generate main interpretation with confidence-aware language
     if limiter_type == "central":
-        main_interpretation = (
+        base_interp = (
             "Wydajność VO₂max jest wysoka, układ krążenia dyktuje tempo. "
             "Priorytet: rozbudowa pojemności minutowej serca."
         )
     elif limiter_type == "local":
-        main_interpretation = (
+        base_interp = (
             "Potencjał VO₂max jest wysoki, ale jego wykorzystanie ogranicza okluzja mięśniowa "
             "przy wysokim momencie obrotowym oraz narastający koszt termoregulacyjny."
         )
     else:
-        main_interpretation = (
+        base_interp = (
             "Profil mieszany: zarówno zdolność centralna jak i obwodowa wymagają równoczesnej pracy. "
             "Treningi zrównoważone dadzą najlepsze efekty."
         )
     
-    # Confidence score
-    confidence_score = smo2_advanced.get("limiter_confidence", 0.5)
+    # Apply confidence-aware language modifier
+    main_interpretation = get_confidence_prefix(confidence_score) + base_interp + get_confidence_suffix(confidence_score)
     
     # ==========================================================================
     # A. HERO BOX - MAIN VERDICT
@@ -1393,9 +1404,9 @@ def build_page_cover(
         z2_max = int(vt1)
         z3_min = z2_max
         z3_max = int(vt2)
-        z4_min = z3_max
-        z4_max = int(vt2 * 1.05)
-        z5_min = z4_max
+        # Z4 (Threshold) - widened range based on VT1 (was VT1-VT2, now 106-120% of VT1)
+        z4_min = int(vt1 * 1.06)
+        z4_max = int(vt1 * 1.20)
         
         zones_data = [
             ["Strefa", "Zakres [W]", "Opis", "Cel treningowy"],
@@ -1668,7 +1679,9 @@ def build_page_smo2(smo2_data, smo2_manual, figure_paths, styles):
     
     if interpretation_adv:
         for line in interpretation_adv.split('\n')[:2]:
-            elements.append(Paragraph(line, styles["body"]))
+            # Apply confidence-aware language
+            line_with_confidence = get_confidence_prefix(limiter_conf) + line + get_confidence_suffix(limiter_conf)
+            elements.append(Paragraph(line_with_confidence, styles["body"]))
     elements.append(Spacer(1, 6 * mm))
     
     # ==========================================================================
@@ -2218,7 +2231,9 @@ def build_page_cardiovascular(cardio_data: Dict[str, Any], styles: Dict) -> List
     # Interpretation
     if interpretation:
         for line in interpretation.split('\n')[:3]:
-            elements.append(Paragraph(line, styles["body"]))
+            # Apply confidence-aware language
+            line_with_confidence = get_confidence_prefix(confidence) + line + get_confidence_suffix(confidence)
+            elements.append(Paragraph(line_with_confidence, styles["body"]))
     elements.append(Spacer(1, 6 * mm))
     
     # ==========================================================================
@@ -2400,7 +2415,9 @@ def build_page_ventilation(vent_data: Dict[str, Any], styles: Dict) -> List:
     
     if interpretation:
         for line in interpretation.split('\n')[:2]:
-            elements.append(Paragraph(line, styles["body"]))
+            # Apply confidence-aware language
+            line_with_confidence = get_confidence_prefix(confidence) + line + get_confidence_suffix(confidence)
+            elements.append(Paragraph(line_with_confidence, styles["body"]))
     
     if ve_bp:
         elements.append(Paragraph(f"<b>VE Breakpoint:</b> {ve_bp:.0f}W – punkt załamania kontroli wentylacyjnej", styles["body"]))
@@ -2860,9 +2877,9 @@ def build_page_zones(
         z2_max = int(vt1)
         z3_min = z2_max
         z3_max = int(vt2)
-        z4_min = z3_max
-        z4_max = int(vt2 * 1.05)
-        z5_min = z4_max
+        # Z4 (Threshold) - widened range based on VT1 (was VT1-VT2, now 106-120% of VT1)
+        z4_min = int(vt1 * 1.06)
+        z4_max = int(vt1 * 1.20)
         
         data = [
             ["Strefa", "Zakres [W]", "Opis", "Cel treningowy"],
@@ -3516,6 +3533,53 @@ def build_page_thermal(
     elements.append(Spacer(1, 6 * mm))
     
     # === CLASSIFICATION VERDICT BOX ===
+    # INTEGRATION: Cardiac drift interpretation now considers thermal verdict
+    if has_drift_data:
+        base_mechanism = drift_interp.get("mechanism", "")
+        delta_pct_abs = abs(delta_pct)
+        
+        # Integrate thermal verdict with cardiac drift interpretation
+        if tolerance == "poor" and delta_pct_abs > 5:
+            # High thermal risk + significant cardiac drift = central fatigue
+            verdict_text = (
+                "<b>ZMĘCZENIE CENTRALNE (thermal + cardiac drift)</b><br/>"
+                f"Słaba tolerancja cieplna + dryf EF {delta_pct:+.1f}% → "
+                "Redystrybucja krwi do skóry ogranicza perfuzję mięśniową. "
+                "Priorytet: adaptacja cieplna przed intensyfikacją treningu."
+            )
+            drift_color = "#E74C3C"  # Red for high risk
+        elif tolerance == "moderate" and delta_pct_abs > 7:
+            # Moderate thermal stress + elevated cardiac drift
+            verdict_text = (
+                "<b>ZMĘCZENIE CENTRALNE (thermal stress)</b><br/>"
+                f"Umiarkowana tolerancja cieplna + dryf EF {delta_pct:+.1f}% → "
+                "Obciążenie termiczne przyspiesza dryf sercowy. "
+                "Zalecana adaptacja cieplna 5-10 dni przed zawodami."
+            )
+            drift_color = "#F39C12"  # Orange for warning
+        else:
+            # Normal cardiac drift - thermal status not a primary factor
+            verdict_text = f"{base_mechanism}" if base_mechanism else "<b>NORMALNY DRYF SERCOWY</b><br/>Stabilność EF w akceptowalnym zakresie."
+            # Keep original drift_color from classification
+    else:
+        verdict_text = "<b>BRAK DANYCH DRYFU</b><br/>Analiza drift wymaga danych EF (power/HR)."
+        drift_color = "#808080"
+
+    verdict_style = ParagraphStyle('verdict_white', parent=styles["body"], textColor=HexColor("#FFFFFF"), fontSize=9)
+    verdict_box = Table(
+        [[Paragraph(verdict_text, verdict_style)]],
+        colWidths=[165 * mm]
+    )
+    verdict_box.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), HexColor(drift_color)),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 8),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 8),
+        ('TOPPADDING', (0, 0), (-1, -1), 8),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+    ]))
+    elements.append(verdict_box)
+    elements.append(Spacer(1, 6 * mm))
     if has_drift_data:
         mechanism = drift_interp.get("mechanism", "")
         verdict_text = f"{mechanism}"  # Removed duplicate title, just show mechanism

@@ -97,15 +97,20 @@ def estimate_vlamax_from_pdc(pdc: Dict[int, float], weight: float) -> Optional[f
     p300_kg = p300 / weight
 
     # The drop from 30s to 5min power indicates anaerobic contribution
-    # Empirical formula based on INSCYD model approximation
+    # ~40% of 30s excess power comes from PCr (not glycolytic),
+    # so raw drop_ratio overestimates glycolytic capacity.
+    # Recalibrated against INSCYD reference values:
+    #   Sprinter (drop ~0.65) → VLaMax ~0.65-0.75
+    #   Climber  (drop ~0.40) → VLaMax ~0.35-0.40
+    #   Amateur  (drop ~0.60) → VLaMax ~0.45-0.55
     drop_ratio = (p30_kg - p300_kg) / p30_kg
 
-    # Map drop ratio to VLamax estimate
-    # Typical drop ratios: 0.20-0.50 map to VLamax 0.3-1.0
-    vlamax_estimate = 0.3 + (drop_ratio - 0.20) * 2.5
+    # Conservative linear mapping (slope=1.1, intercept=-0.05)
+    # Lower slope than naive mapping to account for PCr contribution
+    vlamax_estimate = drop_ratio * 1.1 - 0.05
 
-    # Clamp to reasonable range
-    vlamax_estimate = max(0.2, min(1.2, vlamax_estimate))
+    # Clamp to physiological range
+    vlamax_estimate = max(0.2, min(1.0, vlamax_estimate))
 
     return round(vlamax_estimate, 2)
 

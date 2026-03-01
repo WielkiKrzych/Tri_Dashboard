@@ -97,7 +97,9 @@ def calculate_vo2max_acsm(power_watts: float, weight_kg: float) -> float:
 
 
 def select_canonical_vo2max(
-    candidates: Dict[str, float], weight_kg: float = 75.0
+    candidates: Dict[str, float],
+    weight_kg: float = 75.0,
+    w_prime_j: Optional[float] = None,
 ) -> CanonicalMetric:
     """
     Select canonical VO2max from multiple candidates based on priority.
@@ -128,8 +130,11 @@ def select_canonical_vo2max(
             alternatives["acsm_5min"] = vo2
             source_key = "acsm_5min"
         elif source == "cp_watts":
-            # CP is ~90-95% of 5-min power, so use CP * 1.05 as estimate
-            est_5min = value * 1.05
+            # From 2-parameter CP model: P(t) = CP + W'/t
+            # For 5 min (300s): P(300) = CP + W'/300
+            # Use actual W' if available, otherwise conservative 15 kJ default
+            w_prime_used = w_prime_j if w_prime_j and w_prime_j > 0 else 15000
+            est_5min = value + (w_prime_used / 300)
             vo2 = calculate_vo2max_acsm(est_5min, weight_kg)
             alternatives["acsm_cp"] = vo2
             source_key = "acsm_cp"
@@ -255,10 +260,11 @@ def build_canonical_physiology(
 
     # Source 5: Estimate from CP (lowest priority)
     if cp and cp > 0:
-        vo2max_candidates["cp_watts"] = cp  # Will be converted
+        vo2max_candidates["cp_watts"] = cp  # Will be converted in select_canonical_vo2max
 
-    # Select canonical VO2max
-    physio.vo2max = select_canonical_vo2max(vo2max_candidates, weight_kg)
+    # Select canonical VO2max (pass actual W' for accurate CP→5min conversion)
+    actual_w_prime_j = w_prime_j if w_prime_j and w_prime_j > 0 else None
+    physio.vo2max = select_canonical_vo2max(vo2max_candidates, weight_kg, w_prime_j=actual_w_prime_j)
 
     # =========================================================================
     # CONSISTENCY ASSERTION (light - logs divergence, doesn't block)
@@ -290,11 +296,13 @@ def build_canonical_physiology(
                     physio.vo2max.alternatives["time_series_estimate"] = round(ts_vo2max, 2)
 
     # === VLaMax (always estimated) ===
-    if cp > 0 and pmax > 0:
-        anaerobic_reserve = pmax - cp
-        w_prime_kj = physio.w_prime_kj.value or 15
-        w_prime_factor = w_prime_kj / 20
-        vlamax = 0.3 + (anaerobic_reserve / pmax) * 0.5 + (w_prime_factor - 1) * 0.1
+    if cp > 0 and pmax > 0 and weight_kg > 0:
+        w_prime_kj_val = physio.w_prime_kj.value or 15
+        w_prime_per_kg = w_prime_kj_val / weight_kg
+        cp_per_kg = cp / weight_kg
+        # Mader-inspired: W'/kg drives glycolytic capacity,
+        # CP/kg inversely correlated (metabolic antagonism)
+        vlamax = w_prime_per_kg * 2.8 + 0.05 - cp_per_kg * 0.07
         vlamax = max(0.2, min(1.0, vlamax))
         physio.vlamax = CanonicalMetric(
             value=vlamax, source="estimated_from_power", confidence=0.50

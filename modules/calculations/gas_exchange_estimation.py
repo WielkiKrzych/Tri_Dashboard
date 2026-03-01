@@ -22,7 +22,7 @@ def estimate_vo2_from_power(
     """
     Estimate VO2 from power using ACSM cycling equation.
 
-    VO2 (mL/min) = (Power (W) × 1000 / efficiency) + Resting VO2
+    VO2 (mL/min) = (Power (W) × 60) / (efficiency × 20.9 J/mL O2) + Resting VO2
 
     Args:
         power_watts: Array of power values in watts
@@ -71,13 +71,12 @@ def estimate_vo2_from_hr(
     hrr_fraction = (hr_array - hr_rest) / (hr_max - hr_rest)
     hrr_fraction = np.clip(hrr_fraction, 0.0, 1.0)
 
-    # %VO2max ≈ %HRR (linear relationship)
-    vo2max_ml_min = vo2max_ml_kg_min * body_weight_kg
-    vo2_ml_min = hrr_fraction * vo2max_ml_min
-
-    # Add resting component
+    # Swain et al. (1998): %VO2R ≈ %HRR (linear relationship)
+    # VO2 = %HRR × (VO2max - VO2rest) + VO2rest
     resting_vo2_ml_min = 3.5 * body_weight_kg  # 1 MET
-    vo2_ml_min = vo2_ml_min + resting_vo2_ml_min
+    vo2max_ml_min = vo2max_ml_kg_min * body_weight_kg
+    vo2_reserve = vo2max_ml_min - resting_vo2_ml_min
+    vo2_ml_min = hrr_fraction * vo2_reserve + resting_vo2_ml_min
 
     return vo2_ml_min
 

@@ -171,8 +171,8 @@ def generate_vlamax_balance_chart(
         df = source_df.copy()
         pwr_col = _find_column(df, ['watts', 'power'])
         if pwr_col:
-            mmp_5min = df[pwr_col].rolling(300, min_periods=60).mean().max()
-            mmp_20min = df[pwr_col].rolling(1200, min_periods=300).mean().max()
+            mmp_5min = df[pwr_col].rolling(300, min_periods=240).mean().max()
+            mmp_20min = df[pwr_col].rolling(1200, min_periods=960).mean().max()
     
     # Fallback 2: if source_df unavailable, try time_series from report_data
     if (not mmp_5min or not mmp_20min):
@@ -181,12 +181,12 @@ def generate_vlamax_balance_chart(
         if power_watts and len(power_watts) > 300:
             # pd is already imported at module level
             power_series = pd.Series(power_watts)
-            mmp_5min = power_series.rolling(300, min_periods=60).mean().max()
+            mmp_5min = power_series.rolling(300, min_periods=240).mean().max()
             if len(power_watts) > 1200:
-                mmp_20min = power_series.rolling(1200, min_periods=300).mean().max()
+                mmp_20min = power_series.rolling(1200, min_periods=960).mean().max()
             elif len(power_watts) > 600:
                 # Use 10min MMP as proxy for shorter tests
-                mmp_20min = power_series.rolling(600, min_periods=300).mean().max()
+                mmp_20min = power_series.rolling(600, min_periods=480).mean().max()
             
     if not mmp_20min or mmp_20min == 0 or pd.isna(mmp_20min):
         return create_empty_figure("Brak danych (MMP 20 min)", "Profil Metaboliczny", output_path, **cfg)
@@ -194,19 +194,22 @@ def generate_vlamax_balance_chart(
     ratio = mmp_5min / mmp_20min
     
     # Classification logic
-    if ratio > 1.08:
+    # MMP 5min is always >= MMP 20min, so ratio >= 1.0.
+    # Typical range: 1.03-1.30 for trained cyclists.
+    # Higher ratio = more anaerobic power drop-off = higher VLaMax.
+    if ratio > 1.15:
         profile = "Sprinter / Puncheur"
         desc = "Wysoki VLaMax (>0.5 mmol/L/s)"
         color = "#ff6b6b"
-        marker_pos = 0.8 # Right side
-    elif ratio < 0.95:
+        marker_pos = 0.8  # Right side
+    elif ratio < 1.05:
         profile = "Climber / TT Specialist"
         desc = "Niski VLaMax (<0.4 mmol/L/s)"
         color = "#4ecdc4"
-        marker_pos = 0.2 # Left side
+        marker_pos = 0.2  # Left side
     else:
         profile = "All-Rounder"
-        marker_pos = 0.5 # Middle
+        marker_pos = 0.5  # Middle
         desc = "Zbalansowany VLaMax (0.4-0.5 mmol/L/s)"
         color = "#ffd93d"
 

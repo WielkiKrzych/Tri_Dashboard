@@ -108,19 +108,23 @@ def estimate_vlamax(
     Higher W' and anaerobic capacity = higher VLaMax.
     Simplified model based on INSCYD principles.
     """
-    if pmax_watts <= 0 or cp_watts <= 0:
+    if pmax_watts <= 0 or cp_watts <= 0 or weight_kg <= 0:
         return 0.0
-    
-    # Anaerobic reserve
-    anaerobic_reserve = pmax_watts - cp_watts
-    
-    # W' contribution (higher W' = higher glycolytic capacity)
-    w_prime_factor = w_prime_kj / 20  # Normalize around 20kJ
-    
-    # Estimate VLaMax (mmol/L/s) - simplified model
-    # Reference: 0.3-0.5 for endurance, 0.6-0.8 for sprinters
-    vlamax = 0.3 + (anaerobic_reserve / pmax_watts) * 0.5 + (w_prime_factor - 1) * 0.1
-    
+
+    # Mader-inspired model using per-kg normalized values.
+    # VLaMax scales with glycolytic work capacity (W'/kg) and inversely
+    # with aerobic capacity (CP/kg) due to metabolic antagonism.
+    #
+    # Calibrated against INSCYD reference values:
+    #   Sprinter (W'/kg=0.31, CP/kg=3.75) → ~0.65
+    #   Climber  (W'/kg=0.23, CP/kg=5.38) → ~0.35
+    #   Amateur  (W'/kg=0.23, CP/kg=2.75) → ~0.50
+    #   Pro GC   (W'/kg=0.29, CP/kg=5.88) → ~0.45
+    w_prime_per_kg = w_prime_kj / weight_kg
+    cp_per_kg = cp_watts / weight_kg
+
+    vlamax = w_prime_per_kg * 2.8 + 0.05 - cp_per_kg * 0.07
+
     return max(0.2, min(1.0, vlamax))
 
 

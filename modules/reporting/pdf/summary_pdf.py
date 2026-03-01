@@ -411,7 +411,7 @@ def generate_summary_pdf(
     # Calculate VO2max and create chart
     if "watts" in df_plot.columns and rider_weight > 0:
         # Calculate rolling 5-min mean power
-        rolling_5min = df_plot["watts"].rolling(300, min_periods=1).mean()
+        rolling_5min = df_plot["watts"].rolling(300, min_periods=300).mean()
         mmp_5min = rolling_5min.max()
         vo2max = 16.61 + 8.87 * (mmp_5min / rider_weight)
 

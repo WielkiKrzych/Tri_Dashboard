@@ -940,8 +940,8 @@ def build_page_executive_verdict(
         )],
         [Spacer(1, 2 * mm)],
         [Paragraph(
-            f"<font size='8' color='#BDC3C7'>Confidence score: {confidence_score:.2f} | "
-            f"Źródła: VO₂max ({vo2max_source}), SmO₂, HR coupling, Core Temp</font>",
+            f"<font size='8' color='#BDC3C7'>Pewność: {confidence_score:.2f} | "
+            f"Źródła: VO₂max ({vo2max_source}), SmO₂, korelacja HR, temp. głęboka</font>",
             styles["center"]
         )],
     ]
@@ -1127,7 +1127,7 @@ def build_page_executive_verdict(
     # --- THERMOREGULATION LIMITER ---
     thermo_items = []
     thermo_items.append("<b>2. TERMOREGULACJA</b>")
-    thermo_items.append(f"• Max Core Temp: {max_core_temp:.1f} °C" if max_core_temp > 0 else "• Max Core Temp: ---")
+    thermo_items.append(f"• Max temp. głęboka: {max_core_temp:.1f} °C" if max_core_temp > 0 else "• Max temp. głęboka: ---")
     thermo_items.append(f"• Peak HSI: {peak_hsi:.1f}" if peak_hsi else "• Peak HSI: ---")
     thermo_items.append(f"• Cardiac Drift (ΔEF): {ef_delta_pct:+.1f}%" if ef_delta_pct else "• Cardiac Drift: ---")
     thermo_items.append("<i>Wzrost temperatury zwiększa koszt utrzymania mocy i przyspiesza dryf serca.</i>")
@@ -1375,10 +1375,7 @@ def build_page_cover(
         ["VT2 (Próg beztlenowy)", f"{vt2_watts} W", "Strefa progowa"],
         ["Zakres Upper Aerobic", upper_aerobic_range, "Strefa tempo/threshold"],
         ["Critical Power (CP)", f"{cp_watts} W", "Moc krytyczna"],
-        ["VT2 (Próg beztlenowy)", f"{vt2_watts} W", "Strefa wysiłku"],
-        ["Zakres Upper Aerobic", upper_aerobic_range, "Strefa tempo/threshold"],
-        ["Critical Power (CP)", f"{cp_watts} W", "Moc progowa"],
-        ["W' (Rezerwa)", f"{w_prime_kj} kJ", "Rezerwa anaerobowa"]
+        ["W' (Rezerwa)", f"{w_prime_kj} kJ", "Rezerwa anaerobowa"],
     ]
     
     table = Table(data, colWidths=[55 * mm, 35 * mm, 55 * mm])
@@ -1615,18 +1612,18 @@ def build_page_smo2(smo2_data, smo2_manual, figure_paths, styles):
     
     slope_color = "#E74C3C" if slope < -6 else ("#F39C12" if slope < -3 else "#2ECC71")
     slope_interp = "Szybka desaturacja" if slope < -6 else ("Umiarkowana" if slope < -3 else "Stabilna")
-    card1 = build_metric_card("DESATURATION RATE", f"{slope:.1f}", "%/100W", slope_interp, slope_color)
-    
+    card1 = build_metric_card("DESATURACJA", f"{slope:.1f}", "%/100W", slope_interp, slope_color)
+
     if halftime:
         ht_color = "#2ECC71" if halftime < 15 else ("#F39C12" if halftime <= 30 else "#E74C3C")
         ht_interp = "Świetny (<15s)" if halftime < 15 else ("Normalny (15-30s)" if halftime <= 30 else "Wolny (>30s)")
-        card2 = build_metric_card("REOXY HALF-TIME", f"{halftime:.0f}", "sekund", ht_interp, ht_color)
+        card2 = build_metric_card("REOKSYGENACJA", f"{halftime:.0f}", "sekund", ht_interp, ht_color)
     else:
-        card2 = build_metric_card("REOXY HALF-TIME", "---", "sekund", "Brak danych", "#7F8C8D")
-    
+        card2 = build_metric_card("REOKSYGENACJA", "---", "sekund", "Brak danych", "#7F8C8D")
+
     coup_color = "#3498DB" if abs(coupling) > 0.6 else ("#F39C12" if abs(coupling) > 0.3 else "#2ECC71")
     coup_interp = "Silna (centralna)" if abs(coupling) > 0.6 else ("Umiarkowana" if abs(coupling) > 0.3 else "Słaba (lokalna)")
-    card3 = build_metric_card("HR COUPLING", f"{coupling:.2f}", "r-Pearson", coup_interp, coup_color)
+    card3 = build_metric_card("KORELACJA HR", f"{coupling:.2f}", "r-Pearson", coup_interp, coup_color)
     
     cards_row = Table([[card1, card2, card3]], colWidths=[58 * mm, 58 * mm, 58 * mm])
     cards_row.setStyle(TableStyle([('ALIGN', (0, 0), (-1, -1), 'CENTER'), ('VALIGN', (0, 0), (-1, -1), 'TOP')]))
@@ -1649,12 +1646,12 @@ def build_page_smo2(smo2_data, smo2_manual, figure_paths, styles):
     mech_name = mechanism_names.get(limiter_type, "UNDEFINED")
     mech_icon = mechanism_icons.get(limiter_type, "❓")
     
-    elements.append(Paragraph("<b>DOMINANT OXYGEN DELIVERY MECHANISM</b>", styles["subheading"]))
+    elements.append(Paragraph("<b>DOMINUJĄCY MECHANIZM DOSTAWY TLENU</b>", styles["subheading"]))
     elements.append(Spacer(1, 2 * mm))
     
     verdict_content = [
         Paragraph(f"<font color='white'><b>{mech_icon} {mech_name}</b></font>", styles["center"]),
-        Paragraph(f"<font size='10' color='white'>{limiter_conf:.0%} confidence</font>", styles["center"]),
+        Paragraph(f"<font size='10' color='white'>pewność: {limiter_conf:.0%}</font>", styles["center"]),
     ]
     verdict_table = Table([[verdict_content]], colWidths=[170 * mm])
     verdict_table.setStyle(TableStyle([
@@ -1754,13 +1751,13 @@ def build_page_smo2(smo2_data, smo2_manual, figure_paths, styles):
     quality_color = "#2ECC71" if data_quality == "good" else ("#F39C12" if data_quality == "low" else "#7F8C8D")
     quality_label = "Wysoka" if data_quality == "good" else ("Niska" if data_quality == "low" else "Brak danych")
     elements.append(Spacer(1, 4 * mm))
-    elements.append(Paragraph(f"<font size='8' color='#7F8C8D'>Data Quality: </font><font size='8' color='{quality_color}'><b>{quality_label}</b></font>", styles["body"]))
+    elements.append(Paragraph(f"<font size='8' color='#7F8C8D'>Jakość danych: </font><font size='8' color='{quality_color}'><b>{quality_label}</b></font>", styles["body"]))
     
     # ==========================================================================
     # 5. REFERENCE BENCHMARK TABLE (MINI-BENCHMARK)
     # ==========================================================================
     elements.append(Spacer(1, 6 * mm))
-    elements.append(Paragraph("<b>REFERENCE BENCHMARK</b>", styles["subheading"]))
+    elements.append(Paragraph("<b>WZORZEC PORÓWNAWCZY</b>", styles["subheading"]))
     elements.append(Spacer(1, 2 * mm))
     
     # Interpret metrics for benchmark
@@ -1773,9 +1770,9 @@ def build_page_smo2(smo2_data, smo2_manual, figure_paths, styles):
     
     bench_data = [
         ["Metryka", "Twoja wartość", "Interpretacja kliniczna"],
-        ["SmO2 slope", f"{slope:.1f} %/100W", slope_interp_full],
-        ["Reoxy half-time", f"{halftime:.0f} s" if halftime else "---", ht_interp_full],
-        ["HR-SmO2 r", f"{coupling:.2f}", coup_interp_full],
+        ["Desaturacja SmO₂", f"{slope:.1f} %/100W", slope_interp_full],
+        ["Czas reoksygenacji", f"{halftime:.0f} s" if halftime else "---", ht_interp_full],
+        ["Korelacja HR-SmO₂", f"{coupling:.2f}", coup_interp_full],
     ]
     
     bench_table = Table(bench_data, colWidths=[40 * mm, 40 * mm, 85 * mm])
@@ -1819,8 +1816,8 @@ def build_page_smo2(smo2_data, smo2_manual, figure_paths, styles):
         conclusion_color = "#3498DB"
     else:
         conclusion = (
-            "<b>WNIOSEK:</b> Balans miedzy dostawa a zuzycie O2 jest dobry. "
-            "Kontynuuj zroznicowany trening, monitorujac SmO2 w sesjach tempo."
+            "<b>WNIOSEK:</b> Balans między dostawą a zużyciem O₂ jest dobry. "
+            "Kontynuuj zróżnicowany trening, monitorując SmO₂ w sesjach tempo."
         )
         conclusion_color = "#27AE60"
     
@@ -2565,7 +2562,7 @@ def build_page_metabolic_engine(metabolic_data: Dict[str, Any], styles: Dict) ->
     phenotype_names = {"diesel": "DIESEL (Aerobic Dominant)", "allrounder": "ALLROUNDER", "puncher": "PUNCHER", "sprinter": "SPRINTER (Glycolytic)"}
     
     phenotype_badge = Paragraph(
-        f"<font color='white'><b>PHENOTYPE: {phenotype_names.get(phenotype, phenotype.upper())}</b></font>",
+        f"<font color='white'><b>FENOTYP: {phenotype_names.get(phenotype, phenotype.upper())}</b></font>",
         styles["center"]
     )
     phenotype_table = Table([[phenotype_badge]], colWidths=[170 * mm])
@@ -2591,8 +2588,8 @@ def build_page_metabolic_engine(metabolic_data: Dict[str, Any], styles: Dict) ->
     limiter_names = {"aerobic": "WYDOLNOŚĆ TLENOWA", "glycolytic": "DOMINACJA GLIKOLITYCZNA", "mixed": "MIESZANY / ZBALANSOWANY", "unknown": "NIEOKREŚLONY"}
     
     limiter_content = [
-        Paragraph(f"<font color='white'><b>{limiter_names.get(limiter, 'UNDEFINED')}</b></font>", styles["center"]),
-        Paragraph(f"<font size='10' color='white'>{limiter_conf:.0%} confidence</font>", styles["center"]),
+        Paragraph(f"<font color='white'><b>{limiter_names.get(limiter, 'NIEOKREŚLONY')}</b></font>", styles["center"]),
+        Paragraph(f"<font size='10' color='white'>pewność: {limiter_conf:.0%}</font>", styles["center"]),
     ]
     limiter_table = Table([[limiter_content]], colWidths=[170 * mm])
     limiter_table.setStyle(TableStyle([
@@ -2610,7 +2607,7 @@ def build_page_metabolic_engine(metabolic_data: Dict[str, Any], styles: Dict) ->
     target = profile.get("adaptation_target", "unknown")
     strategy_interp = profile.get("strategy_interpretation", "")
     
-    elements.append(Paragraph("<b>PRIMARY ADAPTATION TARGET</b>", styles["subheading"]))
+    elements.append(Paragraph("<b>GŁÓWNY CEL ADAPTACYJNY</b>", styles["subheading"]))
     elements.append(Spacer(1, 2 * mm))
     
     target_colors = {"increase_vo2max": "#E74C3C", "lower_vlamax": "#27AE60", "maintain_balance": "#3498DB"}
@@ -3259,18 +3256,18 @@ def build_page_thermal(
     # Classification
     tolerance = classification.get("heat_tolerance", "unknown") if has_thermo_data else "unknown"
     tolerance_color = classification.get("color", "#808080") if has_thermo_data else "#808080"
-    tolerance_label = {"good": "DOBRA", "moderate": "SREDNIA", "poor": "SLABA"}.get(tolerance, "BRAK DANYCH")
+    tolerance_label = {"good": "DOBRA", "moderate": "ŚREDNIA", "poor": "SŁABA"}.get(tolerance, "BRAK DANYCH")
     
     elements.append(Paragraph("KLUCZOWE LICZBY", styles["heading"]))
     elements.append(Spacer(1, 2 * mm))
     
     key_data = [
         ["Metryka", "Wartość", "Interpretacja"],
-        ["Max Core Temp", max_temp_str, "Szczytowa temperatura głęboka"],
-        ["Delta Temp / 10 min", delta_str, f"Tolerancja: {tolerance_label}"],
-        ["Czas do 38.0 C", f"{time_38_0:.0f} min" if time_38_0 else "---", "Prog ostrzegawczy"],
-        ["Czas do 38.5 C", f"{time_38_5:.0f} min" if time_38_5 else "---", "Prog krytyczny"],
-        ["Peak HSI", peak_hsi_str, "Indeks obciazenia cieplnego"],
+        ["Max temp. głęboka", max_temp_str, "Szczytowa temperatura głęboka"],
+        ["Delta temp. / 10 min", delta_str, f"Tolerancja: {tolerance_label}"],
+        ["Czas do 38.0°C", f"{time_38_0:.0f} min" if time_38_0 else "---", "Próg ostrzegawczy"],
+        ["Czas do 38.5°C", f"{time_38_5:.0f} min" if time_38_5 else "---", "Próg krytyczny"],
+        ["Peak HSI", peak_hsi_str, "Indeks obciążenia cieplnego"],
     ]
     
     table = Table(key_data, colWidths=[45 * mm, 35 * mm, 85 * mm])
@@ -3304,24 +3301,24 @@ def build_page_thermal(
     # === CLASSIFICATION VERDICT ===
     if tolerance == "poor":
         verdict_text = (
-            "<b>SLABA TOLERANCJA CIEPLNA</b><br/>"
-            "Tempo narastania temperatury przekracza prog bezpieczny. "
-            "Redystrybucja krwi do skory konkuruje z dostawa O2 do miesni. "
+            "<b>SŁABA TOLERANCJA CIEPLNA</b><br/>"
+            "Tempo narastania temperatury przekracza próg bezpieczny. "
+            "Redystrybucja krwi do skóry konkuruje z dostawą O₂ do mięśni. "
             "Ryzyko przegrzania jest wysokie."
         )
         verdict_color = "#E74C3C"
     elif tolerance == "moderate":
         verdict_text = (
-            "<b>SREDNIA TOLERANCJA</b><br/>"
-            "Uklad chlodzenia radzi sobie, ale istnieje margines do poprawy. "
-            "Adaptacja cieplna nie jest pelna."
+            "<b>ŚREDNIA TOLERANCJA</b><br/>"
+            "Układ chłodzenia radzi sobie, ale istnieje margines do poprawy. "
+            "Adaptacja cieplna nie jest pełna."
         )
         verdict_color = "#F39C12"
     else:
         verdict_text = (
             "<b>DOBRA TOLERANCJA</b><br/>"
-            "Tempo narastania temperatury miesci sie w normie. "
-            "Uklad termoregulacji skutecznie balansuje miedzy chlodzeniem a perfuzja."
+            "Tempo narastania temperatury mieści się w normie. "
+            "Układ termoregulacji skutecznie balansuje między chłodzeniem a perfuzją."
         )
         verdict_color = "#27AE60"
     
@@ -3377,17 +3374,17 @@ def build_page_thermal(
             "PRIORYTET: Trening w cieple (heat acclimation) - 10-14 dni, 60-90min @ Z2",
             "Pre-cooling: kamizelka lodowa przed startem",
             "Nawodnienie: 500-800ml/h + elektrolity",
-            "Unikaj zawodow >28C do czasu adaptacji",
+            "Unikaj zawodów >28°C do czasu adaptacji",
         ]
     elif tolerance == "moderate":
         recommendations = [
-            "Rozwaz 5-7 dni treningu w cieple przed wazymi zawodami",
-            "Chlodzenie zewnetrzne: woda na glowe co 15-20 min",
-            "Kontroluj wage przed/po treningu (max -2%)",
+            "Rozważ 5-7 dni treningu w cieple przed ważnymi zawodami",
+            "Chłodzenie zewnętrzne: woda na głowę co 15-20 min",
+            "Kontroluj wagę przed/po treningu (max -2%)",
         ]
     else:
         recommendations = [
-            "Adaptacja wystarczajaca - mozesz startowac w cieple",
+            "Adaptacja wystarczająca - możesz startować w cieple",
             "Utrzymuj nawodnienie 400-600ml/h",
             "Kontynuuj okresowy trening w cieple (1x/tyg)",
         ]
@@ -3444,7 +3441,7 @@ def build_page_thermal(
         
         def get_hsi_status(h):
             if h < 5: return ("NISKI", "#27AE60")
-            elif h < 8: return ("OSTRZEZENIE", "#F39C12")
+            elif h < 8: return ("OSTRZEŻENIE", "#F39C12")
             else: return ("KRYTYCZNY", "#E74C3C")
         
         def get_smo2_status(s):
@@ -3570,29 +3567,7 @@ def build_page_thermal(
     ]))
     elements.append(verdict_box)
     elements.append(Spacer(1, 6 * mm))
-    if has_drift_data:
-        mechanism = drift_interp.get("mechanism", "")
-        verdict_text = f"{mechanism}"  # Removed duplicate title, just show mechanism
-    else:
-        verdict_text = "<b>BRAK DANYCH DRYFU</b><br/>Analiza drift wymaga danych EF (power/HR)."
-        drift_color = "#808080"
-    
-    verdict_style = ParagraphStyle('verdict_white', parent=styles["body"], textColor=HexColor("#FFFFFF"), fontSize=9)
-    verdict_box = Table(
-        [[Paragraph(verdict_text, verdict_style)]],
-        colWidths=[165 * mm]
-    )
-    verdict_box.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, -1), HexColor(drift_color)),
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('LEFTPADDING', (0, 0), (-1, -1), 8),
-        ('RIGHTPADDING', (0, 0), (-1, -1), 8),
-        ('TOPPADDING', (0, 0), (-1, -1), 8),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
-    ]))
-    elements.append(verdict_box)
-    elements.append(Spacer(1, 6 * mm))
-    
+
     # === RACE CONSEQUENCE SIMULATION ===
     # Get core temp from thermo_data
     thermo_metrics = thermo_data.get("metrics", {})
@@ -4069,10 +4044,10 @@ def build_page_kpi_dashboard(
     
     rows = [
         header,
-        ["Efficiency Factor (EF)", ef_val, "<1.8 slabo | 1.8-2.2 ok | >2.2 b.dobrze", ef_status],
+        ["Efficiency Factor (EF)", ef_val, "<1.8 słabo | 1.8-2.2 ok | >2.2 b.dobrze", ef_status],
         ["Pa:Hr Decoupling", pahr_val, "<5% stab. | 5-8% ostrz. | >8% ryzyko", pahr_status],
-        ["SmO2 Drift", smo2_val, "<5% stabilny | >5% zmeczenie", smo2_status],
-        ["VO2max", vo2max_val, f"Zrodlo: {vo2max_source}", vo2max_status],
+        ["SmO₂ Drift", smo2_val, "<5% stabilny | >5% zmęczenie", smo2_status],
+        ["VO₂max", vo2max_val, f"Źródło: {vo2max_source}", vo2max_status],
     ]
     
     table = Table(rows, colWidths=[40 * mm, 28 * mm, 65 * mm, 32 * mm])

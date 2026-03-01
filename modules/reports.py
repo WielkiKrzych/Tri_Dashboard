@@ -271,7 +271,7 @@ def generate_docx_report(
     """
     import streamlit as st
 
-    if not st.session_state.get("report_generation_requested", False):
+    if not st.session_state.get("report_exports_ready", False):
         return None
 
     # Calculate fallback metrics if needed
@@ -323,7 +323,7 @@ def export_all_charts_as_png(
     """
     import streamlit as st
 
-    if not st.session_state.get("report_generation_requested", False):
+    if not st.session_state.get("report_exports_ready", False):
         return None
 
     from .chart_exporters import CHART_REGISTRY, ChartContext

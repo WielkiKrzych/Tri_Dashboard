@@ -119,15 +119,23 @@ def render_manual_thresholds_tab(
         return None
 
     def find_time_for_power(power):
+        """Find time corresponding to a given power, searching only the
+        ascending phase of the ramp test (up to peak power) to avoid
+        matching points in the post-exhaustion decline."""
         if power <= 0:
             return None
-        if "watts_smooth_5s" in target_df.columns:
-            idx = (target_df["watts_smooth_5s"] - power).abs().idxmin()
-            return target_df.loc[idx, "time"]
-        elif "watts" in target_df.columns:
-            idx = (target_df["watts"] - power).abs().idxmin()
-            return target_df.loc[idx, "time"]
-        return None
+        col = "watts_smooth_5s" if "watts_smooth_5s" in target_df.columns else (
+            "watts" if "watts" in target_df.columns else None
+        )
+        if col is None:
+            return None
+        # Restrict search to ascending phase (up to peak power index)
+        peak_idx = target_df[col].idxmax()
+        ascending = target_df.loc[:peak_idx]
+        if ascending.empty:
+            return None
+        idx = (ascending[col] - power).abs().idxmin()
+        return target_df.loc[idx, "time"]
 
     vt1_hr_est = find_hr_for_power(manual_vt1)
     vt2_hr_est = find_hr_for_power(manual_vt2)

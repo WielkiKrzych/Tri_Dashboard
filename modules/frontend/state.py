@@ -35,6 +35,8 @@ class StateManager:
         
         if 'report_generation_requested' not in st.session_state:
             st.session_state['report_generation_requested'] = False
+        if 'report_exports_ready' not in st.session_state:
+            st.session_state['report_exports_ready'] = False
 
     def save_settings_callback(self) -> None:
         """Callback to save current UI values to persistence."""

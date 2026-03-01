@@ -186,7 +186,7 @@ def render_export_section(
     st.sidebar.header("📄 Export Raportu")
 
     if data_loaded and uploaded_file is not None:
-        if st.session_state.get("report_generation_requested", False):
+        if st.session_state.get("report_exports_ready", False):
             try:
                 png_zip = export_png_fn(**export_args["png"])
                 if png_zip:
@@ -204,7 +204,7 @@ def render_export_section(
 
         # Export Summary PDF button
         st.sidebar.markdown("---")
-        if st.session_state.get("report_generation_requested", False):
+        if st.session_state.get("report_exports_ready", False):
             try:
                 summary_pdf = export_summary_pdf_fn(**export_args.get("summary_pdf", {}))
                 if summary_pdf:

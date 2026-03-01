@@ -62,11 +62,23 @@ def render_threshold_timeline(cpet_result: dict, target_df: pd.DataFrame) -> Non
 
     # Resolve threshold times and HR values
     def get_time_at_power(power_val):
-        if power_val and "watts" in target_df.columns:
-            mask = target_df["watts"] >= power_val
-            if mask.any():
-                return target_df.loc[mask, "time"].iloc[0]
-        return None
+        """Find time for a given power, searching only the ascending phase
+        of the ramp test (up to peak power) to avoid post-exhaustion matches."""
+        if not power_val:
+            return None
+        col = "watts" if "watts" in target_df.columns else None
+        if col is None:
+            return None
+        peak_idx = target_df[col].idxmax()
+        ascending = target_df.loc[:peak_idx]
+        if ascending.empty:
+            return None
+        mask = ascending[col] >= power_val
+        if mask.any():
+            return ascending.loc[mask, "time"].iloc[0]
+        # If power never reached, find closest match in ascending phase
+        idx = (ascending[col] - power_val).abs().idxmin()
+        return target_df.loc[idx, "time"]
 
     def get_hr_at_power(power_val, hr_key):
         hr = cpet_result.get(hr_key)

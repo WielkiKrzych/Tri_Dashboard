@@ -459,26 +459,33 @@ if uploaded_file is not None:
     # PNG Export
     st.sidebar.markdown("---")
     st.sidebar.header("📄 Export Raportu")
-    try:
-        zip_data = export_all_charts_as_png(
-            df_plot,
-            df_plot_resampled,
-            cp_input,
-            vt1_watts,
-            vt2_watts,
-            metrics,
-            rider_weight,
-            uploaded_file,
-            None,
-            None,
-            None,
-            None,
-        )
-        st.sidebar.download_button(
-            "📸 PNG", zip_data, f"{safe_filename}.zip", mime="application/zip"
-        )
-    except Exception as e:
-        logger.warning(f"PNG export failed: {e}")
+    if st.session_state.get("report_exports_ready", False):
+        try:
+            zip_data = export_all_charts_as_png(
+                df_plot,
+                df_plot_resampled,
+                cp_input,
+                vt1_watts,
+                vt2_watts,
+                metrics,
+                rider_weight,
+                uploaded_file,
+                None,
+                None,
+                None,
+                None,
+            )
+            if zip_data:
+                st.sidebar.download_button(
+                    "📸 PNG", zip_data, f"{safe_filename}.zip", mime="application/zip"
+                )
+            else:
+                st.sidebar.warning("Nie udało się wygenerować PNG.")
+        except Exception as e:
+            st.sidebar.error(f"Błąd eksportu PNG: {e}")
+            logger.warning(f"PNG export failed: {e}")
+    else:
+        st.sidebar.info("📸 Zapisz raport w Ramp Archive, aby odblokować eksport PNG.")
 
 
 else:

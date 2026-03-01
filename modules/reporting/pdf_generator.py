@@ -73,6 +73,7 @@ def _auto_generate_pdf(
     logger.info("Ramp Test PDF generated: %s", pdf_path)
 
     st.session_state["report_generation_requested"] = False
+    st.session_state["report_exports_ready"] = True
 
     return str(pdf_path.absolute())
 

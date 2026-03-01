@@ -186,21 +186,18 @@ def render_export_section(
     st.sidebar.header("📄 Export Raportu")
 
     if data_loaded and uploaded_file is not None:
-        if st.session_state.get("report_exports_ready", False):
-            try:
-                png_zip = export_png_fn(**export_args["png"])
-                if png_zip:
-                    st.sidebar.download_button(
-                        label="📸 Pobierz Wykresy PNG (ZIP)",
-                        data=png_zip,
-                        file_name=f"Wykresy_{uploaded_file.name.split('.')[0]}.zip",
-                        mime="application/zip",
-                        use_container_width=True,
-                    )
-            except Exception as e:
-                st.sidebar.error(f"Błąd PNG: {e}")
-        else:
-            st.sidebar.info("📸 Wykresy PNG: Kliknij 'GENERUJ RAPORT', aby przygotować paczkę.")
+        try:
+            png_zip = export_png_fn(**export_args["png"])
+            if png_zip:
+                st.sidebar.download_button(
+                    label="📸 Pobierz Wykresy PNG (ZIP)",
+                    data=png_zip,
+                    file_name=f"Wykresy_{uploaded_file.name.split('.')[0]}.zip",
+                    mime="application/zip",
+                    use_container_width=True,
+                )
+        except Exception as e:
+            st.sidebar.error(f"Błąd PNG: {e}")
 
         # Export Summary PDF button
         st.sidebar.markdown("---")

@@ -321,11 +321,6 @@ def export_all_charts_as_png(
     SOLID (OCP): Używa wzorca Registry - nowe wykresy można dodawać
     jako klasy w chart_exporters.py bez modyfikacji tej funkcji.
     """
-    import streamlit as st
-
-    if not st.session_state.get("report_exports_ready", False):
-        return None
-
     from .chart_exporters import CHART_REGISTRY, ChartContext
 
     zip_buffer = BytesIO()

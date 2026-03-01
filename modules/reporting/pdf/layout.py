@@ -36,29 +36,51 @@ PREMIUM_COLORS = {
 }
 
 # ==============================================================================
-# CONFIDENCE-AWARE LANGUAGE HELPERS
+# SIGNAL QUALITY LANGUAGE HELPERS
 # ==============================================================================
 
 def get_confidence_prefix(confidence: float) -> str:
-    """Get Polish language qualifier based on confidence level."""
-    if confidence < 0.5:
-        return "Niepewne: "
-    elif confidence < 0.7:
-        return "Sugeruje: "
-    elif confidence < 0.85:
-        return "Prawdopodobnie: "
-    else:
-        return ""  # High confidence - direct statement
+    """Return empty prefix - interpretation text is self-sufficient.
+
+    Previously added qualifiers like 'Analiza wskazuje:' but these looked
+    mechanical when repeated before every line. Kept for API compatibility.
+    """
+    return ""
 
 
 def get_confidence_suffix(confidence: float) -> str:
-    """Get uncertainty note based on confidence level."""
-    if confidence < 0.5:
-        return " (niska pewność, wymaga weryfikacji)"
-    elif confidence < 0.7:
-        return " (umiarkowana pewność)"
+    """Get methodology note based on signal quality level.
+
+    Professional phrasing - no numeric confidence exposed to end users.
+    """
+    return ""
+
+
+def _signal_quality_label(confidence: float) -> str:
+    """Convert numeric confidence to professional signal quality label."""
+    if confidence >= 0.85:
+        return "bardzo dobra"
+    elif confidence >= 0.7:
+        return "dobra"
+    elif confidence >= 0.5:
+        return "wystarczająca"
     else:
-        return ""
+        return "podstawowa"
+
+
+def _signal_quality_stars(confidence: float) -> str:
+    """Convert numeric confidence to star rating (1-5)."""
+    if confidence >= 0.9:
+        stars = 5
+    elif confidence >= 0.75:
+        stars = 4
+    elif confidence >= 0.6:
+        stars = 3
+    elif confidence >= 0.4:
+        stars = 2
+    else:
+        stars = 1
+    return "★" * stars + "☆" * (5 - stars)
 
 
 # PREMIUM HELPER FUNCTIONS
@@ -699,45 +721,55 @@ def build_page_executive_summary(
     # 4. TEST CONFIDENCE PANEL
     # ==========================================================================
     
-    elements.append(Paragraph("<b>PEWNOŚĆ TESTU</b>", styles["subheading"]))
+    elements.append(Paragraph("<b>JAKOŚĆ SYGNAŁU</b>", styles["subheading"]))
     elements.append(Spacer(1, 2 * mm))
-    
+
     overall_score = confidence_panel.get("overall_score", 0)
     breakdown = confidence_panel.get("breakdown", {})
     limiting_factor = confidence_panel.get("limiting_factor", "---")
     score_color = confidence_panel.get("color", "#7F8C8D")
-    score_label = confidence_panel.get("label", "---")
-    
-    # Score display + breakdown
+
+    overall_conf = overall_score / 100.0
+    quality_label = _signal_quality_label(overall_conf)
+    quality_stars = _signal_quality_stars(overall_conf)
+
     score_para = Paragraph(
-        f"<font size='28' color='{score_color}'><b>{overall_score}%</b></font> "
-        f"<font size='12'>({score_label})</font>",
+        f"<font size='20' color='{score_color}'><b>{quality_stars}</b></font><br/>"
+        f"<font size='11'>Jakość: <b>{quality_label}</b></font>",
         styles["body"]
     )
-    
-    # Breakdown bars
+
+    # Breakdown bars - professional labels
+    signal_labels = {
+        "ve_stability": "Stabilność VE",
+        "hr_lag": "Odpowiedź HR",
+        "smo2_noise": "Jakość SmO₂",
+        "protocol_quality": "Protokół",
+    }
     breakdown_rows = []
-    for key, label in [("ve_stability", "VE Stability"), ("hr_lag", "HR Response"), ("smo2_noise", "SmO₂ Quality"), ("protocol_quality", "Protocol")]:
+    for key, label in signal_labels.items():
         val = breakdown.get(key, 50)
-        bar_color = "#2ECC71" if val >= 70 else ("#F39C12" if val >= 50 else "#E74C3C")
+        val_conf = val / 100.0
+        stars = _signal_quality_stars(val_conf)
         breakdown_rows.append([
             Paragraph(f"<font size='8'>{label}</font>", styles["body"]),
-            Paragraph(f"<font size='9' color='{bar_color}'><b>{val}%</b></font>", styles["body"])
+            Paragraph(f"<font size='9'>{stars}</font>", styles["body"]),
         ])
-    
-    breakdown_table = Table(breakdown_rows, colWidths=[35 * mm, 20 * mm])
+
+    breakdown_table = Table(breakdown_rows, colWidths=[35 * mm, 30 * mm])
     breakdown_table.setStyle(TableStyle([
         ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
     ]))
-    
+
     confidence_row = Table([[score_para, breakdown_table]], colWidths=[60 * mm, 110 * mm])
     confidence_row.setStyle(TableStyle([
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
     ]))
-    
+
     elements.append(confidence_row)
-    elements.append(Paragraph(f"<font size='9' color='#7F8C8D'>Ogranicza: <b>{limiting_factor}</b></font>", styles["body"]))
+    if limiting_factor and limiting_factor != "---":
+        elements.append(Paragraph(f"<font size='9' color='#7F8C8D'>Uwaga: jakość ograniczona przez <b>{limiting_factor}</b></font>", styles["body"]))
     elements.append(Spacer(1, 6 * mm))
     
     # ==========================================================================
@@ -940,8 +972,8 @@ def build_page_executive_verdict(
         )],
         [Spacer(1, 2 * mm)],
         [Paragraph(
-            f"<font size='8' color='#BDC3C7'>Pewność: {confidence_score:.2f} | "
-            f"Źródła: VO₂max ({vo2max_source}), SmO₂, korelacja HR, temp. głęboka</font>",
+            f"<font size='8' color='#BDC3C7'>"
+            f"Źródła danych: VO₂max ({vo2max_source}), SmO₂, korelacja HR, temp. głęboka</font>",
             styles["center"]
         )],
     ]
@@ -1453,11 +1485,12 @@ def build_page_test_profile(
     test_start_power = metadata.get("test_start_power", "---")
     test_end_power = metadata.get("test_end_power", metadata.get("pmax_watts", "---"))
     test_duration = metadata.get("test_duration", "---")
-    
+    step_increment = metadata.get("step_increment", "20")
+
     elements.append(Paragraph(
         "<font size='8' color='#7F8C8D'>"
         "Test wykonywany do odmowy, każdy interwał trwał 3 minuty. "
-        "Zwiększenie obciążenia w każdym interwale +30W. "
+        f"Zwiększenie obciążenia w każdym interwale +{step_increment}W. "
         f"Początek testu rozpoczął się od wartości {test_start_power} W, "
         f"koniec testu nastąpił na wartości {test_end_power} W. "
         f"Test trwał łącznie {test_duration}."
@@ -1651,7 +1684,7 @@ def build_page_smo2(smo2_data, smo2_manual, figure_paths, styles):
     
     verdict_content = [
         Paragraph(f"<font color='white'><b>{mech_icon} {mech_name}</b></font>", styles["center"]),
-        Paragraph(f"<font size='10' color='white'>pewność: {limiter_conf:.0%}</font>", styles["center"]),
+        Paragraph(f"<font size='10' color='white'>jakość sygnału: {_signal_quality_label(limiter_conf)}</font>", styles["center"]),
     ]
     verdict_table = Table([[verdict_content]], colWidths=[170 * mm])
     verdict_table.setStyle(TableStyle([
@@ -1663,10 +1696,9 @@ def build_page_smo2(smo2_data, smo2_manual, figure_paths, styles):
     ]))
     elements.append(verdict_table)
     elements.append(Spacer(1, 3 * mm))
-    
+
     if interpretation_adv:
         for line in interpretation_adv.split('\n')[:2]:
-            # Apply confidence-aware language
             line_with_confidence = get_confidence_prefix(limiter_conf) + line + get_confidence_suffix(limiter_conf)
             elements.append(Paragraph(line_with_confidence, styles["body"]))
     elements.append(Spacer(1, 6 * mm))
@@ -2217,7 +2249,7 @@ def build_page_cardiovascular(cardio_data: Dict[str, Any], styles: Dict) -> List
     
     verdict_content = [
         Paragraph(f"<font color='white'><b>{st_icon} {st_name}</b></font>", styles["center"]),
-        Paragraph(f"<font size='10' color='white'>pewność: {confidence:.0%}</font>", styles["center"]),
+        Paragraph(f"<font size='10' color='white'>jakość sygnału: {_signal_quality_label(confidence)}</font>", styles["center"]),
     ]
     verdict_table = Table([[verdict_content]], colWidths=[170 * mm])
     verdict_table.setStyle(TableStyle([
@@ -2229,11 +2261,10 @@ def build_page_cardiovascular(cardio_data: Dict[str, Any], styles: Dict) -> List
     ]))
     elements.append(verdict_table)
     elements.append(Spacer(1, 3 * mm))
-    
+
     # Interpretation
     if interpretation:
         for line in interpretation.split('\n')[:3]:
-            # Apply confidence-aware language
             line_with_confidence = get_confidence_prefix(confidence) + line + get_confidence_suffix(confidence)
             elements.append(Paragraph(line_with_confidence, styles["body"]))
     elements.append(Spacer(1, 6 * mm))
@@ -2403,7 +2434,7 @@ def build_page_ventilation(vent_data: Dict[str, Any], styles: Dict) -> List:
     
     verdict_content = [
         Paragraph(f"<font color='white'><b>{st_icon} {st_name}</b></font>", styles["center"]),
-        Paragraph(f"<font size='10' color='white'>pewność: {confidence:.0%}</font>", styles["center"]),
+        Paragraph(f"<font size='10' color='white'>jakość sygnału: {_signal_quality_label(confidence)}</font>", styles["center"]),
     ]
     verdict_table = Table([[verdict_content]], colWidths=[170 * mm])
     verdict_table.setStyle(TableStyle([
@@ -2414,10 +2445,9 @@ def build_page_ventilation(vent_data: Dict[str, Any], styles: Dict) -> List:
     ]))
     elements.append(verdict_table)
     elements.append(Spacer(1, 3 * mm))
-    
+
     if interpretation:
         for line in interpretation.split('\n')[:2]:
-            # Apply confidence-aware language
             line_with_confidence = get_confidence_prefix(confidence) + line + get_confidence_suffix(confidence)
             elements.append(Paragraph(line_with_confidence, styles["body"]))
     
@@ -2537,7 +2567,7 @@ def build_page_metabolic_engine(metabolic_data: Dict[str, Any], styles: Dict) ->
     card1 = build_metric_card("VO₂max", vo2_val, "ml/kg/min", vo2_color, vo2_source_label)
     
     vla_color = "#2ECC71" if vlamax < 0.4 else ("#F39C12" if vlamax < 0.6 else "#E74C3C")
-    card2 = build_metric_card("VLaMax", f"{vlamax:.2f}", "mmol/L/s", vla_color, "estymowany")
+    card2 = build_metric_card("VLaMax", f"{vlamax:.2f}", "mmol/L/s", vla_color, "model metaboliczny")
     card3 = build_metric_card("CP / FTP", f"{cp:.0f}", "W", "#3498DB", "obliczone")
     
     # Ratio card - show n/a if insufficient data
@@ -2547,7 +2577,7 @@ def build_page_metabolic_engine(metabolic_data: Dict[str, Any], styles: Dict) ->
     else:
         ratio_color = "#7F8C8D"
         ratio_val = "n/a"
-    card4 = build_metric_card("VO₂/VLa RATIO", ratio_val, "(ratio)", ratio_color, "oszacowane")
+    card4 = build_metric_card("VO₂/VLa RATIO", ratio_val, "(ratio)", ratio_color, "analiza wieloczynnikowa")
     
     cards_row = Table([[card1, card2, card3, card4]], colWidths=[44 * mm] * 4)
     cards_row.setStyle(TableStyle([
@@ -2589,7 +2619,7 @@ def build_page_metabolic_engine(metabolic_data: Dict[str, Any], styles: Dict) ->
     
     limiter_content = [
         Paragraph(f"<font color='white'><b>{limiter_names.get(limiter, 'NIEOKREŚLONY')}</b></font>", styles["center"]),
-        Paragraph(f"<font size='10' color='white'>pewność: {limiter_conf:.0%}</font>", styles["center"]),
+        Paragraph(f"<font size='10' color='white'>jakość sygnału: {_signal_quality_label(limiter_conf)}</font>", styles["center"]),
     ]
     limiter_table = Table([[limiter_content]], colWidths=[170 * mm])
     limiter_table.setStyle(TableStyle([

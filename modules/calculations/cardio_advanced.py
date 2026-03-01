@@ -328,7 +328,7 @@ def _generate_cardio_interpretation(
     breakpoint = metrics.cci_breakpoint_watts
     
     if status == "efficient":
-        base = "EFFICIENT – Układ krążenia pracuje optymalnie"
+        base = "Układ krążenia pracuje optymalnie"
         detail = (
             f"Pulse Power {pp:.2f} W/bpm i EF {ef:.2f} wskazują na efektywne wykorzystanie rzutu serca. "
             f"Cardiac Drift {drift:.1f}% w normie. "
@@ -337,7 +337,7 @@ def _generate_cardio_interpretation(
             detail += f"Punkt załamania CCI przy {breakpoint:.0f}W – to Twój próg efektywności krążeniowej."
     
     elif status == "compensating":
-        base = "COMPENSATING – Serce kompensuje ograniczenia"
+        base = "Serce kompensuje ograniczenia obwodowe"
         detail = (
             f"Umiarkowany Pulse Power ({pp:.2f} W/bpm) i Drift {drift:.1f}% sugerują, "
             "że serce musi pracować ciężej, by utrzymać moc. "
@@ -346,7 +346,7 @@ def _generate_cardio_interpretation(
             detail += "Rozważ strategię nawodnienia i chłodzenia. "
     
     else:  # decompensating
-        base = "DECOMPENSATING – Nieefektywność krążeniowa"
+        base = "Nieefektywność krążeniowa – wymagana interwencja"
         detail = (
             f"Niski Pulse Power ({pp:.2f} W/bpm) i wysoki Drift ({drift:.1f}%) wskazują na "
             "narastający koszt sercowy. "

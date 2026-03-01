@@ -210,7 +210,7 @@ def render_manual_thresholds_tab(
     st.subheader("📝 Protokół Testu (dla raportu PDF)")
     st.caption("Wprowadź parametry testu, które pojawią się w sekcji 1.2 Przebieg Testu:")
 
-    col_proto1, col_proto2, col_proto3 = st.columns(3)
+    col_proto1, col_proto2, col_proto3, col_proto4 = st.columns(4)
     with col_proto1:
         test_start_power = st.number_input(
             "Początek testu (W)",
@@ -232,6 +232,16 @@ def render_manual_thresholds_tab(
             help="Moc przy której nastąpiła odmowa",
         )
     with col_proto3:
+        step_increment = st.number_input(
+            "Krok mocy (W)",
+            min_value=5,
+            max_value=100,
+            value=st.session_state.get("step_increment", 20),
+            step=5,
+            key="step_increment",
+            help="O ile watów rośnie moc w każdym kroku testu",
+        )
+    with col_proto4:
         test_duration = st.text_input(
             "Czas trwania (mm:ss)",
             value=st.session_state.get("test_duration", "45:00"),

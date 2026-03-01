@@ -307,7 +307,7 @@ def _generate_vent_interpretation(status: str, metrics: VentilationMetrics) -> s
     bp = metrics.ve_breakpoint_watts
     
     if status == "controlled":
-        base = "CONTROLLED – Efektywna kontrola wentylacji"
+        base = "Efektywna kontrola wentylacji"
         detail = (
             f"Niski VE slope ({ve_slope:.2f} L/min/100W) i umiarkowane RR max ({rr_max:.0f}/min) "
             "wskazują na dobrą tolerancję CO₂ i ekonomię oddechową. "
@@ -316,7 +316,7 @@ def _generate_vent_interpretation(status: str, metrics: VentilationMetrics) -> s
             detail += f"Punkt załamania VE przy {bp:.0f}W potwierdza wysoką sprawność metaboliczną."
     
     elif status == "compensatory":
-        base = "COMPENSATORY – Oddech kompensuje stres metaboliczny"
+        base = "Oddech kompensuje stres metaboliczny"
         detail = (
             f"Umiarkowany VE slope ({ve_slope:.2f}) i RR max {rr_max:.0f}/min sugerują, "
             "że układ oddechowy działa blisko granicy efektywności. "
@@ -325,7 +325,7 @@ def _generate_vent_interpretation(status: str, metrics: VentilationMetrics) -> s
             detail += "Niska objętość oddechowa wymaga uwagi – może ograniczać saturację. "
     
     else:  # unstable
-        base = "UNSTABLE – Dekompensacja wentylacyjna"
+        base = "Dekompensacja wentylacyjna"
         detail = (
             f"Wysoki VE slope ({ve_slope:.2f}) i/lub RR max ({rr_max:.0f}) wskazują na "
             "niekontrolowany wzorzec oddechowy. Priorytet: trening tolerancji CO₂."

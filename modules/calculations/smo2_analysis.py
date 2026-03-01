@@ -304,7 +304,7 @@ def _generate_interpretation(
     coupling = metrics.hr_coupling_r
 
     if limiter_type == "local":
-        base = "LIMIT OBWODOWY (KAPILARYZACJA)"
+        base = "Ograniczenie obwodowe – kapilaryzacja mięśniowa"
         detail = f"SmO₂ spada o {abs(slope):.1f}%/100W – mięsień szybko wyczerpuje tlen lokalnie. "
         if halftime and halftime > 60:
             detail += f"Powolna reoksygenacja ({halftime:.0f}s) potwierdza słabą kapilaryzację. "
@@ -312,7 +312,7 @@ def _generate_interpretation(
             detail += "Niska korelacja z HR wskazuje na niezależność od układu centralnego. "
 
     elif limiter_type == "central":
-        base = "LIMIT CENTRALNY (RZUT SERCA)"
+        base = "Ograniczenie centralne – rzut serca"
         detail = f"Silna korelacja SmO₂-HR (r={coupling:.2f}) wskazuje, że serce dyktuje dostawę tlenu. "
         if abs(slope) < 4:
             detail += f"Umiarkowany spadek SmO₂ ({abs(slope):.1f}%/100W) potwierdza wystarczającą kapilaryzację. "
@@ -320,7 +320,7 @@ def _generate_interpretation(
             detail += f"Szybka reoksygenacja ({halftime:.0f}s) – mięśnie sprawnie odbierają tlen. "
 
     else:  # metabolic
-        base = "LIMIT METABOLICZNY (GLIKOLIZA)"
+        base = "Ograniczenie metaboliczne – dominacja glikolizy"
         detail = (
             f"Profil mieszany: spadek SmO₂ {abs(slope):.1f}%/100W przy umiarkowanej korelacji z HR. "
             "Sugeruje wysoką produkcję mleczanu (VLaMax) jako główny czynnik."

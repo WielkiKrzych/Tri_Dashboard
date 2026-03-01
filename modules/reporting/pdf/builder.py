@@ -140,6 +140,7 @@ def map_ramp_json_to_pdf_data(report_json: Dict[str, Any], manual_overrides: Opt
         "test_start_power": "---",
         "test_end_power": pmax_val,  # default to pmax
         "test_duration": "---",
+        "step_increment": "20",
     }
     
     # === METADATA OVERRIDES from Ramp Archive editor ===
@@ -167,6 +168,10 @@ def map_ramp_json_to_pdf_data(report_json: Dict[str, Any], manual_overrides: Opt
     if manual_overrides.get("test_duration") and manual_overrides["test_duration"] != "45:00":  # Check not default
         mapped_meta["test_duration"] = manual_overrides["test_duration"]
         logger.info(f"PDF: test_duration set to {mapped_meta['test_duration']} (manual)")
+
+    if manual_overrides.get("step_increment") is not None and manual_overrides["step_increment"] > 0:
+        mapped_meta["step_increment"] = str(manual_overrides["step_increment"])
+        logger.info(f"PDF: step_increment set to {mapped_meta['step_increment']}W (manual)")
 
     # 2. Thresholds (midpoints and ranges)
     thresholds = report_json.get("thresholds", {})

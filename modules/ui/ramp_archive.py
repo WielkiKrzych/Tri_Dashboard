@@ -141,6 +141,13 @@ def _render_save_json_section() -> None:
             elif save_result.get("deduplicated"):
                 st.warning("⚠️ Raport dla tego pliku już istnieje")
             elif saved_path:
+                if save_result.get("low_confidence"):
+                    conf_val = save_result.get("confidence_value", 0)
+                    st.warning(
+                        f"⚠️ Niski poziom pewności rozpoznania Ramp Testu "
+                        f"(confidence: {conf_val:.2f}). "
+                        f"Raport zapisany, ale wyniki mogą być mniej wiarygodne."
+                    )
                 st.success("✅ Raport JSON zapisany pomyślnie!")
                 st.info(f"📁 JSON: `{saved_path}`")
                 st.balloons()

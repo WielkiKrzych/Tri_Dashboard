@@ -62,6 +62,7 @@ class ManualOverrides:
     test_start_power: Optional[int] = None
     test_end_power: Optional[int] = None
     test_duration: Optional[str] = None
+    step_increment: Optional[int] = None
 
 
 def get_manual_overrides() -> ManualOverrides:
@@ -122,6 +123,7 @@ def get_manual_overrides() -> ManualOverrides:
         test_start_power=_get("test_start_power"),
         test_end_power=_get("test_end_power"),
         test_duration=st.session_state.get("test_duration"),
+        step_increment=_get("step_increment"),
     )
 
 
@@ -183,4 +185,5 @@ def to_dict(overrides: ManualOverrides) -> Dict[str, Any]:
         "test_start_power": overrides.test_start_power,
         "test_end_power": overrides.test_end_power,
         "test_duration": overrides.test_duration,
+        "step_increment": overrides.step_increment,
     }

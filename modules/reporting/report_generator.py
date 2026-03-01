@@ -117,12 +117,17 @@ def save_ramp_test_report(
     from modules.domain import SessionType
 
     ALLOWED_TYPES = [SessionType.RAMP_TEST, SessionType.RAMP_TEST_CONDITIONAL]
+    ALLOWED_TYPE_STRINGS = [str(t) for t in ALLOWED_TYPES]
 
-    if session_type is not None and session_type not in ALLOWED_TYPES:
-        return {"gated": True, "reason": f"SessionType is {session_type}, not a Ramp Test"}
+    if session_type is not None:
+        is_allowed = (
+            session_type in ALLOWED_TYPES
+            or str(session_type) in ALLOWED_TYPE_STRINGS
+        )
+        if not is_allowed:
+            return {"gated": True, "reason": f"SessionType is {session_type}, not a Ramp Test"}
 
-    if ramp_confidence > 0 and ramp_confidence < 0.5:
-        return {"gated": True, "reason": f"Confidence {ramp_confidence:.2f} too low to save report"}
+    low_confidence = ramp_confidence > 0 and ramp_confidence < 0.5
 
     # 1. Prepare data dictionary
     data = result.to_dict()
@@ -673,9 +678,13 @@ def save_ramp_test_report(
     except Exception as e:
         logger.warning("Failed to update report index: %s", e)
 
-    return {
+    result_dict = {
         "path": str(file_path.absolute()),
         "pdf_path": pdf_path,
         "session_id": session_id,
         "uuid": session_id,
     }
+    if low_confidence:
+        result_dict["low_confidence"] = True
+        result_dict["confidence_value"] = ramp_confidence
+    return result_dict

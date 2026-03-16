@@ -192,6 +192,8 @@ def render_ramp_archive():
 
     st.markdown("### Historia Analiz")
 
+    df = df.copy()
+
     if "test_date" in df.columns:
         df["test_date"] = pd.to_datetime(df["test_date"])
         df = df.sort_values(by="test_date", ascending=False)

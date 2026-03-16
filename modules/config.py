@@ -19,6 +19,10 @@ class Config:
     APP_ICON = os.getenv("APP_ICON", "⚡")
     APP_LAYOUT = os.getenv("APP_LAYOUT", "wide")
     CSS_FILE = os.getenv("CSS_FILE", "style.css")
+    # Validate CSS file stays within project directory
+    _css_path = Path(BASE_DIR) / CSS_FILE if not Path(CSS_FILE).is_absolute() else Path(CSS_FILE)
+    if not _css_path.resolve().is_relative_to(BASE_DIR):
+        CSS_FILE = "style.css"
 
     # --- Analysis Parameters ---
     ROLLING_WINDOW_5MIN = int(os.getenv("ROLLING_WINDOW_5MIN", "300"))

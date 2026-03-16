@@ -1,5 +1,7 @@
 # Requirements lock file for Tri_Dashboard
-# Generated from pyproject.toml dependencies
+# WARNING: This file uses >= specifiers instead of pinned == versions.
+# For reproducible builds, generate a proper lock file:
+#   pip install pip-tools && pip-compile pyproject.toml --output-file requirements.lock
 # Run: pip install -r requirements.lock
 
 # Core dependencies

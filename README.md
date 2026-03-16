@@ -39,6 +39,42 @@ Tri_Dashboard to platforma analityczna dla **trenerów**, **naukowców sportu** 
 | **AI Coach** | Multi-sensor fusion, limiter diagnosis, rekomendacje |
 | **Reports** | PDF 7-stronicowy, DOCX, PNG export, SQLite baza danych |
 
+### 🆕 Security & Code Quality Audit (2026-03-16)
+
+**CRITICAL Fixes (5):**
+| Fix | Opis |
+|:----|:-----|
+| Missing `logger` in session_orchestrator | `NameError` crash on any parallel calculation failure |
+| Dead duplicate code in `_calculate_parallel` | Unreachable `try/except` blocks from bad merge |
+| Wrong `np.interp` argument order in pipeline | Produced garbage LT1/LT2 HR values |
+| Orphaned code in `cache_utils.py` | Triple-duplicated imports + dead `_hash_arg` body |
+| Duplicate `subprocess.run` in `report_io` | Git tracking check ran twice, exceptions silenced |
+
+**HIGH Fixes (10):**
+| Fix | Opis |
+|:----|:-----|
+| XSS: duplicate `show_breadcrumb` | Unsafe version shadowed safe `html.escape()` version |
+| Information disclosure via `st.error()` | Raw exceptions exposed filesystem paths in UI |
+| DataFrame mutation in `vent.py` | Missing `.copy()` caused cross-tab side effects |
+| `vt_cpet_ve_only` immutability | Now returns new dict/DataFrame instead of mutating |
+| `session_analysis` immutability | Removed `inplace` param, `calculate_extended_metrics` returns new dict |
+| `ramp_archive.py` mutation | Added `.copy()` before DataFrame modifications |
+| `training_load.py` mutation | Added `.copy()` to prevent caller side effects |
+| Dead code in `app.py` | Removed unreachable hash fallback after `return` |
+| Redundant imports in `pdf/layout.py` | Removed 11 function-level `HexColor` re-imports |
+| Silent exception swallowing | Added logging to `report_io`, `vent_thresholds_display` |
+
+**MEDIUM Fixes (7):**
+| Fix | Opis |
+|:----|:-----|
+| User note XSS | `html.escape()` for note text in `smo2.py`, `vent.py` |
+| Plotly hover injection | `html.escape()` for filenames in `ai_coach.py` |
+| Filename sanitization | `train_history.py` now sanitizes batch filenames |
+| CSS path traversal | `config.py` validates CSS path stays in project dir |
+| Relative `.git` path | `report_io.py` uses absolute path via `Path(__file__)` |
+| Magic number extraction | `OCCLUSION_TORQUE_CRITICAL_NM = 70` constant |
+| Requirements lock warning | Added comment about missing pinned versions |
+
 ### 🆕 Ramp Report Review (2026-02-28)
 
 **CRITICAL Fixes:**

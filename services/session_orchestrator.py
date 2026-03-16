@@ -7,10 +7,14 @@ Coordinates data loading, validation, metrics calculation, and storage preparati
 Supports both sequential and parallel processing modes.
 """
 
+import logging
+
 import pandas as pd
 from datetime import date
 from typing import Dict, Any, Optional, Tuple
 from concurrent.futures import ThreadPoolExecutor, as_completed
+
+logger = logging.getLogger(__name__)
 
 from .session_analysis import (
     calculate_extended_metrics,
@@ -155,20 +159,6 @@ def _calculate_parallel(
             drift_z2 = future_drift.result(timeout=30)
         except Exception as e:
             logger.warning("Parallel Z2 drift calculation failed, falling back: %s", e)
-            drift_z2 = calculate_z2_drift(df_clean_pl, cp_input)
-
-            metrics = future_metrics.result(timeout=30)
-        except Exception:
-            metrics = calculate_metrics(df_clean_pl, cp_input)
-
-        try:
-            df_w_prime = future_wprime.result(timeout=30)
-        except Exception:
-            df_w_prime = calculate_w_prime_balance(df_clean_pl, cp_input, w_prime_input)
-
-        try:
-            drift_z2 = future_drift.result(timeout=30)
-        except Exception:
             drift_z2 = calculate_z2_drift(df_clean_pl, cp_input)
 
     return metrics, df_w_prime, drift_z2

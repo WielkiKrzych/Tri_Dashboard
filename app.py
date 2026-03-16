@@ -74,14 +74,6 @@ def compute_file_hash(file) -> str:
     file.seek(0)  # Reset for subsequent reads
     return content_hash.hexdigest()[:16]
 
-    """
-    Compute stable hash for file cache key.
-
-    Uses MD5 for speed (not cryptographic security needed).
-    More stable than built-in hash() which can vary between runs.
-    """
-    return hashlib.md5(f"{file.name}:{file.size}".encode()).hexdigest()[:16]
-
 
 def classify_and_cache_session(df_raw: pd.DataFrame, file_hash: str, uploaded_file):
     """Classify session type with caching in session_state."""
@@ -202,7 +194,7 @@ class TabRegistry:
             return func(*args, **kwargs)
         except Exception as e:
             logger.error("Tab load error [%s]: %s", tab_name, e, exc_info=True)
-            st.error(f"Error loading tab {tab_name}: {e}")
+            st.error(f"Nie udalo sie zaladowac zakladki {tab_name}. Sprawdz logi.")
 
 
 def render_tab_content(tab_name, *args, **kwargs):
@@ -266,7 +258,7 @@ if uploaded_file is not None:
 
             if error_msg:
                 logger.error("Session processing failed: %s", error_msg)
-                st.error(f"Błąd analizy: {error_msg}")
+                st.error("Blad analizy danych. Sprawdz format pliku i sprobuj ponownie.")
                 st.stop()
 
             # Extract intermediate results from metrics (DIP: metrics acts as a container here)
@@ -287,7 +279,7 @@ if uploaded_file is not None:
 
         except Exception as e:
             logger.error("File load error: %s", e, exc_info=True)
-            st.error(f"Błąd wczytywania pliku: {e}")
+            st.error("Nie udalo sie wczytac pliku. Sprawdz format (CSV/TXT).")
             st.stop()
 
     # --- RENDER DASHBOARD ---

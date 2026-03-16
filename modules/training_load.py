@@ -58,7 +58,7 @@ class TrainingLoadManager:
             return []
 
         # Create DataFrame with all dates
-        df = pd.DataFrame(tss_data, columns=["date", "tss"])
+        df = pd.DataFrame(tss_data, columns=["date", "tss"]).copy()
         df["date"] = pd.to_datetime(df["date"])
         df = df.set_index("date")
 

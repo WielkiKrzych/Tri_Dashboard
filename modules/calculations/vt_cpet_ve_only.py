@@ -17,12 +17,16 @@ def detect_ve_only_thresholds(
     """
     VE-only 4-point CPET detection (VT1_onset, VT1_steady, RCP_onset, RCP_steady).
 
-    Modifies result dict in place with detected thresholds, zones, and notes.
+    Returns new result dict with detected thresholds, zones, and notes.
     """
     from scipy.signal import savgol_filter
 
+    result = {**result}
+    result["analysis_notes"] = list(result.get("analysis_notes", []))
     result["analysis_notes"].append("VE-only mode: 4-point CPET detection")
     result["method"] = "ve_only_4point_cpet"
+
+    df_steps = df_steps.copy()
 
     try:
         window = min(5, len(df_steps) if len(df_steps) % 2 == 1 else len(df_steps) - 1)

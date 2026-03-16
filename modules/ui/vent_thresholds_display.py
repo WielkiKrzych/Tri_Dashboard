@@ -35,7 +35,7 @@ def render_threshold_cards(cpet_result: dict, target_df: pd.DataFrame, cp_input:
                                     else round(v, 1)
                                 )
                 except Exception:
-                    pass
+                    return val
         return val
 
     # Row 1: VT1_onset and VT1_steady

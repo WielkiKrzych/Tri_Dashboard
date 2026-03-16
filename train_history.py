@@ -209,10 +209,13 @@ def update_history(hr_base, hr_thresh, filename: str):
         except (json.JSONDecodeError, IOError, OSError):
             pass
     
+    import re
+    safe_filename = re.sub(r'[^A-Za-z0-9_.\-]', '_', filename)[:128]
+
     entry = {
         "timestamp": time.time(),
         "date": time.strftime("%Y-%m-%d %H:%M"),
-        "source_file": filename,
+        "source_file": safe_filename,
         "hr_base": float(hr_base) if hr_base is not None else None,
         "hr_thresh": float(hr_thresh) if hr_thresh is not None else None
     }

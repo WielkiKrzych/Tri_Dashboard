@@ -16,7 +16,7 @@ def render_vent_tab(target_df, training_notes, uploaded_file_name):
         "Analiza dynamiki oddechu dla dowolnego treningu. Szukaj anomalii w wentylacji i częstości oddechów."
     )
 
-    # 1. Przygotowanie danych
+    # 1. Przygotowanie danych (work on copy to avoid mutating caller's DataFrame)
     if target_df is None or target_df.empty:
         st.error("Brak danych. Najpierw wgraj plik w sidebar.")
         return
@@ -28,6 +28,8 @@ def render_vent_tab(target_df, training_notes, uploaded_file_name):
     if "tymeventilation" not in target_df.columns:
         st.info("ℹ️ Brak danych wentylacji (tymeventilation) w tym pliku.")
         return
+
+    target_df = target_df.copy()
 
     # Wygładzanie
     if "watts_smooth_5s" not in target_df.columns and "watts" in target_df.columns:
@@ -91,7 +93,8 @@ def render_vent_tab(target_df, training_notes, uploaded_file_name):
         if st.button("➕ Dodaj Notatkę", key="vent_add_note"):
             if note_text:
                 training_notes.add_note(uploaded_file_name, note_time, "ventilation", note_text)
-                st.success(f"✅ Notatka: {note_text} @ {note_time:.1f} min")
+                import html as _html
+                st.success(f"✅ Notatka: {_html.escape(note_text)} @ {note_time:.1f} min")
             else:
                 st.warning("Wpisz tekst notatki!")
 
@@ -102,7 +105,8 @@ def render_vent_tab(target_df, training_notes, uploaded_file_name):
         for idx, note in enumerate(existing_notes):
             col_note, col_del = st.columns([4, 1])
             with col_note:
-                st.info(f"⏱️ **{note['time_minute']:.1f} min** | {note['text']}")
+                import html as _html
+                st.info(f"⏱️ **{note['time_minute']:.1f} min** | {_html.escape(note['text'])}")
             with col_del:
                 if st.button("🗑️", key=f"del_vent_note_{idx}"):
                     training_notes.delete_note(uploaded_file_name, idx)

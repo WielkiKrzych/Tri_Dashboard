@@ -462,8 +462,9 @@ def generate_training_cards(
     occlusion_metrics = biomech_occlusion.get("metrics", {})
     torque_threshold = occlusion_metrics.get("torque_at_minus_10", 0)  # Nm at -10% SmO2
     
-    # Occlusion is concerning if moderate or high, or torque threshold < 70 Nm
-    occlusion_detected = occlusion_level in ["moderate", "high"] or (torque_threshold > 0 and torque_threshold < 70)
+    # Occlusion is concerning if moderate or high, or torque threshold below critical limit
+    OCCLUSION_TORQUE_CRITICAL_NM = 70
+    occlusion_detected = occlusion_level in ["moderate", "high"] or (torque_threshold > 0 and torque_threshold < OCCLUSION_TORQUE_CRITICAL_NM)
     
     # Build cadence constraint text
     if occlusion_detected:

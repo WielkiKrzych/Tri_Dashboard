@@ -84,14 +84,15 @@ def render_ai_coach_tab(df_plot_resampled):
                         hist_df = hist_df.reset_index()
                         hist_df['session_nr'] = hist_df.index + 1
                         
+                        import html as _html
                         hover_text_base = hist_df.apply(
-                            lambda row: f"Plik: {row.get('source_file', 'N/A')}<br>Baza: {row['hr_base']:.1f} bpm" 
-                            if row['hr_base'] is not None and not pd.isna(row['hr_base']) else "N/A", 
+                            lambda row: f"Plik: {_html.escape(str(row.get('source_file', 'N/A')))}<br>Baza: {row['hr_base']:.1f} bpm"
+                            if row['hr_base'] is not None and not pd.isna(row['hr_base']) else "N/A",
                             axis=1
                         )
                         hover_text_thresh = hist_df.apply(
-                            lambda row: f"Plik: {row.get('source_file', 'N/A')}<br>Próg: {row['hr_thresh']:.1f} bpm"
-                            if row['hr_thresh'] is not None and not pd.isna(row['hr_thresh']) else "N/A", 
+                            lambda row: f"Plik: {_html.escape(str(row.get('source_file', 'N/A')))}<br>Próg: {row['hr_thresh']:.1f} bpm"
+                            if row['hr_thresh'] is not None and not pd.isna(row['hr_thresh']) else "N/A",
                             axis=1
                         )
 

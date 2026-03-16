@@ -8,14 +8,7 @@ Uses diskcache as a simple alternative to Redis (no external dependencies).
 import hashlib
 import json
 import logging
-from functools import wraps
-
-import json
-import logging
-
-import json
 import pickle
-import logging
 from functools import wraps
 from typing import Any, Callable, Optional, TypeVar
 from pathlib import Path
@@ -133,26 +126,6 @@ def _hash_arg(arg: Any) -> str:
         # Use pandas hash for correctness, combined with shape for uniqueness
         content_hash = str(pd.util.hash_pandas_object(arg).sum())
         return f"DF:{content_hash}:{len(arg)}:{len(arg.columns)}"
-    elif isinstance(arg, pd.Series):
-        return f"SER:{arg.name}:{len(arg)}"
-    elif isinstance(arg, np.ndarray):
-        return f"ARR:{arg.shape}:{arg.dtype}"
-    elif isinstance(arg, (list, tuple)):
-        return f"LIST:{len(arg)}"
-    elif isinstance(arg, dict):
-        return f"DICT:{len(arg)}"
-    else:
-        return str(arg)
-
-
-def _invalidate_cache(func_name: str, args: tuple, kwargs: dict, key_func: Optional[Callable]):
-
-
-    """Convert argument to hashable string representation."""
-    if isinstance(arg, pd.DataFrame):
-        # Hash based on column names and shape (not full data for performance)
-        cols = ",".join(sorted(arg.columns))
-        return f"DF:{cols}:{len(arg)}"
     elif isinstance(arg, pd.Series):
         return f"SER:{arg.name}:{len(arg)}"
     elif isinstance(arg, np.ndarray):

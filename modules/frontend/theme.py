@@ -3,8 +3,13 @@ Frontend Theme Management.
 
 Handles CSS loading and theme configuration.
 """
+import logging
+
 import streamlit as st
 from modules.config import Config
+
+logger = logging.getLogger(__name__)
+
 
 class ThemeManager:
     """Manages application theme and styling."""
@@ -17,7 +22,8 @@ class ThemeManager:
             with open(css_file) as f:
                 st.markdown(f'<style>{f.read()}</style>', unsafe_allow_html=True)
         except Exception as e:
-            st.error(f"Failed to load CSS: {e}")
+            logger.error("Failed to load CSS: %s", e)
+            st.error("Nie udalo sie zaladowac stylow CSS.")
 
     @staticmethod
     def set_page_config() -> None:

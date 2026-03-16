@@ -205,6 +205,8 @@ def calculate_extended_metrics(
         estimate_vlamax_from_pdc,
     )
 
+    metrics = {**metrics}
+
     if "watts" in df.columns:
         metrics["np"] = calculate_normalized_power(df)
         metrics["work_kj"] = df["watts"].sum() / 1000
@@ -283,20 +285,19 @@ def calculate_header_metrics_cached(df: pd.DataFrame, cp: float) -> Tuple[float,
     return np_val, float(if_val), float(tss_val)
 
 
-def apply_smo2_smoothing(df: pd.DataFrame, inplace: bool = False) -> pd.DataFrame:
+def apply_smo2_smoothing(df: pd.DataFrame) -> pd.DataFrame:
     """Apply smoothing to SmO2 data if present.
 
     Args:
         df: DataFrame with optional 'smo2' column
-        inplace: If True, modify original DataFrame (default: False - return copy)
 
     Returns:
-        DataFrame with 'smo2_smooth_ultra' column added if smo2 exists
+        New DataFrame with 'smo2_smooth_ultra' column added if smo2 exists
     """
     if "smo2" not in df.columns:
-        return df if inplace else df.copy()
+        return df.copy()
 
-    result = df if inplace else df.copy()
+    result = df.copy()
 
     # Use Polars for faster smoothing if available
     try:

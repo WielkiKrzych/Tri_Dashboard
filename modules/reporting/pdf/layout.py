@@ -551,7 +551,7 @@ def build_page_executive_summary(
     - Test Confidence Panel
     - Training Decision Cards
     """
-    from reportlab.lib.colors import HexColor
+
     
     elements = []
     
@@ -850,7 +850,7 @@ def build_page_executive_verdict(
     F. TAGLINE
     G. TECHNICAL FOOTER
     """
-    from reportlab.lib.colors import HexColor
+
     
     elements = []
     
@@ -1597,7 +1597,7 @@ def build_page_thresholds(
 
 def build_page_smo2(smo2_data, smo2_manual, figure_paths, styles):
     """Build SmO2 analysis page - PREMIUM MUSCLE OXYGENATION DIAGNOSTIC."""
-    from reportlab.lib.colors import HexColor
+
     
     elements = []
     smo2_advanced = smo2_data.get("advanced_metrics", {})
@@ -2137,7 +2137,7 @@ def build_page_interpretation(
 
 def build_page_cardiovascular(cardio_data: Dict[str, Any], styles: Dict) -> List:
     """Build Cardiovascular Cost Diagnostic page - PREMIUM."""
-    from reportlab.lib.colors import HexColor
+
     
     elements = []
     
@@ -2313,7 +2313,7 @@ def build_page_cardiovascular(cardio_data: Dict[str, Any], styles: Dict) -> List
 
 def build_page_ventilation(vent_data: Dict[str, Any], styles: Dict) -> List:
     """Build Breathing & Metabolic Control Diagnostic page - PREMIUM."""
-    from reportlab.lib.colors import HexColor
+
     
     elements = []
     
@@ -2500,7 +2500,7 @@ def build_page_ventilation(vent_data: Dict[str, Any], styles: Dict) -> List:
 
 def build_page_metabolic_engine(metabolic_data: Dict[str, Any], styles: Dict) -> List:
     """Build Metabolic Engine & Training Strategy page - PREMIUM."""
-    from reportlab.lib.colors import HexColor
+
     
     elements = []
     
@@ -2748,7 +2748,7 @@ def build_page_limiter_radar(
     - Limiting factor identification
     - Training suggestions
     """
-    from reportlab.lib.colors import HexColor
+
     
     elements = []
     
@@ -3094,7 +3094,7 @@ def _build_education_block(title: str, content: str, styles: Dict) -> List:
 
 def build_page_theory(styles: Dict) -> List:
     """Build Page: Model Metaboliczny (2.3)."""
-    from reportlab.lib.colors import HexColor
+
     from reportlab.platypus import TableStyle
     elements = []
     
@@ -3234,7 +3234,7 @@ def build_page_thermal(
     styles: Dict
 ) -> List:
     """Build Page 6: Thermal Analysis - Enhanced with metrics and recommendations."""
-    from reportlab.lib.colors import HexColor
+
     # Removed redundant local import
 
     from reportlab.platypus import TableStyle
@@ -3710,7 +3710,7 @@ def build_page_biomech(
     biomech_data: Optional[Dict[str, Any]] = None
 ) -> List:
     """Build Biomechanics & Occlusion Physiology page - INSCYD/WKO Quality."""
-    from reportlab.lib.colors import HexColor
+
     from reportlab.lib.styles import ParagraphStyle
     
     elements = []
@@ -4006,7 +4006,7 @@ def build_page_kpi_dashboard(
     styles: Dict
 ) -> List:
     """Build dedicated KPI Dashboard page - premium quality."""
-    from reportlab.lib.colors import HexColor
+
     from reportlab.lib.styles import ParagraphStyle
     from reportlab.platypus import TableStyle
     

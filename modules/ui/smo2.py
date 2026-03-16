@@ -79,7 +79,8 @@ def render_smo2_tab(target_df, training_notes, uploaded_file_name):
         for idx, note in enumerate(existing_notes_smo2):
             col_note, col_del = st.columns([4, 1])
             with col_note:
-                st.info(f"⏱️ **{note['time_minute']:.1f} min** | {note['text']}")
+                import html as _html
+                st.info(f"⏱️ **{note['time_minute']:.1f} min** | {_html.escape(note['text'])}")
             with col_del:
                 if st.button("🗑️", key=f"del_smo2_note_{idx}"):
                     training_notes.delete_note(uploaded_file_name, idx)

@@ -39,6 +39,32 @@ Tri_Dashboard to platforma analityczna dla **trenerów**, **naukowców sportu** 
 | **AI Coach** | Multi-sensor fusion, limiter diagnosis, rekomendacje |
 | **Reports** | PDF 7-stronicowy, DOCX, PNG export, SQLite baza danych |
 
+### 🆕 Exercise Physiology & Code Quality Review (2026-03-17)
+
+Expert review from exercise physiology / triathlon coaching perspective.
+All formulas, algorithms, and physiological assumptions audited and corrected.
+
+**Physiological Fixes:**
+| Fix | Opis |
+|:----|:-----|
+| W' Balance: Skiba 2015 model | Dynamic tau: `546 × e^(-0.01 × DCP) + 316` replaces linear Morton model |
+| HSI → PSI (Moran et al. 1998) | Validated Physiological Strain Index with individual baselines |
+| VLaMax disclaimer ±25-30% | Documented PCr/glycolytic limitation, confidence 0.45 |
+| VO2max cross-validation | Hawley & Noakes 1992 formula as independent cross-check |
+| Limiter radar normalization | Z-score normalization for fair cross-system comparison |
+| DFA Alpha-1 minimum 120 RR | Rogers et al. recommended minimum per window |
+| Climber phenotype added | High VO2max + low VLaMax + ratio >160 classification |
+| Thermal W' decay 1.2x | Périard et al. (2011) validated multiplier (was 1.5x) |
+| AI Coach dynamic power | 75%/95% CP targets replace hardcoded 280W/360W |
+
+**Code Quality Fixes:**
+| Fix | Opis |
+|:----|:-----|
+| Removed `importlib.reload` | Debug artifact in `ui/hrv.py` causing memory leaks |
+| Dead code in `environment.py` | Removed orphaned duplicate WeatherData block |
+| PDF climber badge | Added climber phenotype color/name to report layout |
+| PSI resting HR fix | Population-based 55 bpm instead of `baseline_hr - 40` |
+
 ### 🆕 Security & Code Quality Audit (2026-03-16)
 
 **CRITICAL Fixes (5):**
@@ -89,7 +115,7 @@ Tri_Dashboard to platforma analityczna dla **trenerów**, **naukowców sportu** 
 | Fix | Opis |
 |:----|:-----|
 | VO2max CI | ±ml/kg/min + absolute value (L/min) |
-| VLaMax disclaimer | ±15-20% error range (estimated) |
+| VLaMax disclaimer | ±25-30% error range (estimated, updated 2026-03-17) |
 | Thermal integration | Combined cardiac drift interpretation |
 
 ### 🆕 SmO2 Threshold Analysis v2.1 (2026-02-28)

@@ -8,36 +8,70 @@ import numpy as np
 from .common import ensure_pandas
 
 
-def calculate_heat_strain_index(df_pl: Union[pd.DataFrame, Any]) -> pd.DataFrame:
-    """Calculate Heat Strain Index (HSI) based on core temp and HR.
-    
-    HSI is a composite index (0-10) indicating heat stress level:
-    - 0-3: Low strain
-    - 4-6: Moderate strain  
-    - 7-10: High strain (risk of heat illness)
-    
+def calculate_heat_strain_index(
+    df_pl: Union[pd.DataFrame, Any],
+    resting_hr: float = 0.0,
+    hr_max: float = 0.0,
+    baseline_core_temp: float = 0.0,
+) -> pd.DataFrame:
+    """Calculate Physiological Strain Index (PSI) based on Moran et al. 1998.
+
+    PSI is a validated composite index (0-10) indicating heat stress:
+    - 0-3: Low strain (no concern)
+    - 4-6: Moderate strain (monitor)
+    - 7-8: High strain (consider stopping)
+    - 9-10: Very high / dangerous
+
+    Reference: Moran DS, Shitzer A, Pandolf KB (1998).
+    "A physiological strain index to evaluate heat stress."
+    Am J Physiol 275: R129-R134.
+
+    Formula:
+        PSI = 5 × (Tcore_t - Tcore_0) / (39.5 - Tcore_0)
+            + 5 × (HR_t - HR_0) / (HRmax - HR_0)
+
     Args:
         df_pl: DataFrame with 'core_temperature_smooth' and 'heartrate_smooth'
-    
+        resting_hr: Resting heart rate [bpm]. If 0, estimated from first 60s.
+        hr_max: Maximum heart rate [bpm]. If 0, estimated from data max.
+        baseline_core_temp: Baseline core temperature [°C]. If 0, estimated from first 60s.
+
     Returns:
-        DataFrame with added 'hsi' column
+        DataFrame with added 'hsi' column (PSI values 0-10)
     """
     df = ensure_pandas(df_pl)
     core_col = 'core_temperature_smooth' if 'core_temperature_smooth' in df.columns else None
-    
+
     if not core_col or 'heartrate_smooth' not in df.columns:
         df['hsi'] = None
         return df
-    
-    # HSI formula: weighted combination of temperature and HR deviation from baseline
-    # Temperature contribution: (CoreTemp - 37.0) / 2.5 * 5 (max 5 points)
-    # HR contribution: (HR - 60) / 120 * 5 (max 5 points)
-    df['hsi'] = (
-        (5 * (df[core_col] - 37.0) / 2.5) + 
-        (5 * (df['heartrate_smooth'] - 60.0) / 120.0)
-    ).clip(0.0, 10.0)
-    
+
+    # Estimate baselines from initial data if not provided
+    warmup_samples = min(60, len(df) // 4)
+    if warmup_samples < 5:
+        warmup_samples = 5
+
+    tcore_0 = baseline_core_temp if baseline_core_temp > 35.0 else float(
+        df[core_col].iloc[:warmup_samples].median()
+    )
+    hr_0 = resting_hr if resting_hr > 30 else float(
+        df['heartrate_smooth'].iloc[:warmup_samples].quantile(0.10)
+    )
+    hr_max_val = hr_max if hr_max > 100 else float(df['heartrate_smooth'].max())
+
+    # Guard against division by zero
+    temp_denom = max(0.5, 39.5 - tcore_0)
+    hr_denom = max(10.0, hr_max_val - hr_0)
+
+    # PSI = 5 × ΔTcore / (39.5 - Tcore_0) + 5 × ΔHR / (HRmax - HR_0)
+    temp_component = 5.0 * (df[core_col] - tcore_0) / temp_denom
+    hr_component = 5.0 * (df['heartrate_smooth'] - hr_0) / hr_denom
+
+    df['hsi'] = (temp_component + hr_component).clip(0.0, 10.0)
+
     return df
+
+
 def calculate_thermal_decay(df_pl: Union[pd.DataFrame, Any]) -> dict:
     """Calculate the thermal cost of performance as % efficiency loss per 1°C.
     
@@ -149,9 +183,11 @@ def predict_thermal_performance(
     ftp_degraded = ftp * decay_factor
     
     # === W' DEGRADATION ===
-    # W' degrades faster than CP in heat (glycolytic cost increases)
-    # Assume 1.5x the decay rate for W'
-    w_prime_decay_factor = 1 + (decay_pct_per_c * 1.5 / 100) * temp_delta
+    # W' degrades slightly faster than CP in heat due to increased glycolytic cost
+    # and reduced muscle efficiency. Périard et al. (2011) report 0.8-1.2x multiplier
+    # depending on humidity and acclimatization. Using 1.2x as conservative estimate
+    # for non-acclimatized athletes.
+    w_prime_decay_factor = 1 + (decay_pct_per_c * 1.2 / 100) * temp_delta
     w_prime_decay_factor = max(0.3, min(1.0, w_prime_decay_factor))
     w_prime_degraded = w_prime * w_prime_decay_factor
     
@@ -171,9 +207,20 @@ def predict_thermal_performance(
     tte_degraded_min = base_tte_min * (1 - tte_reduction_pct / 100)
     tte_degraded_min = max(20.0, tte_degraded_min)  # Min 20 min
     
-    # === HSI ESTIMATE ===
-    # HSI = f(temp, HR) - simplified
-    hsi_estimated = min(10, max(0, (target_temp - 37.0) / 2.5 * 5 + (hr_at_threshold - 100) / 100 * 5))
+    # === PSI ESTIMATE (Moran et al. 1998) ===
+    # PSI = 5 × ΔTcore / (39.5 - Tcore_0) + 5 × ΔHR / (HRmax - HR_0)
+    tcore_0 = baseline_temp
+    # Resting HR for trained cyclists: typically 45-65 bpm
+    # baseline_hr is HR at threshold (~150-170 bpm), so we use a population-based
+    # estimate rather than subtracting from threshold HR
+    hr_0 = 55.0  # Conservative resting HR estimate for trained athletes
+    hr_max_est = max(baseline_hr + 20, 190)  # Conservative HRmax estimate
+    temp_denom = max(0.5, 39.5 - tcore_0)
+    hr_denom = max(10.0, hr_max_est - hr_0)
+    hsi_estimated = min(10.0, max(0.0,
+        5.0 * (target_temp - tcore_0) / temp_denom +
+        5.0 * (hr_at_threshold - hr_0) / hr_denom
+    ))
     
     # === CLASSIFICATION ===
     if temp_delta < 1.0:

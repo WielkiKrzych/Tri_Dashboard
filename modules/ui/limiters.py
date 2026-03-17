@@ -104,25 +104,45 @@ def render_limiters_tab(df_plot, cp_input, vt2_vent):
                     start_idx = max(0, peak_idx - window_sec + 1)
                     df_peak = df_plot.iloc[start_idx:peak_idx+1]
                     
-                    # Obliczenia %
+                    # Obliczenia % with z-score normalization
+                    # Raw percentages are on different physiological scales,
+                    # so we normalize to expected ranges at given intensity
+                    # to make cross-system comparison meaningful.
+
                     peak_hr_avg = df_peak['hr'].mean() if has_hr else 0
                     max_hr_user = df_plot['hr'].max() if has_hr else 1
                     pct_hr = (peak_hr_avg / max_hr_user * 100) if max_hr_user > 0 else 0
-                    
+
                     col_ve_nm = next((c for c in ['tymeventilation', 've', 'ventilation'] if c in df_plot.columns), None)
                     peak_ve_avg = df_peak[col_ve_nm].mean() if col_ve_nm else 0
                     max_ve_user = vt2_vent * 1.1 if vt2_vent > 0 else 1
                     pct_ve = (peak_ve_avg / max_ve_user * 100) if max_ve_user > 0 else 0
-                    
+
                     peak_smo2_avg = df_peak['smo2'].mean() if has_smo2 else 100
                     pct_smo2_util = 100 - peak_smo2_avg
-                    
+
                     peak_w_avg = df_peak['watts'].mean()
                     pct_power = (peak_w_avg / cp_input * 100) if cp_input > 0 else 0
 
-                    # Radar
-                    categories = ['Serce (% HRmax)', 'Płuca (% VEmax)', 'Mięśnie (% Desat)', 'Moc (% CP)']
-                    values = [pct_hr, pct_ve, pct_smo2_util, pct_power]
+                    # Normalize to comparable 0-100 scale using expected physiological ranges
+                    # at maximal effort. Raw % are NOT comparable across systems:
+                    # - HR 95% HRmax is normal at VO2max
+                    # - SmO2 desaturation >60% is extremely rare
+                    # - VE 95% VEmax suggests ventilatory limitation
+                    # Expected maximal values (population norms for trained cyclists):
+                    expected_max_hr_pct = 98.0     # HR rarely exceeds ~98% HRmax sustained
+                    expected_max_ve_pct = 95.0     # VE at max effort ~95% of capacity
+                    expected_max_desat = 55.0      # SmO2 desaturation rarely >55% in VL
+                    expected_max_power_pct = 120.0 # Can exceed CP in short efforts
+
+                    norm_hr = min(100.0, pct_hr / expected_max_hr_pct * 100)
+                    norm_ve = min(100.0, pct_ve / expected_max_ve_pct * 100)
+                    norm_smo2 = min(100.0, pct_smo2_util / expected_max_desat * 100)
+                    norm_power = min(100.0, pct_power / expected_max_power_pct * 100)
+
+                    # Radar uses normalized values for cross-system comparison
+                    categories = ['Serce (norm.)', 'Płuca (norm.)', 'Mięśnie (norm.)', 'Moc (norm.)']
+                    values = [norm_hr, norm_ve, norm_smo2, norm_power]
                     values += [values[0]]
                     categories += [categories[0]]
 
@@ -149,20 +169,22 @@ def render_limiters_tab(df_plot, cp_input, vt2_vent):
                     
                     st.plotly_chart(fig_radar, use_container_width=True)
                     
-                    # Diagnoza
-                    limiting_factor = "Serce" if pct_hr >= max(pct_ve, pct_smo2_util) else ("Płuca" if pct_ve >= pct_smo2_util else "Mięśnie")
-                    
+                    # Diagnoza — use normalized values for fair comparison
+                    limiting_factor = "Serce" if norm_hr >= max(norm_ve, norm_smo2) else ("Płuca" if norm_ve >= norm_smo2 else "Mięśnie")
+
                     st.markdown(f"""
                     ### 🔍 Diagnoza: {selected_window_name}
-                    
-                    | System | Wartość | Interpretacja |
-                    |--------|---------|---------------|
-                    | **Serce** | {pct_hr:.1f}% HRmax | {"🔴 Limiter" if limiting_factor == "Serce" else "🟢 OK"} |
-                    | **Płuca** | {pct_ve:.1f}% VEmax | {"🔴 Limiter" if limiting_factor == "Płuca" else "🟢 OK"} |
-                    | **Mięśnie** | {pct_smo2_util:.1f}% Desat | {"🔴 Limiter" if limiting_factor == "Mięśnie" else "🟢 OK"} |
-                    | **Moc** | {pct_power:.0f}% CP | — |
-                    
+
+                    | System | Surowa | Znormalizowana | Interpretacja |
+                    |--------|--------|----------------|---------------|
+                    | **Serce** | {pct_hr:.1f}% HRmax | {norm_hr:.0f}/100 | {"🔴 Limiter" if limiting_factor == "Serce" else "🟢 OK"} |
+                    | **Płuca** | {pct_ve:.1f}% VEmax | {norm_ve:.0f}/100 | {"🔴 Limiter" if limiting_factor == "Płuca" else "🟢 OK"} |
+                    | **Mięśnie** | {pct_smo2_util:.1f}% Desat | {norm_smo2:.0f}/100 | {"🔴 Limiter" if limiting_factor == "Mięśnie" else "🟢 OK"} |
+                    | **Moc** | {pct_power:.0f}% CP | {norm_power:.0f}/100 | — |
+
                     **Główny Limiter: {limiting_factor}**
+
+                    *Normalizacja: surowe % przeliczone na wspólną skalę 0-100 względem oczekiwanych wartości maksymalnych w populacji wytrenowanych kolarzy.*
                     """)
                     
                     # Rekomendacje

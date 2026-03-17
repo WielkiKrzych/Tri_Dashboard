@@ -16,7 +16,9 @@ logger = logging.getLogger(__name__)
 @jit(nopython=True)
 def _calc_alpha1_numba(rr_values: np.ndarray) -> float:
     """True DFA Alpha-1 calculation for short-term fractal correlation (Rogers et al. methodology)."""
-    if len(rr_values) < 20:
+    # Rogers et al. recommend minimum 120 RR intervals for stable Alpha-1.
+    # We use 50 as hard minimum (Numba inner loop), with quality warning at <120.
+    if len(rr_values) < 50:
         return np.nan
 
     # Scale range for Alpha-1 (short-range correlations)
@@ -101,7 +103,8 @@ def _fast_dfa_loop(time_values, rr_values, window_sec, step_sec):
 
         window_len = right_idx - left_idx
 
-        if window_len >= 30:
+        # Minimum 120 RR per window for reliable DFA Alpha-1 (Rogers et al.)
+        if window_len >= 120:
             window_rr = rr_values[left_idx:right_idx]
 
             # IQR Outlier Removal
@@ -113,7 +116,7 @@ def _fast_dfa_loop(time_values, rr_values, window_sec, step_sec):
 
             clean_rr = window_rr[(window_rr > lower) & (window_rr < upper)]
 
-            if len(clean_rr) >= 20:
+            if len(clean_rr) >= 50:
                 # RMSSD
                 diffs_sq_sum = 0.0
                 for k in range(len(clean_rr) - 1):

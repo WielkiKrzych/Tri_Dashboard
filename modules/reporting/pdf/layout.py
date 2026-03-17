@@ -2588,8 +2588,8 @@ def build_page_metabolic_engine(metabolic_data: Dict[str, Any], styles: Dict) ->
     elements.append(Spacer(1, 3 * mm))
     
     # Phenotype badge
-    phenotype_colors = {"diesel": "#27AE60", "allrounder": "#3498DB", "puncher": "#F39C12", "sprinter": "#E74C3C"}
-    phenotype_names = {"diesel": "DIESEL (Aerobic Dominant)", "allrounder": "ALLROUNDER", "puncher": "PUNCHER", "sprinter": "SPRINTER (Glycolytic)"}
+    phenotype_colors = {"diesel": "#27AE60", "allrounder": "#3498DB", "puncher": "#F39C12", "sprinter": "#E74C3C", "climber": "#8E44AD"}
+    phenotype_names = {"diesel": "DIESEL (Aerobic Dominant)", "allrounder": "ALLROUNDER", "puncher": "PUNCHER", "sprinter": "SPRINTER (Glycolytic)", "climber": "CLIMBER (Low VLaMax)"}
     
     phenotype_badge = Paragraph(
         f"<font color='white'><b>FENOTYP: {phenotype_names.get(phenotype, phenotype.upper())}</b></font>",

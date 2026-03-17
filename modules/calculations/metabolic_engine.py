@@ -97,16 +97,21 @@ def estimate_vlamax(
 ) -> float:
     """
     Estimate VLaMax from power profile.
-    
+
     NOTE: VLaMax is the ONLY metric estimated locally.
     VO2max comes from canonical source.
-    
-    ESTIMATION UNCERTAINTY: ±15-20% error range.
-    Method: derived from CP/W'/Pmax power profile.
-    Confidence: ~0.6 (moderate - indirect measurement).
-    
-    Higher W' and anaerobic capacity = higher VLaMax.
-    Simplified model based on INSCYD principles.
+
+    ESTIMATION UNCERTAINTY: ±25-30% error range.
+    This is a rough ORIENTATION ESTIMATE, not a substitute for INSCYD/lab testing.
+    W' contains both PCr (~50-60% in first 10s) and glycolytic components,
+    so this formula OVERESTIMATES VLaMax in sprinters with high PCr stores
+    and UNDERESTIMATES in diesel-type athletes.
+
+    Method: Mader-inspired model from CP/W'/Pmax power profile.
+    Confidence: ~0.45 (low-moderate — indirect, single-compartment model).
+
+    Reference population: calibrated against INSCYD reference values for
+    road cyclists (not validated for runners/triathletes/MTB).
     """
     if pmax_watts <= 0 or cp_watts <= 0 or weight_kg <= 0:
         return 0.0
@@ -114,6 +119,11 @@ def estimate_vlamax(
     # Mader-inspired model using per-kg normalized values.
     # VLaMax scales with glycolytic work capacity (W'/kg) and inversely
     # with aerobic capacity (CP/kg) due to metabolic antagonism.
+    #
+    # LIMITATION: W' is treated as purely glycolytic, but actually contains
+    # PCr component (~50-60% of short-duration work). This means:
+    #   - Sprinters with high PCr: VLaMax overestimated
+    #   - Diesel types with low PCr: VLaMax underestimated
     #
     # Calibrated against INSCYD reference values:
     #   Sprinter (W'/kg=0.31, CP/kg=3.75) → ~0.65
@@ -161,19 +171,21 @@ def classify_phenotype(
     """
     if vo2max <= 0:
         return "unknown"
-    
+
     ratio = vo2max / vlamax if vlamax > 0 else 0
-    
-    if vo2max >= 65 and vlamax < 0.4:
-        return "diesel"  # High VO2max, low glycolytic
-    elif vo2max >= 60 and 0.4 <= vlamax < 0.6:
-        return "allrounder"
+
+    if vo2max >= 65 and vlamax < 0.35:
+        return "diesel"  # Very high VO2max, very low glycolytic → TT specialist
+    elif vo2max >= 60 and vlamax < 0.40 and ratio > 160:
+        return "climber"  # High VO2max, low VLaMax, high ratio → climbing specialist
     elif anaerobic_reserve_pct > 0.5 and vlamax >= 0.6:
-        return "sprinter"
-    elif 50 <= vo2max < 65 and vlamax >= 0.5:
-        return "puncher"
+        return "sprinter"  # High anaerobic reserve + high glycolytic
+    elif vo2max >= 55 and 0.45 <= vlamax < 0.65:
+        return "puncher"  # Good VO2max + moderate-high glycolytic → attacks
+    elif vo2max >= 55 and 0.35 <= vlamax < 0.55:
+        return "allrounder"  # Balanced profile
     else:
-        return "allrounder"
+        return "allrounder"  # Default fallback
 
 
 def diagnose_limiter(
@@ -560,9 +572,9 @@ def format_metabolic_strategy_for_report(strategy: MetabolicStrategy) -> Dict[st
             # VLaMax (locally estimated)
             "vlamax": round(profile.vlamax, 3),
             "vlamax_estimated": True,
-            "vlamax_error_range": "±15-20%",
+            "vlamax_error_range": "±25-30%",
             "vlamax_method": "derived_from_ramp",
-            "vlamax_confidence": 0.6,
+            "vlamax_confidence": 0.45,
             
             # Power metrics
             "cp_watts": round(profile.cp_watts, 0),

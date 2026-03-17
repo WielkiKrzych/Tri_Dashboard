@@ -12,47 +12,68 @@ from ..utils import _serialize_df_to_parquet_bytes
 
 @jit(nopython=True, fastmath=True)
 def calculate_w_prime_fast(watts, time, cp, w_prime_cap):
-    """Szybkie obliczenie W' Balance przy użyciu Numba JIT.
-    
-    Implementacja modelu różnicowego W' Skiba/Morton.
-    
+    """W' Balance calculation using Skiba integral model with dynamic tau.
+
+    Implements the Skiba et al. (2012, 2015) W' balance model with
+    intensity-dependent recovery time constant (dynamic tau).
+
+    During depletion (P > CP): W' decreases linearly with (P - CP) × dt.
+    During recovery (P < CP): W' reconstitutes exponentially with
+        tau = 546 × e^(-0.01 × DCP) + 316
+    where DCP = CP - P (recovery intensity below CP).
+
+    Reference:
+        Skiba PF et al. (2012). "Modeling the expenditure and reconstitution
+        of work capacity above critical power." Med Sci Sports Exerc.
+        Skiba PF et al. (2015). "Validation of a novel intermittent W' model."
+
     Args:
-        watts: Tablica mocy [W]
-        time: Tablica czasów [s]
+        watts: Power array [W]
+        time: Time array [s]
         cp: Critical Power [W]
-        w_prime_cap: Pojemność W' [J]
-    
+        w_prime_cap: W' capacity [J]
+
     Returns:
-        Tablica wartości W' Balance w czasie
+        Array of W' Balance values over time [J]
     """
     n = len(watts)
     w_bal = np.empty(n, dtype=np.float64)
     curr_w = w_prime_cap
-    
+
     prev_time = time[0]
-    
+
     for i in range(n):
         if i == 0:
             dt = 1.0
         else:
             dt = time[i] - prev_time
-            if dt <= 0: dt = 1.0
+            if dt <= 0:
+                dt = 1.0
             prev_time = time[i]
-            
-        # Differential W' Model: dW/dt = CP - P
-        delta = (cp - watts[i]) * dt
-        
-        # Integral
-        curr_w += delta
-        
+
+        if watts[i] > cp:
+            # Depletion: linear drain
+            delta = (cp - watts[i]) * dt
+            curr_w += delta
+        elif watts[i] < cp:
+            # Recovery: exponential reconstitution with dynamic tau (Skiba 2015)
+            # tau = 546 × e^(-0.01 × DCP) + 316
+            dcp = cp - watts[i]
+            tau = 546.0 * np.exp(-0.01 * dcp) + 316.0
+
+            # Exponential recovery toward w_prime_cap
+            # W'(t+dt) = W'_cap - (W'_cap - W'(t)) × e^(-dt/tau)
+            curr_w = w_prime_cap - (w_prime_cap - curr_w) * np.exp(-dt / tau)
+        # else: watts[i] == cp → no change (steady state at CP)
+
         # Boundary conditions
         if curr_w > w_prime_cap:
             curr_w = w_prime_cap
-        elif curr_w < 0:
+        elif curr_w < 0.0:
             curr_w = 0.0
-            
+
         w_bal[i] = curr_w
-        
+
     return w_bal
 
 

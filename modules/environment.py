@@ -140,18 +140,6 @@ class EnvironmentService:
                 timestamp=datetime.now()
             )
 
-                return None
-            
-            return WeatherData(
-                temperature=data['main']['temp'],
-                humidity=data['main']['humidity'],
-                wind_speed=data['wind']['speed'] * 3.6,  # m/s to km/h
-                feels_like=data['main']['feels_like'],
-                description=data['weather'][0]['description'],
-                location=data.get('name', 'Unknown'),
-                timestamp=datetime.now()
-            )
-            
         except Exception as e:
             logger.warning("Weather API error: %s", e)
             return None

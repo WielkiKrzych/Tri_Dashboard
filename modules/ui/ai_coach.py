@@ -15,9 +15,20 @@ from modules.ui.callbacks import StreamlitCallback
 
 logger = logging.getLogger(__name__)
 
-def render_ai_coach_tab(df_plot_resampled):
+def render_ai_coach_tab(df_plot_resampled, cp_watts: float = 0.0):
+    """Render AI Coach tab with dynamic power targets based on CP.
+
+    Args:
+        df_plot_resampled: Resampled workout DataFrame
+        cp_watts: Critical Power in watts (used for dynamic base/threshold targets)
+    """
+    # Dynamic power targets based on athlete's CP (not hardcoded)
+    base_power = int(cp_watts * 0.75) if cp_watts > 0 else 280
+    threshold_power = int(cp_watts * 0.95) if cp_watts > 0 else 360
+
     st.header("🧠 AI Neural Coach (Powered by Apple MLX)")
-    st.caption("Analiza 'Bazy Tlenowej' (280W) oraz 'Silnika' (360W)")
+    source_label = "CP" if cp_watts > 0 else "domyślne"
+    st.caption(f"Analiza 'Bazy Tlenowej' ({base_power}W, 75% CP) oraz 'Silnika' ({threshold_power}W, 95% CP) [{source_label}]")
 
     if MLX_AVAILABLE:
         col_ai_1, col_ai_2 = st.columns([1, 2])
@@ -68,8 +79,8 @@ def render_ai_coach_tab(df_plot_resampled):
             
             st.markdown("### Aktualna Forma")
             k1, k2 = st.columns(2)
-            k1.metric("Baza (280W)", f"{last_base} bpm", help="Oczekiwane tętno przy 280W @ 80rpm")
-            k2.metric("Próg (360W)", f"{last_thresh} bpm", help="Oczekiwane tętno przy 360W @ 80rpm")
+            k1.metric(f"Baza ({base_power}W)", f"{last_base} bpm", help=f"Oczekiwane tętno przy {base_power}W (75% CP) @ 80rpm")
+            k2.metric(f"Próg ({threshold_power}W)", f"{last_thresh} bpm", help=f"Oczekiwane tętno przy {threshold_power}W (95% CP) @ 80rpm")
 
         with col_ai_2:
             # --- NOWY WYKRES DWULINIOWY (POPRAWIONY - OŚ X TO NUMER SESJI) ---
@@ -103,7 +114,7 @@ def render_ai_coach_tab(df_plot_resampled):
                             x=hist_df['session_nr'], 
                             y=hist_df['hr_base'], 
                             mode='lines+markers',
-                            name='Baza (280W)',
+                            name=f'Baza ({base_power}W)',
                             line=dict(color='#00cc96', width=3), # Zielony
                             marker=dict(size=6),
                             hovertext=hover_text_base,
@@ -115,7 +126,7 @@ def render_ai_coach_tab(df_plot_resampled):
                             x=hist_df['session_nr'], 
                             y=hist_df['hr_thresh'], 
                             mode='lines+markers',
-                            name='Próg (360W)',
+                            name=f'Próg ({threshold_power}W)',
                             line=dict(color='#ef553b', width=3), # Czerwony
                             marker=dict(size=6),
                             hovertext=hover_text_thresh,

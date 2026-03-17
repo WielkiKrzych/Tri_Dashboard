@@ -398,7 +398,7 @@ if uploaded_file is not None:
         with t2:
             render_tab_content("limiters", df_plot, cp_input, vt2_vent)
         with t3:
-            render_tab_content("ai_coach", df_plot_resampled)
+            render_tab_content("ai_coach", df_plot_resampled, cp_watts=cp_input)
 
     with tab_physiology:
         UIComponents.show_breadcrumb("🫀 Physiology")

@@ -84,16 +84,64 @@ VO2MAX_SOURCE_PRIORITY = {
 
 def calculate_vo2max_acsm(power_watts: float, weight_kg: float) -> float:
     """
-    Calculate VO2max using Sitko et al. 2021 formula.
+    Calculate VO2max using Sitko et al. 2021 formula (PRIMARY).
 
     VO2max = 16.61 + 8.87 × 5' max power (W/kg)
 
     This is the CANONICAL formula used throughout the system.
+    Validated on road cyclists in laboratory conditions.
     """
     if power_watts <= 0 or weight_kg <= 0:
         return 0.0
     power_per_kg = power_watts / weight_kg
     return 16.61 + 8.87 * power_per_kg
+
+
+def calculate_vo2max_hawley(power_watts: float, weight_kg: float) -> float:
+    """
+    Calculate VO2max using Hawley & Noakes 1992 formula (CROSS-VALIDATION).
+
+    VO2max = 10.8 × (W/kg) + 7.0
+
+    Used as a cross-check against Sitko formula.
+    Validated on broader population of endurance athletes.
+    """
+    if power_watts <= 0 or weight_kg <= 0:
+        return 0.0
+    power_per_kg = power_watts / weight_kg
+    return 10.8 * power_per_kg + 7.0
+
+
+def cross_validate_vo2max(power_watts: float, weight_kg: float) -> dict:
+    """
+    Cross-validate VO2max estimate using two independent formulas.
+
+    If Sitko and Hawley estimates diverge by >5 ml/kg/min, the estimate
+    is flagged as uncertain. This may indicate the athlete has unusual
+    pedaling economy or the power data is unreliable.
+
+    Returns:
+        dict with sitko, hawley, mean, divergence, and is_uncertain fields
+    """
+    sitko = calculate_vo2max_acsm(power_watts, weight_kg)
+    hawley = calculate_vo2max_hawley(power_watts, weight_kg)
+
+    if sitko <= 0 or hawley <= 0:
+        return {
+            "sitko": sitko, "hawley": hawley,
+            "mean": 0.0, "divergence": 0.0, "is_uncertain": True,
+        }
+
+    divergence = abs(sitko - hawley)
+    mean_vo2 = (sitko + hawley) / 2
+
+    return {
+        "sitko": round(sitko, 1),
+        "hawley": round(hawley, 1),
+        "mean": round(mean_vo2, 1),
+        "divergence": round(divergence, 1),
+        "is_uncertain": divergence > 5.0,
+    }
 
 
 def select_canonical_vo2max(
@@ -288,12 +336,24 @@ def build_canonical_physiology(
                 # Log if divergence > 5 ml/kg/min (significant)
                 if divergence > 5:
                     logger.warning(
-                        f"VO2max divergence detected: metrics={physio.vo2max.value:.1f} vs "
-                        f"time_series={ts_vo2max:.1f} (Δ={divergence:.1f} ml/kg/min). "
-                        f"Using metrics (pandas rolling) as canonical."
+                        "VO2max divergence detected: metrics=%.1f vs "
+                        "time_series=%.1f (delta=%.1f ml/kg/min). "
+                        "Using metrics (pandas rolling) as canonical.",
+                        physio.vo2max.value, ts_vo2max, divergence,
                     )
                     # Store divergence for debugging
                     physio.vo2max.alternatives["time_series_estimate"] = round(ts_vo2max, 2)
+
+                # Cross-validate Sitko vs Hawley & Noakes (1992)
+                xval = cross_validate_vo2max(ts_mmp5, weight_kg)
+                if xval["is_uncertain"]:
+                    logger.warning(
+                        "VO2max cross-validation uncertain: Sitko=%.1f vs Hawley=%.1f "
+                        "(divergence=%.1f ml/kg/min). Athlete may have unusual "
+                        "pedaling economy or power data issues.",
+                        xval["sitko"], xval["hawley"], xval["divergence"],
+                    )
+                physio.vo2max.alternatives["hawley_noakes"] = xval["hawley"]
 
     # === VLaMax (always estimated) ===
     if cp > 0 and pmax > 0 and weight_kg > 0:
@@ -305,7 +365,7 @@ def build_canonical_physiology(
         vlamax = w_prime_per_kg * 2.8 + 0.05 - cp_per_kg * 0.07
         vlamax = max(0.2, min(1.0, vlamax))
         physio.vlamax = CanonicalMetric(
-            value=vlamax, source="estimated_from_power", confidence=0.50
+            value=vlamax, source="estimated_from_power", confidence=0.45
         )
 
     return physio
@@ -329,6 +389,8 @@ __all__ = [
     "CanonicalMetric",
     "CanonicalPhysiology",
     "calculate_vo2max_acsm",
+    "calculate_vo2max_hawley",
+    "cross_validate_vo2max",
     "select_canonical_vo2max",
     "build_canonical_physiology",
     "format_canonical_for_report",

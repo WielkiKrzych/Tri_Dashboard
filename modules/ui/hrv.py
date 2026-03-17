@@ -6,11 +6,6 @@ import plotly.graph_objects as go
 import numpy as np
 import pandas as pd
 from typing import Any, Optional
-from modules.calculations import calculate_dynamic_dfa_v2
-import importlib
-import modules.calculations.hrv
-
-importlib.reload(modules.calculations.hrv)
 from modules.calculations.hrv import calculate_dynamic_dfa_v2
 
 
@@ -106,7 +101,8 @@ def render_hrv_tab(df_clean_pl: Any) -> None:
 
         st.subheader("Analiza Fraktalna DFA Alpha-1")
         st.caption(
-            "Współczynnik korelacji: 1.0 = Stan optymalny (Szum Różowy), 0.75 = Próg VT1, 0.50 = Próg VT2 (Szum Biały)."
+            "Korelacje fraktalne: ~1.0 = Stan optymalny (Szum Różowy), ~0.75 = okolice VT1 (Rogers et al.), "
+            "~0.50 = okolice VT2 (Szum Biały). Progi indywidualne — wartości orientacyjne."
         )
 
         fig_dfa = go.Figure()

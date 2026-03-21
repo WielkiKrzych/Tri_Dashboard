@@ -58,12 +58,14 @@ def normalize_columns_pandas(df_pd: pd.DataFrame) -> pd.DataFrame:
     """
     # Create a copy to avoid mutating the input DataFrame
     df_pd = df_pd.copy()
-    
-    # Lowercase all columns first
-    df_pd.columns = [str(c).lower().strip() for c in df_pd.columns]
 
     # Lowercase all columns first
     df_pd.columns = [str(c).lower().strip() for c in df_pd.columns]
+
+    # Drop duplicate columns (keep first occurrence)
+    # e.g., CSV with both 'thb' and 'THb' → two 'thb' after lowercasing
+    if df_pd.columns.duplicated().any():
+        df_pd = df_pd.loc[:, ~df_pd.columns.duplicated(keep="first")]
 
     # Apply standard mappings using cached reverse index for O(m) complexity
     mapping = {}
@@ -213,7 +215,7 @@ def _convert_numeric_types(df: pd.DataFrame) -> pd.DataFrame:
     ]
 
     for col in numeric_cols:
-        if col in df.columns:
+        if col in df.columns and isinstance(df[col], pd.Series):
             df[col] = pd.to_numeric(df[col], errors="coerce")
     return df
 

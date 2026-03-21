@@ -477,3 +477,105 @@ def format_smo2_metrics_for_report(metrics: SmO2AdvancedMetrics) -> Dict[str, An
         "recommendations": metrics.recommendations,
         "data_quality": metrics.data_quality,
     }
+
+
+def interpret_smo2_in_context(
+    avg_smo2: float,
+    interval_type: str,
+    duration_sec: float = 0,
+    recovery_half_time: float = 0,
+) -> dict:
+    """
+    Context-aware SmO2 interpretation based on effort type.
+
+    SmO2 desaturation meaning differs by exercise intensity zone:
+    - Sprint: <25% = normal anaerobic recruitment
+    - VO2max: 30-70% oscillation = dynamic mismatch (normal)
+    - Threshold: 40-60% = balanced supply/demand
+    - Z2: >65% = expected, good aerobic efficiency
+
+    Reference:
+        Perrey, Quaresima, Ferrari (2024). "Muscle Oximetry in Sports Science."
+        Sports Medicine 54(4):975-996. DOI: 10.1007/s40279-023-01987-x
+
+        Sendra-Perez et al. (2023). SmO2 threshold reliability.
+        Scientific Reports 13:12649. ICC 0.80-0.88.
+    """
+    # Default
+    interpretation = "Brak kontekstu"
+    status = "neutral"
+
+    interval_lower = interval_type.lower() if interval_type else ""
+
+    if "sprint" in interval_lower:
+        if avg_smo2 < 25:
+            interpretation = "Normalna rekrutacja anaerobowa — pełna desaturacja w sprincie"
+            status = "normal"
+        elif avg_smo2 < 40:
+            interpretation = "Umiarkowana desaturacja — sprint submaksymalny"
+            status = "info"
+        else:
+            interpretation = "Niska desaturacja w sprincie — sprawdź kalibrację sensora lub pozycję"
+            status = "warning"
+
+    elif "vo2max" in interval_lower or "vo2" in interval_lower:
+        if 25 <= avg_smo2 <= 45:
+            interpretation = "Optymalna desaturacja VO₂max — pełne obciążenie systemu tlenowego"
+            status = "good"
+        elif avg_smo2 < 25:
+            interpretation = "Bardzo głęboka desaturacja — możliwe ograniczenie lokalne (kapilary/mitochondria)"
+            status = "warning"
+        else:
+            interpretation = "Płytka desaturacja VO₂max — intensywność może być za niska lub sensor niepoprawny"
+            status = "info"
+
+    elif "threshold" in interval_lower or "sweet" in interval_lower:
+        if 40 <= avg_smo2 <= 60:
+            interpretation = "Optymalna strefa progowa — zbalansowane dostarczanie/wykorzystanie O₂"
+            status = "good"
+        elif avg_smo2 < 40:
+            interpretation = "Głęboka desaturacja na progu — akumulacja mleczanu, ograniczenie peryferyjne"
+            status = "warning"
+        else:
+            interpretation = "Wysoka saturacja na progu — możliwy subprogowy wysiłek"
+            status = "info"
+
+    elif "endurance" in interval_lower or "tempo" in interval_lower or "z2" in interval_lower:
+        if avg_smo2 >= 65:
+            interpretation = "Optymalna strefa Z2 — dobra efektywność tlenowa"
+            status = "good"
+        elif avg_smo2 >= 50:
+            interpretation = "Umiarkowana desaturacja w Z2 — intensywność przy górnej granicy Z2"
+            status = "info"
+        else:
+            interpretation = "Niska saturacja w Z2 — intensywność zbyt wysoka lub ograniczenie peryferyjne"
+            status = "warning"
+
+    else:
+        if avg_smo2 < 30:
+            interpretation = "Głęboka desaturacja — wysoka intensywność"
+            status = "info"
+        elif avg_smo2 > 70:
+            interpretation = "Wysoka saturacja — niska intensywność lub odpoczynek"
+            status = "normal"
+        else:
+            interpretation = "Umiarkowana saturacja"
+            status = "neutral"
+
+    # Recovery quality indicator
+    recovery_note = ""
+    if recovery_half_time > 0:
+        if recovery_half_time < 15:
+            recovery_note = "Szybka reoxygenacja (<15s) — dobra kapilaryzacja"
+        elif recovery_half_time < 30:
+            recovery_note = "Normalna reoxygenacja (15-30s)"
+        else:
+            recovery_note = "Wolna reoxygenacja (>30s) — rozważ pracę nad bazą aerobową"
+
+    return {
+        "interpretation": interpretation,
+        "status": status,
+        "avg_smo2": round(avg_smo2, 1),
+        "interval_type": interval_type,
+        "recovery_note": recovery_note,
+    }

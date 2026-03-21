@@ -191,29 +191,49 @@ def render_limiters_tab(df_plot, cp_input, vt2_vent):
                     if limiting_factor == "Serce":
                         st.warning("""
                         **🫀 Ograniczenie Centralne (Serce)**
-                        
-                        Twoje serce pracuje na maksymalnych obrotach, ale mięśnie mogłyby więcej. Sugestie:
-                        - Więcej treningu Z2 (podniesienie SV - objętości wyrzutowej)
-                        - Interwały 4x8 min @ 88-94% HRmax
-                        - Rozważ pracę nad VO2max (Hill Repeats)
+
+                        Twoje serce pracuje na maksymalnych obrotach, ale mięśnie mogłyby więcej.
+
+                        **Uwaga terminologiczna:** VT1 (Próg Wentylacyjny) ≠ LT1 (Próg Mleczanowy).
+                        Powiązane mechanizmy, ale różne pomiary (Gronwald et al. 2024 meta-analiza).
+
+                        **Sugestie zależne od kontekstu:**
+                        - Jeśli objętość Z2 < 6h/tydz: Dodaj więcej Z2 (podniesienie SV)
+                        - Jeśli objętość Z2 ≥ 6h/tydz: Dodaj interwały VO₂max 2×/tydz
+                        - Interwały 4x8 min @ 88-94% HRmax (Garcia-Tabar 2024)
+                        - Sprawdź cardiac drift — jeśli >10%, odwodnienie/upał, nie fitness
                         """)
                     elif limiting_factor == "Płuca":
                         st.warning("""
                         **🫁 Ograniczenie Oddechowe (Płuca)**
-                        
-                        Wentylacja jest na limicie. Sugestie:
-                        - Ćwiczenia oddechowe (pranayama, Wim Hof)
-                        - Trening na wysokości (lub maska hipoksyjna)
-                        - Sprawdź technikę oddychania podczas wysiłku
+
+                        Wentylacja jest na limicie.
+
+                        **Kontekst:** Wysoki VE/VO₂ slope sugeruje nieefektywną wentylację.
+                        Norma: 25-30 L/min na L/min VO₂ (wytrenowani).
+
+                        **Sugestie:**
+                        - Sprawdź technikę oddychania (przepona, nie klatka)
+                        - Ćwiczenia oddechowe (pranayama, kontrola RR)
+                        - Wykluczenie astmy wysiłkowej (EIB) — konsultacja lekarska
+                        - Jeśli zimne powietrze: rozgrzej drogi oddechowe
                         """)
                     else:
                         st.warning("""
                         **💪 Ograniczenie Peryferyjne (Mięśnie)**
-                        
-                        Mięśnie zużywają cały dostarczany tlen. Sugestie:
-                        - Więcej pracy siłowej (squat, deadlift)
-                        - Interwały "over-under" (93-97% FTP / 103-107% FTP)
-                        - Sprawdź pozycję na rowerze (okluzja mechaniczna?)
+
+                        Mięśnie zużywają cały dostarczany tlen (SmO₂ desaturacja wysoka).
+
+                        **Kontekst:** Interpretacja zależy od typu wysiłku:
+                        - Sprint: SmO₂ <25% = normalne (anaerobic)
+                        - Próg: SmO₂ 40-60% = optymalne
+                        - Z2: SmO₂ >65% = oczekiwane
+
+                        **Sugestie:**
+                        - Interwały "over-under" (93-97% / 103-107% FTP)
+                        - Praca siłowa (squat, single-leg press)
+                        - Sprawdź pozycję — okluzja mechaniczna? (SmO₂ zależy od ATT i pozycji sensora)
+                        - Monitoruj reoxygenation half-time (<15s = dobra kapilaryzacja)
                         """)
         
         st.divider()

@@ -37,6 +37,12 @@ class SessionRecord:
     alerts_count: int = 0
     # JSON for additional metrics
     extra_metrics: str = "{}"
+    session_type: str = "unknown"      # ramp, steady, intervals, race, unknown
+    athlete_id: str = "default"
+    test_validity: str = "valid"       # valid, conditional, invalid
+    vo2max_estimated: float = 0.0
+    cp_estimated: float = 0.0
+    smo2_quality_score: float = 0.0
 
 
 class SessionStore:
@@ -74,6 +80,12 @@ class SessionStore:
                     avg_rmssd REAL,
                     alerts_count INTEGER DEFAULT 0,
                     extra_metrics TEXT DEFAULT '{}',
+                    session_type TEXT DEFAULT 'unknown',
+                    athlete_id TEXT DEFAULT 'default',
+                    test_validity TEXT DEFAULT 'valid',
+                    vo2max_estimated REAL,
+                    cp_estimated REAL,
+                    smo2_quality_score REAL,
                     created_at TEXT DEFAULT CURRENT_TIMESTAMP,
                     UNIQUE(date, filename)
                 )
@@ -89,8 +101,10 @@ class SessionStore:
                     date, filename, duration_sec, tss, np, if_factor,
                     avg_watts, avg_hr, max_hr, work_kj, avg_cadence,
                     mmp_5s, mmp_1m, mmp_5m, mmp_20m, avg_rmssd,
-                    alerts_count, extra_metrics
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    alerts_count, extra_metrics,
+                    session_type, athlete_id, test_validity,
+                    vo2max_estimated, cp_estimated, smo2_quality_score
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(date, filename) DO UPDATE SET
                     duration_sec = excluded.duration_sec,
                     tss = excluded.tss,
@@ -107,7 +121,13 @@ class SessionStore:
                     mmp_20m = excluded.mmp_20m,
                     avg_rmssd = excluded.avg_rmssd,
                     alerts_count = excluded.alerts_count,
-                    extra_metrics = excluded.extra_metrics
+                    extra_metrics = excluded.extra_metrics,
+                    session_type = excluded.session_type,
+                    athlete_id = excluded.athlete_id,
+                    test_validity = excluded.test_validity,
+                    vo2max_estimated = excluded.vo2max_estimated,
+                    cp_estimated = excluded.cp_estimated,
+                    smo2_quality_score = excluded.smo2_quality_score
             """,
                 (
                     record.date,
@@ -128,6 +148,12 @@ class SessionStore:
                     record.avg_rmssd,
                     record.alerts_count,
                     record.extra_metrics,
+                    record.session_type,
+                    record.athlete_id,
+                    record.test_validity,
+                    record.vo2max_estimated,
+                    record.cp_estimated,
+                    record.smo2_quality_score,
                 ),
             )
             conn.commit()
@@ -159,6 +185,12 @@ class SessionStore:
                     avg_rmssd=row[16],
                     alerts_count=row[17],
                     extra_metrics=row[18],
+                    session_type=row[19],
+                    athlete_id=row[20],
+                    test_validity=row[21],
+                    vo2max_estimated=row[22] if row[22] is not None else 0.0,
+                    cp_estimated=row[23] if row[23] is not None else 0.0,
+                    smo2_quality_score=row[24] if row[24] is not None else 0.0,
                 )
 
             conn.row_factory = session_record_factory
@@ -167,8 +199,10 @@ class SessionStore:
                 SELECT id, date, filename, duration_sec, tss, np, if_factor,
                        avg_watts, avg_hr, max_hr, work_kj, avg_cadence,
                        mmp_5s, mmp_1m, mmp_5m, mmp_20m, avg_rmssd,
-                       alerts_count, extra_metrics
-                FROM sessions 
+                       alerts_count, extra_metrics,
+                       session_type, athlete_id, test_validity,
+                       vo2max_estimated, cp_estimated, smo2_quality_score
+                FROM sessions
                 WHERE date >= date('now', ?)
                 ORDER BY date DESC
             """,

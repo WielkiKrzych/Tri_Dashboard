@@ -13,6 +13,7 @@ def calculate_heat_strain_index(
     resting_hr: float = 0.0,
     hr_max: float = 0.0,
     baseline_core_temp: float = 0.0,
+    acclimatization_days: int = 0,
 ) -> pd.DataFrame:
     """Calculate Physiological Strain Index (PSI) based on Moran et al. 1998.
 
@@ -26,6 +27,10 @@ def calculate_heat_strain_index(
     "A physiological strain index to evaluate heat stress."
     Am J Physiol 275: R129-R134.
 
+    Extended with adaptive PSI (aPSI) per Buller et al. (2023).
+    "Individualized monitoring of heat illness risk." Physiol Measurement 44(10).
+    Acclimatized athletes (10+ days) show reduced effective strain.
+
     Formula:
         PSI = 5 × (Tcore_t - Tcore_0) / (39.5 - Tcore_0)
             + 5 × (HR_t - HR_0) / (HRmax - HR_0)
@@ -35,6 +40,7 @@ def calculate_heat_strain_index(
         resting_hr: Resting heart rate [bpm]. If 0, estimated from first 60s.
         hr_max: Maximum heart rate [bpm]. If 0, estimated from data max.
         baseline_core_temp: Baseline core temperature [°C]. If 0, estimated from first 60s.
+        acclimatization_days: Days of heat acclimatization. 10+ days enables aPSI correction.
 
     Returns:
         DataFrame with added 'hsi' column (PSI values 0-10)
@@ -68,6 +74,18 @@ def calculate_heat_strain_index(
     hr_component = 5.0 * (df['heartrate_smooth'] - hr_0) / hr_denom
 
     df['hsi'] = (temp_component + hr_component).clip(0.0, 10.0)
+
+    # Adaptive PSI correction (Buller et al. 2023)
+    # Acclimatized athletes tolerate higher strain before performance decrement
+    # aPSI adjusts thresholds upward after 10+ days of heat acclimatization
+    if acclimatization_days >= 10:
+        # Acclimatized: effective PSI is reduced (better tolerance)
+        # Buller 2023: dynamically adjusts for Tcore-to-Tsk gradient
+        acclim_factor = min(0.85, 1.0 - (acclimatization_days - 10) * 0.01)
+        df['hsi'] = (df['hsi'] * acclim_factor).clip(0.0, 10.0)
+        df['hsi_acclimated'] = True
+    else:
+        df['hsi_acclimated'] = False
 
     return df
 
@@ -147,7 +165,9 @@ def predict_thermal_performance(
     target_temp: float,
     decay_pct_per_c: float = -3.0,
     hr_increase_per_c: float = 3.0,
-    baseline_temp: float = 37.5
+    baseline_temp: float = 37.5,
+    resting_hr: float = 0.0,
+    max_hr: float = 0.0,
 ) -> dict:
     """
     Predict performance degradation at a given core temperature.
@@ -213,8 +233,8 @@ def predict_thermal_performance(
     # Resting HR for trained cyclists: typically 45-65 bpm
     # baseline_hr is HR at threshold (~150-170 bpm), so we use a population-based
     # estimate rather than subtracting from threshold HR
-    hr_0 = 55.0  # Conservative resting HR estimate for trained athletes
-    hr_max_est = max(baseline_hr + 20, 190)  # Conservative HRmax estimate
+    hr_0 = resting_hr if resting_hr > 30 else 55.0
+    hr_max_est = max_hr if max_hr > 100 else max(baseline_hr + 20, 190)
     temp_denom = max(0.5, 39.5 - tcore_0)
     hr_denom = max(10.0, hr_max_est - hr_0)
     hsi_estimated = min(10.0, max(0.0,

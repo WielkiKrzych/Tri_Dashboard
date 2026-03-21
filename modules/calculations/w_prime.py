@@ -77,6 +77,88 @@ def calculate_w_prime_fast(watts, time, cp, w_prime_cap):
     return w_bal
 
 
+@jit(nopython=True, fastmath=True)
+def calculate_w_prime_biexp(watts, time, cp, w_prime_cap, sport: int = 0):
+    """W' Balance with bi-exponential reconstitution (Caen et al. 2021).
+
+    Two-phase recovery: fast (PCr resynthesis) + slow (metabolic recovery).
+    Superior fit vs mono-exponential Skiba 2015 model.
+
+    Sport-specific tau values (Welburn et al. 2025):
+        Cycling:  tau_fast=120s, tau_slow=600s (validated)
+        Running:  tau_fast=150s, tau_slow=750s (estimated, Fukuda 2019)
+        Swimming: tau_fast=90s,  tau_slow=500s (estimated, Raimundo 2022)
+
+    Note: Welburn et al. (2025) found poor predictive capability of
+    generalized tau — individual calibration recommended.
+
+    References:
+        Caen et al. (2021). Bi-exponential W' reconstitution. EJAP.
+        Welburn et al. (2025). W' reconstitution modelling. EJAP.
+        Raimundo et al. (2022). Swimming D' reconstitution differs from cycling.
+
+    Args:
+        watts: Power array [W]
+        time: Time array [s]
+        cp: Critical Power [W]
+        w_prime_cap: W' capacity [J]
+        sport: 0=cycling, 1=running, 2=swimming
+    """
+    n = len(watts)
+    w_bal = np.empty(n, dtype=np.float64)
+    curr_w = w_prime_cap
+
+    # Sport-specific time constants
+    if sport == 1:    # Running
+        tau_fast = 150.0
+        tau_slow = 750.0
+        fast_fraction = 0.45
+    elif sport == 2:  # Swimming
+        tau_fast = 90.0
+        tau_slow = 500.0
+        fast_fraction = 0.55
+    else:             # Cycling (default)
+        tau_fast = 120.0
+        tau_slow = 600.0
+        fast_fraction = 0.50
+
+    slow_fraction = 1.0 - fast_fraction
+    prev_time = time[0]
+
+    for i in range(n):
+        if i == 0:
+            dt = 1.0
+        else:
+            dt = time[i] - prev_time
+            if dt <= 0:
+                dt = 1.0
+            prev_time = time[i]
+
+        if watts[i] > cp:
+            delta = (cp - watts[i]) * dt
+            curr_w += delta
+        elif watts[i] < cp:
+            dcp = cp - watts[i]
+            # Bi-exponential: intensity modulates both tau values
+            tau_f = tau_fast * np.exp(-0.008 * dcp) + tau_fast * 0.3
+            tau_s = tau_slow * np.exp(-0.005 * dcp) + tau_slow * 0.3
+
+            recovery_fast = fast_fraction * (1.0 - np.exp(-dt / tau_f))
+            recovery_slow = slow_fraction * (1.0 - np.exp(-dt / tau_s))
+
+            depleted = w_prime_cap - curr_w
+            curr_w += depleted * (recovery_fast + recovery_slow)
+
+        if curr_w > w_prime_cap:
+            curr_w = w_prime_cap
+        elif curr_w < 0.0:
+            curr_w = 0.0
+
+        w_bal[i] = curr_w
+
+    return w_bal
+
+
 def _calculate_w_prime_balance_cached(df_bytes: bytes, cp: float, w_prime: float):
     """Cached version of W' Balance calculation."""
     try:
@@ -121,14 +203,16 @@ def _calculate_w_prime_balance_cached(df_bytes: bytes, cp: float, w_prime: float
             return pd.DataFrame({'w_prime_balance': []})
 
 
-def calculate_w_prime_balance(_df_pl_active, cp: float, w_prime: float) -> pd.DataFrame:
+def calculate_w_prime_balance(_df_pl_active, cp: float, w_prime: float, model: str = "biexp", sport: int = 0) -> pd.DataFrame:
     """Calculate W' Balance for the entire workout.
-    
+
     Args:
         _df_pl_active: DataFrame with workout data
         cp: Critical Power [W]
         w_prime: W' capacity [J]
-    
+        model: Reconstitution model — "biexp" (Caen 2021, default) or "skiba" (Skiba 2015)
+        sport: Sport type — 0=cycling (default), 1=running, 2=swimming
+
     Returns:
         DataFrame with added 'w_prime_balance' column
     """
@@ -138,13 +222,24 @@ def calculate_w_prime_balance(_df_pl_active, cp: float, w_prime: float) -> pd.Da
         df_pd = _df_pl_active.to_pandas()
     else:
         df_pd = _df_pl_active.copy()
-    
+
     if 'time' not in df_pd.columns:
         df_pd['time'] = np.arange(len(df_pd), dtype=float)
-    
-    df_bytes = _serialize_df_to_parquet_bytes(df_pd)
-    result_df = _calculate_w_prime_balance_cached(df_bytes, float(cp), float(w_prime))
-    return result_df
+
+    if 'watts' not in df_pd.columns:
+        df_pd['w_prime_balance'] = np.nan
+        return df_pd
+
+    watts_arr = df_pd['watts'].to_numpy(dtype=np.float64)
+    time_arr = df_pd['time'].to_numpy(dtype=np.float64)
+
+    if model == "biexp":
+        w_bal = calculate_w_prime_biexp(watts_arr, time_arr, float(cp), float(w_prime), sport)
+    else:
+        w_bal = calculate_w_prime_fast(watts_arr, time_arr, float(cp), float(w_prime))
+
+    df_pd['w_prime_balance'] = w_bal
+    return df_pd
 
 
 # ============================================================
@@ -157,7 +252,9 @@ def calculate_recovery_score(
     time_since_effort_sec: int = 0,
     tau_seconds: float = 400.0,
     time_bonus_max: float = 30.0,
-    return_rich: bool = False
+    return_rich: bool = False,
+    smo2_baseline_drop_pct: float = 0.0,
+    cardiac_drift_pct: float = 0.0,
 ) -> Union[float, 'RecoveryScoreResult']:
     """Calculate Recovery Score based on W' balance state.
     
@@ -178,6 +275,8 @@ def calculate_recovery_score(
         tau_seconds: Time constant for W' reconstitution (default: 400s)
         time_bonus_max: Maximum time bonus points (default: 30)
         return_rich: If True, return RecoveryScoreResult; if False, return float
+        smo2_baseline_drop_pct: SmO2 drop from baseline [%]. Indicates impaired O2 extraction.
+        cardiac_drift_pct: Cardiac drift [%]. Indicates dehydration/fatigue.
         
     Returns:
         RecoveryScoreResult object (or float if return_rich=False)
@@ -193,18 +292,34 @@ def calculate_recovery_score(
             )
         return 0.0
     
-    # Base score from W' percentage
-    w_pct = (w_bal_end / w_prime_capacity) * 100
-    
-    # Time bonus (W' recovers over time)
+    # Base W' component (40% weight)
+    w_component = (w_bal_end / w_prime_capacity) * 100
+
+    # Time bonus
     time_bonus = 0.0
     if time_since_effort_sec > 0:
-        # Exponential recovery model
         recovery_factor = 1 - np.exp(-time_since_effort_sec / tau_seconds)
         time_bonus = recovery_factor * time_bonus_max
-    
-    score = min(100, w_pct + time_bonus)
-    score = round(max(0, score), 0)
+
+    w_readiness = min(100, w_component + time_bonus)
+
+    # SmO2 component (30% weight) — baseline drop indicates impaired extraction
+    smo2_readiness = max(0, 100 - smo2_baseline_drop_pct * 10)
+
+    # Cardiac component (30% weight) — drift indicates dehydration/fatigue
+    cardiac_readiness = max(0, 100 - cardiac_drift_pct * 8)
+
+    # Composite score (Guimaraes Couto et al. 2025 pacing concept)
+    if smo2_baseline_drop_pct > 0 or cardiac_drift_pct > 0:
+        score = 0.4 * w_readiness + 0.3 * smo2_readiness + 0.3 * cardiac_readiness
+    else:
+        # Fallback to W'-only when no other data
+        score = w_readiness
+
+    score = round(max(0, min(100, score)), 0)
+
+    # Keep w_pct for return_rich path
+    w_pct = w_component
     
     if return_rich:
         recommendation = get_recovery_recommendation(score)

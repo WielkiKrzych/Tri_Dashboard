@@ -56,6 +56,19 @@ def detect_gas_exchange_thresholds(df_steps: pd.DataFrame, result: dict) -> None
             result["analysis_notes"].append(
                 f"VT1 detected at step {result['vt1_step']} via VE/VO2 breakpoint"
             )
+            # H6: RER validation for VT1 (should be < 1.0 at VT1)
+            if "rer" in df_steps.columns and pd.notna(df_steps.loc[vt1_idx, "rer"]):
+                rer_at_vt1 = df_steps.loc[vt1_idx, "rer"]
+                if rer_at_vt1 > 1.0:
+                    result["analysis_notes"].append(
+                        f"⚠️ VT1 RER={rer_at_vt1:.2f} > 1.0 — possible early hyperventilation. "
+                        "VT1 may be inaccurate (Cerezuela-Espejo et al. 2023)."
+                    )
+                    result["vt1_confidence_penalty"] = result.get("vt1_confidence_penalty", 0.0) + 0.20
+                elif rer_at_vt1 > 0.95:
+                    result["analysis_notes"].append(
+                        f"ℹ️ VT1 RER={rer_at_vt1:.2f} approaching 1.0 — monitor for hyperventilation artifact."
+                    )
         else:
             result["analysis_notes"].append("VT1 candidate rejected: VE/VCO2 already rising")
 

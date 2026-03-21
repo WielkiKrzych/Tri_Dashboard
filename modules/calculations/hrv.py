@@ -155,7 +155,7 @@ def validate_dfa_quality(
     data_quality: float,
     mean_alpha1: Optional[float],
     windows_analyzed: int,
-    min_window_sec: int = 120,
+    min_window_sec: int = 300,
 ) -> Tuple[bool, List[str], str]:
     """
     Validate DFA-a1 result quality and determine uncertainty.
@@ -168,7 +168,7 @@ def validate_dfa_quality(
         data_quality: Ratio of valid samples (0-1)
         mean_alpha1: Mean Alpha-1 value
         windows_analyzed: Number of windows analyzed
-        min_window_sec: Minimum required window (default: 120s)
+        min_window_sec: Minimum required window (default: 300s)
 
     Returns:
         Tuple of (is_uncertain, uncertainty_reasons, quality_grade)
@@ -194,10 +194,17 @@ def validate_dfa_quality(
 
     # Check 3: Alpha1 range at moderate intensity
     if mean_alpha1 is not None:
-        if mean_alpha1 < 0.5 or mean_alpha1 > 1.5:
+        if mean_alpha1 < 0.5 or mean_alpha1 > 1.5:  # Iannetta et al. 2024: ICC 0.76-0.86
             is_uncertain = True
             reasons.append(f"Alpha1 = {mean_alpha1:.2f} poza typowym zakresem [0.5-1.5]")
             quality_grade = "D"
+        elif mean_alpha1 < 0.6 or mean_alpha1 > 1.2:
+            reasons.append(
+                f"Alpha1 = {mean_alpha1:.2f} w strefie ostrzegawczej [0.5-0.6 lub 1.2-1.5] "
+                "(Rogers et al. 2023, Cassirame et al. 2025)"
+            )
+            if quality_grade > "C":
+                quality_grade = "C"
 
     # Check 4: Minimum windows analyzed
     if windows_analyzed < 3:
@@ -238,7 +245,7 @@ def _generate_cache_key(
 
 def calculate_dynamic_dfa_v2(
     df_pl,
-    window_sec: int = 300,
+    window_sec: int = 600,
     step_sec: int = 30,
     min_samples_hrv: int = 100,
     alpha1_clip_range: Tuple[float, float] = (0.2, 1.8),
@@ -250,13 +257,20 @@ def calculate_dynamic_dfa_v2(
 
     Args:
         df_pl: DataFrame with RR data
-        window_sec: Window size in seconds (default: 300)
+        window_sec: Window size in seconds (default: 600)
         step_sec: Step size in seconds (default: 30)
         min_samples_hrv: Minimum RR samples required (default: 100)
         alpha1_clip_range: Min/max range for alpha1 clipping (default: 0.2-1.8)
 
     Returns:
         Tuple of (results DataFrame, error message or None)
+
+    Updated references:
+        Iannetta et al. (2024). DFA-alpha1 reliability ICC=0.76-0.86.
+        Mateo-March et al. (2024). HRVT1 ICC=0.87, HRVT2 ICC=0.97.
+        Rogers et al. (2023). Validated in female cyclists.
+        Cassirame et al. (2025). SNR and motion artifact concerns.
+        Rogers & Gronwald (2025). Methodological background commentary.
     """
     # Check cache first
     cache_key = _generate_cache_key(df_pl, window_sec, step_sec, min_samples_hrv, alpha1_clip_range)
@@ -380,6 +394,18 @@ def calculate_dynamic_dfa_v2(
                 "mean_rr": r_mean_rr,
             }
         )
+
+        # M11: Log pathological Alpha-1 values instead of silent clipping
+        extreme_alpha = results[(results['alpha1'] <= 0.2) | (results['alpha1'] >= 1.8)]
+        if len(extreme_alpha) > 0:
+            logger.warning(
+                "DFA Alpha-1 extreme values detected (%d windows): "
+                "min=%.2f, max=%.2f. Possible pathology (AF, severe fatigue, illness). "
+                "Ref: Rogers & Gronwald 2025, EJAP commentary.",
+                len(extreme_alpha),
+                results['alpha1'].min(),
+                results['alpha1'].max(),
+            )
 
         # Store in bounded cache (evict oldest if full)
         if len(_dfa_cache) >= _DFA_CACHE_MAXSIZE:

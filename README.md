@@ -39,31 +39,48 @@ Tri_Dashboard to platforma analityczna dla **trenerów**, **naukowców sportu** 
 | **AI Coach** | Multi-sensor fusion, limiter diagnosis, rekomendacje |
 | **Reports** | PDF 7-stronicowy, DOCX, PNG export, SQLite baza danych |
 
+### 🆕 Evidence-Based Physiology Overhaul v3.0 (2026-03-21)
+
+Complete audit based on **42 peer-reviewed publications (2021-2026)**.
+All formulas, models, and algorithms updated to latest available evidence.
+
+**CRITICAL — New Models (5):**
+| Fix | Reference | Opis |
+|:----|:----------|:-----|
+| VO2max: Jurov 2023 sex-specific | Life (MDPI) 13(1):160 | Replaces Sitko 2021. M: `0.10×PO - 0.60×BW + 64.21`, F: `0.13×PO - 0.83×BW + 64.02`. Bias 0.19% vs ACSM 12% |
+| VLaMax: Wackerhage 2025 disclaimer | Sports Med 55:1853-1866 | No validated glycolytic equivalent to VO2max. PCr correction by phenotype |
+| W' Balance: Caen 2021 bi-exponential | EJAP (Welburn 2025 validation) | Two-phase tau (fast PCr + slow metabolic). Sport-specific: cycling/running/swimming |
+| VT confidence intervals | Gronwald 2024 meta-analysis | VT1/VT2 displayed as ranges (±5-20W) based on detection confidence |
+| VT vs LT terminology | Cerezuela-Espejo 2023 | VT1 ≠ LT1 — different mechanisms, clear disclaimers added |
+
+**HIGH — Updated Models (12):**
+| Fix | Reference | Opis |
+|:----|:----------|:-----|
+| DFA Alpha-1 window 600s | Iannetta 2024, ICC 0.76-0.86 | Was 300s. Extreme values logged instead of clipped |
+| PSI → aPSI adaptive | Buller 2023, Physiol Meas | Acclimatization correction for 10+ days heat exposure |
+| RER validation for VT1 | Cerezuela-Espejo 2023 | RER > 1.0 at VT1 = hyperventilation artifact flag |
+| VO2max zone floor 110% CP | Garcia-Tabar 2024 | Was 105%. True VO2max work = 110-120% CP |
+| Cardiac drift analysis | Sperlich 2025, Papini 2024 | HR:Power decoupling (EF 1st vs 2nd half) |
+| SmO2 T1 cross-validation | Yogev 2023, Sendra-Perez 2023 | Flag if SmO2 T1 diverges from VT1 by >15% |
+| Altitude VO2max correction | Wehrlin & Hallen 2006, Pühringer 2022 | 6.3%/1000m linear reduction above 500m |
+| Strict data validation | — | No silent type coercion, EU locale (comma decimals), 10% NaN rejection |
+| Cross-signal validation | — | Power/HR envelope checks (450W @ 90bpm = sensor fault) |
+| Temporal bounds validation | — | Sample rate, gap detection (>60s), merged file detection |
+| DB schema: athlete_id | — | Multi-athlete support, session_type, test_validity fields |
+| Composite recovery score | Guimaraes Couto 2025 | 40% W' + 30% SmO2 + 30% cardiac drift (was W'-only) |
+
+**MEDIUM — New Features (4):**
+| Fix | Reference | Opis |
+|:----|:----------|:-----|
+| Pacing analysis | Guimaraes Couto 2025/2026, Konings 2025 | Positive/negative/even split detection with coaching causes |
+| SmO2 context interpretation | Perrey 2024, 191 studies SR | Different SmO2 meaning for sprint vs threshold vs Z2 |
+| Contextual limiter recs | Garcia-Tabar 2024 | Z2 volume-aware, EIB screening, mechanical occlusion check |
+| Phenotype disclaimer | INSCYD n~2000, Garcia-Tabar 2024 | Marked as provisional, 40× metabolic response heterogeneity noted |
+
 ### 🆕 Exercise Physiology & Code Quality Review (2026-03-17)
 
-Expert review from exercise physiology / triathlon coaching perspective.
-All formulas, algorithms, and physiological assumptions audited and corrected.
-
-**Physiological Fixes:**
-| Fix | Opis |
-|:----|:-----|
-| W' Balance: Skiba 2015 model | Dynamic tau: `546 × e^(-0.01 × DCP) + 316` replaces linear Morton model |
-| HSI → PSI (Moran et al. 1998) | Validated Physiological Strain Index with individual baselines |
-| VLaMax disclaimer ±25-30% | Documented PCr/glycolytic limitation, confidence 0.45 |
-| VO2max cross-validation | Hawley & Noakes 1992 formula as independent cross-check |
-| Limiter radar normalization | Z-score normalization for fair cross-system comparison |
-| DFA Alpha-1 minimum 120 RR | Rogers et al. recommended minimum per window |
-| Climber phenotype added | High VO2max + low VLaMax + ratio >160 classification |
-| Thermal W' decay 1.2x | Périard et al. (2011) validated multiplier (was 1.5x) |
-| AI Coach dynamic power | 75%/95% CP targets replace hardcoded 280W/360W |
-
-**Code Quality Fixes:**
-| Fix | Opis |
-|:----|:-----|
-| Removed `importlib.reload` | Debug artifact in `ui/hrv.py` causing memory leaks |
-| Dead code in `environment.py` | Removed orphaned duplicate WeatherData block |
-| PDF climber badge | Added climber phenotype color/name to report layout |
-| PSI resting HR fix | Population-based 55 bpm instead of `baseline_hr - 40` |
+Previous audit with 9 physiological + 4 code quality fixes.
+See commit `6e1f4d8` for details.
 
 ### 🆕 Security & Code Quality Audit (2026-03-16)
 

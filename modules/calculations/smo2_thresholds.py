@@ -426,6 +426,35 @@ def detect_smo2_thresholds_moxy(
             "⚠️ T1 (MOT1) has LOW RELIABILITY (ICC = 0.53) - use as orientation only"
         )
 
+        # H3: Cross-validate SmO2 T1 with ventilatory VT1 if available
+        # SmO2 T1 has low reliability (ICC=0.53, Contreras-Briceno 2023)
+        # Sendra-Perez et al. (2023) SR: ICC 0.80-0.88 for breakpoints overall
+        # but T1 specifically is the weakest link
+        if result.t1_watts and vt1_watts:
+            divergence_w = abs(result.t1_watts - vt1_watts)
+            divergence_pct = divergence_w / vt1_watts * 100 if vt1_watts > 0 else 0
+
+            if divergence_pct > 15:
+                result.analysis_notes.append(
+                    f"⚠️ CRITICAL: SmO₂ T1 ({result.t1_watts}W) diverges from VT1 "
+                    f"({vt1_watts}W) by {divergence_pct:.0f}% (>{15}%). "
+                    "T1 unreliable — use ventilatory VT1 for training zones. "
+                    "SmO₂ T1 for orientation only. (Yogev et al. 2023)"
+                )
+                t1_confidence = max(0, t1_confidence - 30)
+            elif divergence_pct > 10:
+                result.analysis_notes.append(
+                    f"ℹ️ SmO₂ T1 ({result.t1_watts}W) vs VT1 ({vt1_watts}W): "
+                    f"divergence {divergence_pct:.0f}%. Tentative agreement."
+                )
+                t1_confidence = max(0, t1_confidence - 10)
+            else:
+                result.analysis_notes.append(
+                    f"✅ SmO₂ T1 ({result.t1_watts}W) confirmed by VT1 ({vt1_watts}W): "
+                    f"divergence {divergence_pct:.0f}% — good systemic agreement."
+                )
+                t1_confidence = min(100, t1_confidence + 15)
+
     # =========================================================================
     # 5. SmO₂_T2_onset DETECTION (RCP analog)
     # =========================================================================

@@ -85,6 +85,14 @@ def detect_vt_cpet(
         "validation": {"vt1_lt_vt2": False, "ve_vo2_rises_first": False},
         "ramp_start_step": None,
         "cross_validation": None,  # [Issue #7]
+        "vt1_confidence": None,
+        "vt1_range_low": None,
+        "vt1_range_high": None,
+        "vt1_confidence_penalty": 0.0,
+        "vt2_confidence": None,
+        "vt2_range_low": None,
+        "vt2_range_high": None,
+        "vt2_confidence_penalty": 0.0,
     }
 
     cols = {
@@ -238,6 +246,31 @@ def detect_vt_cpet(
         result["analysis_notes"].append("⚠️ VT1 >= VT2 - adjusted VT2 to VT1 + 15%")
         result["vt2_watts"] = int(result["vt1_watts"] * 1.15)
     result["validation"]["vt1_lt_vt2"] = result["vt1_watts"] < result["vt2_watts"]
+
+    # C3: Confidence intervals for threshold values
+    # VT shifts ±10-20W day-to-day (hydration, glycogen, temperature)
+    # Gronwald et al. 2024 meta-analysis confirms VT/LT correspondence
+    # but inherent measurement uncertainty exists
+    vt1_penalty = result.get("vt1_confidence_penalty", 0.0)
+    vt2_penalty = result.get("vt2_confidence_penalty", 0.0)
+
+    # Base confidence from detection method
+    base_confidence = 0.80 if has_vo2 and has_vco2 else 0.65
+
+    if result["vt1_watts"] is not None:
+        vt1_conf = max(0.3, base_confidence - vt1_penalty)
+        # Margin: high confidence = ±5W, low = ±20W
+        vt1_margin = int(5 + (1 - vt1_conf) * 25)
+        result["vt1_confidence"] = round(vt1_conf, 2)
+        result["vt1_range_low"] = result["vt1_watts"] - vt1_margin
+        result["vt1_range_high"] = result["vt1_watts"] + vt1_margin
+
+    if result["vt2_watts"] is not None:
+        vt2_conf = max(0.3, base_confidence - vt2_penalty)
+        vt2_margin = int(5 + (1 - vt2_conf) * 25)
+        result["vt2_confidence"] = round(vt2_conf, 2)
+        result["vt2_range_low"] = result["vt2_watts"] - vt2_margin
+        result["vt2_range_high"] = result["vt2_watts"] + vt2_margin
 
     if result["vt1_step"] and result["vt2_step"]:
         result["validation"]["ve_vo2_rises_first"] = result["vt1_step"] < result["vt2_step"]

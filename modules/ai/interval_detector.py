@@ -230,11 +230,11 @@ class IntervalDetector:
             return IntervalType.SPRINT
         
         # VO2max: high power, short-medium duration
-        if pct_cp > 1.05 and duration < 480:  # <8min
+        if pct_cp >= 1.10 and duration < 480:  # Raised from 105% per Garcia-Tabar 2024
             return IntervalType.VO2MAX
-        
+
         # Threshold: around CP, medium duration
-        if 0.90 <= pct_cp <= 1.05:
+        if 0.90 <= pct_cp < 1.10:  # Expanded to include 105-110% (was threshold all along)
             return IntervalType.THRESHOLD
         
         # Sweet Spot: just below threshold
@@ -380,3 +380,63 @@ class IntervalDetector:
             'avg_work_power': np.mean([i.avg_power for i in work_intervals]) if work_intervals else 0,
             'max_interval_power': max(i.max_power for i in intervals) if intervals else 0
         }
+
+
+def analyze_pacing(interval_data: pd.DataFrame, power_col: str = "watts") -> dict:
+    """
+    Analyze pacing strategy within an interval.
+
+    Detects positive/negative/even splits and quantifies fade.
+
+    Reference:
+        Guimaraes Couto et al. (2025). "Physiology and psychology of negative splits."
+        Frontiers in Physiology 16:1639816.
+        Konings & Hettinga (2025). Pacing strategies network meta-analysis.
+
+    Returns:
+        dict with pacing_type, fade_pct, first_half_avg, second_half_avg
+    """
+    if len(interval_data) < 10:
+        return {"pacing_type": "unknown", "fade_pct": 0.0}
+
+    power = interval_data[power_col].values
+    mid = len(power) // 2
+
+    first_half = float(np.mean(power[:mid]))
+    second_half = float(np.mean(power[mid:]))
+
+    if first_half <= 0:
+        return {"pacing_type": "unknown", "fade_pct": 0.0}
+
+    fade_pct = ((first_half - second_half) / first_half) * 100
+
+    if fade_pct > 5:
+        pacing_type = "positive_split"
+        pacing_label = "Positive Split (fading)"
+        pacing_causes = [
+            "Zbyt agresywne tempo na początku",
+            "Odwodnienie / akumulacja ciepła",
+            "Wyczerpanie glikogenu (długa sesja?)",
+            "Niewystarczająca forma do tej intensywności",
+        ]
+    elif fade_pct < -5:
+        pacing_type = "negative_split"
+        pacing_label = "Negative Split (finishing strong)"
+        pacing_causes = [
+            "Konserwatywny start — fizjologicznie optymalny",
+            "Lepsza termoregulacja (Guimaraes Couto 2025)",
+            "Liniowy wzrost RPE zamiast wczesnego skoku",
+        ]
+    else:
+        pacing_type = "even_split"
+        pacing_label = "Even Pacing"
+        pacing_causes = ["Dobre zarządzanie tempem"]
+
+    return {
+        "pacing_type": pacing_type,
+        "pacing_label": pacing_label,
+        "fade_pct": round(fade_pct, 1),
+        "first_half_avg": round(first_half, 0),
+        "second_half_avg": round(second_half, 0),
+        "pacing_causes": pacing_causes,
+    }

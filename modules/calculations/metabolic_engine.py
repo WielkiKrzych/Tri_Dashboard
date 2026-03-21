@@ -101,17 +101,29 @@ def estimate_vlamax(
     NOTE: VLaMax is the ONLY metric estimated locally.
     VO2max comes from canonical source.
 
+    ⚠️ CRITICAL DISCLAIMER (Wackerhage et al. 2025, Sports Medicine):
+    There is NO universally accepted measure of maximal glycolysis
+    analogous to VO2max. VLaMax is promising but lacks full validation.
+
     ESTIMATION UNCERTAINTY: ±25-30% error range.
-    This is a rough ORIENTATION ESTIMATE, not a substitute for INSCYD/lab testing.
-    W' contains both PCr (~50-60% in first 10s) and glycolytic components,
-    so this formula OVERESTIMATES VLaMax in sprinters with high PCr stores
-    and UNDERESTIMATES in diesel-type athletes.
+    VLaMax test reliability: ~18% variability (Hauser et al. 2023).
 
-    Method: Mader-inspired model from CP/W'/Pmax power profile.
-    Confidence: ~0.45 (low-moderate — indirect, single-compartment model).
+    W' contains both PCr (~50-60%) and glycolytic components.
+    PCr fraction varies by phenotype (no update to Spriet 2002 available):
+      - Sprinters: PCr ~60% → VLaMax overestimated
+      - Endurance: PCr ~50% → closer to reality
 
-    Reference population: calibrated against INSCYD reference values for
-    road cyclists (not validated for runners/triathletes/MTB).
+    INSCYD validation: Quittmann et al. (2024) validated MLSS prediction
+    (r=0.974 M, r=0.984 F) but NOT VLaMax directly.
+
+    Clark & Macdermid (2025): VLaMax correlates with 15s isokinetic test
+    (r=0.83-0.88) but weakly with 1-min effort (r=0.29-0.52).
+
+    References:
+        Wackerhage et al. (2025). Sports Medicine 55:1853-1866.
+        Quittmann (2025). EJAP 126(1):1-36. Systematic review.
+        Clark & Macdermid (2025). Res Q Exerc Sport 96(4):660-667.
+        Hauser et al. (2023). Sports (MDPI) 3(4):40.
     """
     if pmax_watts <= 0 or cp_watts <= 0 or weight_kg <= 0:
         return 0.0
@@ -134,6 +146,22 @@ def estimate_vlamax(
     cp_per_kg = cp_watts / weight_kg
 
     vlamax = w_prime_per_kg * 2.8 + 0.05 - cp_per_kg * 0.07
+
+    # PCr correction factor based on power profile shape
+    # Sprinters (high Pmax/CP ratio) have higher PCr contribution
+    # → their VLaMax is overestimated by the formula
+    pmax_cp_ratio = pmax_watts / cp_watts if cp_watts > 0 else 1.5
+    if pmax_cp_ratio > 2.0:
+        # Sprinter profile: reduce VLaMax by up to 15%
+        pcr_correction = 0.85
+    elif pmax_cp_ratio > 1.7:
+        # Puncher profile: reduce by 8%
+        pcr_correction = 0.92
+    else:
+        # Endurance profile: no correction
+        pcr_correction = 1.0
+
+    vlamax = vlamax * pcr_correction
 
     return max(0.2, min(1.0, vlamax))
 
@@ -166,8 +194,16 @@ def classify_phenotype(
 ) -> str:
     """
     Classify athlete phenotype.
-    
+
     USES CANONICAL VO2max - does not calculate it.
+
+    ⚠️ PROVISIONAL CLASSIFICATION — thresholds are expert-opinion-based,
+    not empirically validated on large populations. INSCYD calibration
+    (n~2000 cyclists) uses similar boundaries but is proprietary.
+
+    Phenotype boundaries may not apply to runners/swimmers.
+    Garcia-Tabar & Gorostiaga (2024): Fixed %VO2max prescriptions produce
+    up to 40-fold heterogeneous metabolic responses.
     """
     if vo2max <= 0:
         return "unknown"

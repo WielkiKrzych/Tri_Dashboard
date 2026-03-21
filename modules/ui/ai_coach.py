@@ -189,5 +189,61 @@ def render_ai_coach_tab(df_plot_resampled, cp_watts: float = 0.0):
             else:
                 st.info(f"🆗 **Norma ({avg_diff:.1f} bpm):** Reakcja serca zgodna z Twoim profilem historycznym.")
 
+        # H2: Cardiac Drift Analysis (Sperlich et al. 2025, Papini et al. 2024)
+        st.divider()
+        st.subheader("📉 Cardiac Drift (HR:Power Decoupling)")
+
+        if 'heartrate_smooth' in df_plot_resampled.columns and 'watts' in df_plot_resampled.columns:
+            # Filter for active riding (>50W for >5min)
+            df_active = df_plot_resampled[df_plot_resampled['watts'] > 50].copy()
+
+            if len(df_active) > 600:  # Need >10 min of data
+                mid_point = len(df_active) // 2
+                first_half = df_active.iloc[:mid_point]
+                second_half = df_active.iloc[mid_point:]
+
+                # HR:Power ratio (efficiency factor)
+                ef_first = first_half['watts'].mean() / max(1, first_half['heartrate_smooth'].mean())
+                ef_second = second_half['watts'].mean() / max(1, second_half['heartrate_smooth'].mean())
+
+                # Decoupling percentage (>5% = aerobic deficiency per coaching heuristic)
+                if ef_first > 0:
+                    decoupling_pct = ((ef_first - ef_second) / ef_first) * 100
+                else:
+                    decoupling_pct = 0.0
+
+                col_d1, col_d2, col_d3 = st.columns(3)
+                col_d1.metric("EF 1. połowa", f"{ef_first:.2f} W/bpm")
+                col_d2.metric("EF 2. połowa", f"{ef_second:.2f} W/bpm")
+                col_d3.metric("Decoupling", f"{decoupling_pct:.1f}%",
+                             delta=f"{decoupling_pct:.1f}%" if decoupling_pct > 0 else None,
+                             delta_color="inverse" if decoupling_pct > 5 else "normal")
+
+                if decoupling_pct > 10:
+                    st.error(
+                        f"⚠️ **Wysoki cardiac drift ({decoupling_pct:.1f}%):** "
+                        "Możliwe przyczyny: odwodnienie, stress termiczny, "
+                        "wyczerpanie glikogenu lub zbyt wysoka intensywność. "
+                        "(Sperlich et al. 2025: 93.1% accuracy CV drift → fitness prediction)"
+                    )
+                elif decoupling_pct > 5:
+                    st.warning(
+                        f"🟡 **Umiarkowany drift ({decoupling_pct:.1f}%):** "
+                        "Decoupling >5% sugeruje, że baza aerobowa wymaga pracy. "
+                        "Rozważ więcej Z2. (Papini et al. 2024)"
+                    )
+                elif decoupling_pct <= 2:
+                    st.success(
+                        f"✅ **Świetna stabilność ({decoupling_pct:.1f}%):** "
+                        "Minimalne decoupling — dobra baza aerobowa."
+                    )
+                else:
+                    st.info(
+                        f"🆗 **Normalny drift ({decoupling_pct:.1f}%):** "
+                        "W granicach normy dla sesji treningowej."
+                    )
+            else:
+                st.info("Za mało danych aktywnych (min. 10 min >50W) dla analizy cardiac drift.")
+
     else:
         st.warning("⚠️ Moduł AI wymaga procesora Apple Silicon i biblioteki `mlx`. Zainstaluj: `pip install mlx`")

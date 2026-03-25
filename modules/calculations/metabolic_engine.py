@@ -379,9 +379,31 @@ def generate_training_block(
                 expected_ve="40-60 L/min",
                 failure_criteria="Głód, spadek mocy >10%",
                 frequency="1-2×/tydzień"
+            ),
+            TrainingSession(
+                name="Hill Repeats (Micro-VO₂max)",
+                power_range=f"{int(cp*1.10)}-{int(cp*1.25)}W",
+                duration="8-10 × 2min pod górę @ 2min zjazd",
+                adaptation_goal="Stymulacja VO₂max z niskim kosztem mięśniowym",
+                expected_smo2="Spadek do 25-35%, recovery >50% w przerwie",
+                expected_hr="95-100% HRmax",
+                expected_ve=">130 L/min",
+                failure_criteria="Niemożność utrzymania mocy w 5+ powtórzeniach",
+                frequency="1×/tydzień"
+            ),
+            TrainingSession(
+                name="Over-Under Threshold",
+                power_range=f"{int(cp*0.92)}-{int(cp*1.08)}W (oscylacje)",
+                duration="3 × (5min over + 5min under) + 5min rest",
+                adaptation_goal="Buforowanie mleczanu, tolerancja zmian intensywności",
+                expected_smo2="40-55% (oscylacje synchroniczne z mocą)",
+                expected_hr="85-95% HRmax",
+                expected_ve="80-110 L/min",
+                failure_criteria="Brak zdolności do fazy 'over' w 2+ seriach",
+                frequency="1×/tydzień"
             )
         ]
-        
+
         block.kpi_progress = [
             "HR przy CP spada o 3-5 bpm",
             "SmO₂ baseline wzrasta o 2-3%",
@@ -432,9 +454,31 @@ def generate_training_block(
                 expected_ve="50-70 L/min",
                 failure_criteria="Ból kolan, spadek kadencji",
                 frequency="1×/tydzień"
+            ),
+            TrainingSession(
+                name="Sweet Spot Progressive",
+                power_range=f"{int(cp*0.83)}-{int(cp*0.93)}W",
+                duration="2 × 20min → 2 × 30min (progresja tygodniowa)",
+                adaptation_goal="Przesunięcie progu mleczanowego w prawo",
+                expected_smo2="50-60%, stabilne bez dryfu",
+                expected_hr="82-90% HRmax",
+                expected_ve="70-90 L/min",
+                failure_criteria="SmO₂ dryf >10% w serii, HR drift >5%",
+                frequency="1×/tydzień"
+            ),
+            TrainingSession(
+                name="Double Day (Z2 AM + Sprint PM)",
+                power_range=f"AM: {int(cp*0.55)}-{int(cp*0.65)}W / PM: 6×15s all-out",
+                duration="AM: 90min / PM: 30min z rozgrzewką",
+                adaptation_goal="Rozkojarzenie metaboliczne — VLaMax↓ rano, utrzymanie mocy PM",
+                expected_smo2="AM: >70% / PM: <30% w sprincie",
+                expected_hr="AM: 65-72% / PM: >95% HRmax",
+                expected_ve="AM: 35-50 / PM: >120 L/min",
+                failure_criteria="Brak recovery między AM a PM (HR spocz. >10 bpm powyżej normy)",
+                frequency="1×/tydzień (dzień niskiego stresu)"
             )
         ]
-        
+
         block.kpi_progress = [
             "FatMax przesuwa się w prawo o 10-20W",
             "RER przy Z2 spada <0.85",
@@ -485,9 +529,31 @@ def generate_training_block(
                 expected_ve="40-55 L/min",
                 failure_criteria="Znaczący HR drift >7%",
                 frequency="1-2×/tydzień"
+            ),
+            TrainingSession(
+                name="Race Simulation (Pacing)",
+                power_range=f"{int(cp*0.88)}-{int(cp*0.95)}W z wariacjami",
+                duration="40-60min z 3× atakami 30s @ {int(cp*1.30)}W",
+                adaptation_goal="Zarządzanie W', pacing, tolerancja zmian tempa",
+                expected_smo2="45-55% bazowo, <30% w atakach",
+                expected_hr="85-92% HRmax",
+                expected_ve="80-100 L/min",
+                failure_criteria="W' depletion przed końcem, niezdolność do odpowiedzi na atak",
+                frequency="1×/2 tygodnie"
+            ),
+            TrainingSession(
+                name="Cadence Pyramid",
+                power_range=f"{int(cp*0.75)}-{int(cp*0.85)}W",
+                duration="5 × (3min@60rpm + 3min@90rpm + 3min@110rpm)",
+                adaptation_goal="Optymalizacja kadencji, redukcja okluzji mechanicznej",
+                expected_smo2="Stabilne 55-65% przy 90rpm, spadek przy 60rpm",
+                expected_hr="78-88% HRmax",
+                expected_ve="60-80 L/min",
+                failure_criteria="Utrata kontroli kadencji w 3+ seriach",
+                frequency="1×/tydzień"
             )
         ]
-        
+
         block.kpi_progress = [
             "CP wzrasta o 2-3%",
             "Peak power w rampie stabilny lub rosnący",

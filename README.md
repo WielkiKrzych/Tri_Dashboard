@@ -37,7 +37,29 @@ Tri_Dashboard to platforma analityczna dla **trenerów**, **naukowców sportu** 
 | **Physiology** | SmO2 kinetics, HRV (DFA α1), termoregulacja, biomechanika |
 | **Thresholds** | 4-point CPET: VT1_onset, VT1_steady, RCP_onset, RCP_steady |
 | **AI Coach** | Multi-sensor fusion, limiter diagnosis, rekomendacje |
-| **Reports** | PDF 7-stronicowy, DOCX, PNG export, SQLite baza danych |
+| **Reports** | PDF 32-stronicowy, DOCX, PNG export, SQLite baza danych |
+
+### 🆕 PDF Report Quality Audit v3.1 (2026-03-25)
+
+Comprehensive PDF report audit from exercise physiology professor & triathlon coach perspective.
+**8 critical fixes, 6 new analysis sections, 16+ cited publications.**
+
+| Category | Change | Reference |
+|:---------|:-------|:----------|
+| **FIX** | Deduplicated cardiac drift blocks (verdict vs simulation) | — |
+| **FIX** | Reconciled contradictory limiter diagnoses across pages | Multi-method hierarchy |
+| **FIX** | Fixed SmO₂ drift -26% mislabeled as "STABILNY" | Threshold recalibration |
+| **FIX** | Fixed Cardiac Drift value not propagating to verdict page | Key mapping fix |
+| **FIX** | Added confidence score visual flagging (<50% = warning) | — |
+| **FIX** | Unified hydration recommendations (500-750ml/h) | — |
+| **FIX** | Unified version strings (RAMP_METHOD_VERSION) | version.py SSoT |
+| **FIX** | Clarified Upper Aerobic zone as separate model from Z3/Z4 | — |
+| **NEW** | Tidal Volume decomposition (VE = TV × RR) with breathing strategy | — |
+| **NEW** | Ventilatory Reserve (Breathing Reserve %) | MVV estimation |
+| **NEW** | W' Reconstitution table (30s→20min recovery) | Caen et al. 2021 |
+| **NEW** | HR Recovery Kinetics classification | Buchheit 2014 |
+| **NEW** | Cadence context in occlusion analysis | Hammer et al. 2021 |
+| **NEW** | 5 diverse training sessions per metabolic block (was 3) | — |
 
 ### 🆕 Evidence-Based Physiology Overhaul v3.0 (2026-03-21)
 

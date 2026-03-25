@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Dict, Any
 
 # GLOBAL CONSTANT - Single Source of Truth
-RAMP_METHOD_VERSION = "1.0.0"
+RAMP_METHOD_VERSION = "2.0.0"
 
 def get_methodology_info() -> Dict[str, Any]:
     """

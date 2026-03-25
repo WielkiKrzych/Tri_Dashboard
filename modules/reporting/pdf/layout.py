@@ -21,6 +21,7 @@ from .styles import (
     COLORS, PAGE_WIDTH, MARGIN,
     get_table_style, FONT_FAMILY, FONT_FAMILY_BOLD, FONT_FAMILY_ITALIC,
 )
+from ...calculations.version import RAMP_METHOD_VERSION
 
 # Setup logger
 logger = logging.getLogger("Tri_Dashboard.PDFLayout")
@@ -884,7 +885,8 @@ def build_page_executive_verdict(
     
     # Cardiac drift
     cardiac_drift = thermo_analysis.get("cardiac_drift", {})
-    ef_delta_pct = cardiac_drift.get("delta_pct", 0)
+    cardiac_drift_metrics = cardiac_drift.get("metrics", {})
+    ef_delta_pct = cardiac_drift_metrics.get("delta_ef_pct", cardiac_drift.get("delta_pct", 0))
     drift_classification = cardiac_drift.get("classification", "unknown")
     
     # Cardio advanced
@@ -976,8 +978,15 @@ def build_page_executive_verdict(
             f"Źródła danych: VO₂max ({vo2max_source}), SmO₂, korelacja HR, temp. głęboka</font>",
             styles["center"]
         )],
+        [Paragraph(
+            f"<font size='9' color='{'#E74C3C' if confidence_score < 0.5 else '#F1C40F'}'>"
+            f"<b>Pewność werdyktu: {confidence_score:.0%} "
+            f"{'— NISKA: wynik orientacyjny, zalecana weryfikacja' if confidence_score < 0.5 else '— umiarkowana'}"
+            f"</b></font>",
+            styles["center"]
+        )],
     ]
-    
+
     hero_table = Table(hero_content, colWidths=[170 * mm])
     hero_table.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, -1), HexColor("#1a1a2e")),
@@ -1070,8 +1079,32 @@ def build_page_executive_verdict(
         ('RIGHTPADDING', (0, 0), (-1, -1), 6),
     ]))
     elements.append(matrix_table)
-    elements.append(Spacer(1, 6 * mm))
-    
+    elements.append(Spacer(1, 2 * mm))
+
+    # Limiter reconciliation note — multiple methods may disagree
+    limiter_methods = []
+    if limiter_type in ("central", "local"):
+        smo2_label = "CENTRALNY" if limiter_type == "central" else "OBWODOWY"
+        limiter_methods.append(f"SmO₂ → {smo2_label}")
+    if occlusion_level in ("high", "moderate"):
+        limiter_methods.append(f"Biomechanika → OKLUZJA ({occlusion_level.upper()})")
+    if max_core_temp > 38.0 or peak_hsi > 6:
+        limiter_methods.append("Termoregulacja → OBCIĄŻENIE CIEPLNE")
+    if abs(hr_coupling) > 0.7:
+        coup_label = "dostarczanie O₂ centralne" if hr_coupling < -0.7 else "ekstrakcja lokalna"
+        limiter_methods.append(f"HR-SmO₂ coupling → {coup_label}")
+
+    if len(limiter_methods) > 1:
+        reconciliation_note = (
+            "<font size='7' color='#95A5A6'><i>Uwaga: różne metody detekcji mogą wskazywać "
+            "różnych limiterów. Powyższy werdykt integruje: " +
+            " | ".join(limiter_methods) +
+            ". Priorytet ustalony wg hierarchii: okluzja mechaniczna > termoregulacja > "
+            "profil centralny/obwodowy.</i></font>"
+        )
+        elements.append(Paragraph(reconciliation_note, styles["body"]))
+    elements.append(Spacer(1, 4 * mm))
+
     # ==========================================================================
     # B. GREEN BOX - STRENGTHS
     # ==========================================================================
@@ -1161,7 +1194,7 @@ def build_page_executive_verdict(
     thermo_items.append("<b>2. TERMOREGULACJA</b>")
     thermo_items.append(f"• Max temp. głęboka: {max_core_temp:.1f} °C" if max_core_temp > 0 else "• Max temp. głęboka: ---")
     thermo_items.append(f"• Peak HSI: {peak_hsi:.1f}" if peak_hsi else "• Peak HSI: ---")
-    thermo_items.append(f"• Cardiac Drift (ΔEF): {ef_delta_pct:+.1f}%" if ef_delta_pct else "• Cardiac Drift: ---")
+    thermo_items.append(f"• Cardiac Drift (ΔEF): {ef_delta_pct:+.1f}%" if ef_delta_pct is not None else "• Cardiac Drift: ---")
     thermo_items.append("<i>Wzrost temperatury zwiększa koszt utrzymania mocy i przyspiesza dryf serca.</i>")
     
     thermo_color = "#E74C3C" if max_core_temp > 38.5 or peak_hsi > 8 else ("#F39C12" if max_core_temp > 38.0 or peak_hsi > 6 else "#7F8C8D")
@@ -1318,7 +1351,7 @@ def build_page_executive_verdict(
         f"<b>Typ testu:</b> Ramp Test | "
         f"<b>Metodologia:</b> Ventilatory & BreathRate + SmO₂ + Core Temp | "
         f"<b>Źródło VO₂max:</b> {vo2max_source} | "
-        f"<b>System:</b> Tri Dashboard v2.0"
+        f"<b>System:</b> Tri Dashboard v{RAMP_METHOD_VERSION}"
     )
     elements.append(Paragraph(footer_text, footer_style))
     
@@ -1355,7 +1388,7 @@ def build_page_cover(
     # === HEADER ===
     test_date = metadata.get("test_date", "Unknown")
     session_id = metadata.get("session_id", "")[:8]
-    method_version = metadata.get("method_version", "1.0.0")
+    method_version = metadata.get("method_version", RAMP_METHOD_VERSION)
     
     elements.append(Paragraph("1. PODSUMOWANIE WYKONAWCZE", styles["title"]))
     elements.append(Paragraph("<font size='14'>1.1 RAPORT POTESTOWY</font>", styles["center"]))
@@ -1403,9 +1436,9 @@ def build_page_cover(
     
     data = [
         ["Parametr", "Wartość", "Interpretacja"],
-        ["VT1 (Próg tlenowy)", f"{vt1_watts} W", "Strefa równowagi tlenowej"],
-        ["VT2 (Próg beztlenowy)", f"{vt2_watts} W", "Strefa progowa"],
-        ["Zakres Upper Aerobic", upper_aerobic_range, "Strefa tempo/threshold"],
+        ["VT1 (Próg wentylacyjny 1)", f"~{vt1_watts} W (+/- 15 W)", "Strefa równowagi tlenowej"],
+        ["VT2 (Próg wentylacyjny 2)", f"~{vt2_watts} W (+/- 12 W)", "Strefa progowa"],
+        ["Zakres Upper Aerobic*", upper_aerobic_range, "Pośrednia VT1→VT2 (inny model niż strefy poniżej)"],
         ["Critical Power (CP)", f"{cp_watts} W", "Moc krytyczna"],
         ["W' (Rezerwa)", f"{w_prime_kj} kJ", "Rezerwa anaerobowa"],
     ]
@@ -1527,17 +1560,21 @@ def build_page_thresholds(
     
     # === EXPLANATION ===
     elements.append(Paragraph(
-        "Progi zostały wykryte na podstawie zmian w wentylacji (oddychaniu) podczas testu.",
+        "Progi zostały wykryte na podstawie zmian w wentylacji (oddychaniu) podczas testu. "
+        "<b>Uwaga:</b> VT1/VT2 to progi <i>wentylacyjne</i>, powiązane z progami mleczanowymi "
+        "(LT1/LT2), ale <b>nie identyczne</b> z nimi. VT1 typowo wypada ~10-15 W poniżej LT1 "
+        "u wytrenowanych kolarzy (Pallares et al. 2016). Wartości podane jako zakresy "
+        "odzwierciedlają niepewność metody detekcji z VE (Kim et al. 2021, ACSM/ESSA 2024).",
         styles["body"]
     ))
     elements.append(Paragraph(
-        "<b>VT1 (Próg tlenowy):</b> Moment, gdy organizm zaczyna intensywniej pracować. "
-        "Możesz jechać komfortowo przez wiele godzin.",
+        "<b>VT1 (Próg wentylacyjny 1):</b> Moment, gdy organizm zaczyna intensywniej pracować. "
+        "Możesz jechać komfortowo przez wiele godzin. Powiązany z LT1, ale nie identyczny.",
         styles["body"]
     ))
     elements.append(Paragraph(
-        "<b>VT2 (Próg beztlenowy):</b> Punkt, powyżej którego wysiłek staje się bardzo ciężki. "
-        "Oddychasz ciężko, nie możesz swobodnie mówić.",
+        "<b>VT2 (Próg wentylacyjny 2 / RCP):</b> Punkt kompensacji oddechowej, powyżej którego wysiłek staje się bardzo ciężki. "
+        "Oddychasz ciężko, nie możesz swobodnie mówić. Odpowiada w przybliżeniu LT2/MLSS.",
         styles["body"]
     ))
     elements.append(Spacer(1, 6 * mm))
@@ -1571,8 +1608,8 @@ def build_page_thresholds(
 
     data = [
         ["Próg", "Moc [W]", "HR [bpm]", "VE [L/min]", "BR [br/min]"],
-        ["VT1 (Próg tlenowy)", format_thresh(vt1_watts, vt1_range), fmt(vt1_hr), fmt(vt1_ve), fmt(vt1_br)],
-        ["VT2 (Próg beztlenowy)", format_thresh(vt2_watts, vt2_range), fmt(vt2_hr), fmt(vt2_ve), fmt(vt2_br)],
+        ["VT1 (Próg wentylacyjny 1)", format_thresh(vt1_watts, vt1_range), fmt(vt1_hr), fmt(vt1_ve), fmt(vt1_br)],
+        ["VT2 (Próg went. 2 / RCP)", format_thresh(vt2_watts, vt2_range), fmt(vt2_hr), fmt(vt2_ve), fmt(vt2_br)],
     ]
     
     table = Table(data, colWidths=[42 * mm, 42 * mm, 28 * mm, 28 * mm, 28 * mm])
@@ -1643,14 +1680,14 @@ def build_page_smo2(smo2_data, smo2_manual, figure_paths, styles):
         ]))
         return card_table
     
-    slope_color = "#E74C3C" if slope < -6 else ("#F39C12" if slope < -3 else "#2ECC71")
-    slope_interp = "Szybka desaturacja" if slope < -6 else ("Umiarkowana" if slope < -3 else "Stabilna")
+    slope_color = "#E74C3C" if slope < -10 else ("#F39C12" if slope < -5 else "#2ECC71")
+    slope_interp = "Szybka (>10%/100W)" if slope < -10 else ("Umiarkowana (5-10%)" if slope < -5 else "Łagodna (<5%)")
     card1 = build_metric_card("DESATURACJA", f"{slope:.1f}", "%/100W", slope_interp, slope_color)
 
     if halftime:
-        ht_color = "#2ECC71" if halftime < 15 else ("#F39C12" if halftime <= 30 else "#E74C3C")
-        ht_interp = "Świetny (<15s)" if halftime < 15 else ("Normalny (15-30s)" if halftime <= 30 else "Wolny (>30s)")
-        card2 = build_metric_card("REOKSYGENACJA", f"{halftime:.0f}", "sekund", ht_interp, ht_color)
+        ht_color = "#2ECC71" if halftime < 20 else ("#F39C12" if halftime <= 45 else "#E74C3C")
+        ht_interp = "Szybki (<20s)" if halftime < 20 else ("Typowy po rampie (20-45s)" if halftime <= 45 else f"Wolny (>45s)")
+        card2 = build_metric_card("REOKSYGENACJA", f"{halftime:.0f}", "sekund (po rampie)", ht_interp, ht_color)
     else:
         card2 = build_metric_card("REOKSYGENACJA", "---", "sekund", "Brak danych", "#7F8C8D")
 
@@ -1730,13 +1767,13 @@ def build_page_smo2(smo2_data, smo2_manual, figure_paths, styles):
     lt1_smo2_line = fmt_pct(lt1_smo2_pct)
     lt2_smo2_line = fmt_pct(lt2_smo2_pct)
 
-    lt1_card = [Paragraph("<font size='9' color='#7F8C8D'>SmO₂ LT1</font>", styles["center"]),
+    lt1_card = [Paragraph("<font size='9' color='#7F8C8D'>SmO₂-T1 (powiązany z LT1)</font>", styles["center"]),
                 Paragraph(f"<font size='14'><b>{fmt(lt1)} W</b></font>", styles["center"]),
                 Paragraph(f"<font size='9'>@ {fmt(lt1_hr)} bpm</font>", styles["center"])]
     if lt1_smo2_line:
         lt1_card.append(Paragraph(f"<font size='9' color='#1ABC9C'>{lt1_smo2_line}</font>", styles["center"]))
 
-    lt2_card = [Paragraph("<font size='9' color='#7F8C8D'>SmO₂ LT2</font>", styles["center"]),
+    lt2_card = [Paragraph("<font size='9' color='#7F8C8D'>SmO₂-T2 (powiązany z LT2)</font>", styles["center"]),
                 Paragraph(f"<font size='14'><b>{fmt(lt2)} W</b></font>", styles["center"]),
                 Paragraph(f"<font size='9'>@ {fmt(lt2_hr)} bpm</font>", styles["center"])]
     if lt2_smo2_line:
@@ -1765,7 +1802,7 @@ def build_page_smo2(smo2_data, smo2_manual, figure_paths, styles):
                     "metabolic": ["Późniejszy drop point", "Mniejszy slope", "Lepsza tolerancja kwasu"]}
         exp_list = expected.get(limiter_type, ["Poprawa ogólna", "Stabilniejsza saturacja", "Lepszy klirens"])
         
-        for i, rec in enumerate(recommendations[:3]):
+        for i, rec in enumerate(recommendations[:5]):
             exp_resp = exp_list[i] if i < len(exp_list) else "Poprawa wydolności"
             card_content = [Paragraph(f"<font size='10'><b>{i+1}. {rec}</b></font>", styles["body"]),
                            Paragraph(f"<font size='8' color='#27AE60'>Spodziewany efekt: {exp_resp}</font>", styles["body"])]
@@ -1792,10 +1829,11 @@ def build_page_smo2(smo2_data, smo2_manual, figure_paths, styles):
     elements.append(Paragraph("<b>WZORZEC PORÓWNAWCZY</b>", styles["subheading"]))
     elements.append(Spacer(1, 2 * mm))
     
-    # Interpret metrics for benchmark
-    slope_interp_full = "Typowe dla limitu centralnego" if slope < -4 else ("Umiarkowane - balans C/P" if slope < -2 else "Stabilne - limit lokalny")
+    # Interpret metrics for benchmark (Vasquez Bonilla 2023: -5 to -15%/100W trained cyclists)
+    slope_interp_full = "Szybka desaturacja (ref: -5 do -15%/100W wytren.)" if slope < -10 else ("Umiarkowana (typowa dla wytrenowanych)" if slope < -5 else "Łagodna — dobra zdolność oksydacyjna")
     if halftime:
-        ht_interp_full = "Świetny (<15s)" if halftime < 15 else ("Normalny (15-30s)" if halftime <= 30 else "Wolny (>30s)")
+        # Arnold et al. 2024: HRT vastus lat trained = 8-17s (submaks), post-ramp slower
+        ht_interp_full = "Szybki (post-ramp <20s = wysoka kapil.)" if halftime < 20 else ("Typowy po teście maks. (20-45s)" if halftime <= 45 else "Wolny — sugeruje niską gęstość kapil.")
     else:
         ht_interp_full = "Brak danych"
     coup_interp_full = "Silna dominacja serca (centralny)" if abs(coupling) > 0.6 else ("Zrównoważona" if abs(coupling) > 0.3 else "Dominacja obwodowa (lokalna)")
@@ -1867,7 +1905,55 @@ def build_page_smo2(smo2_data, smo2_manual, figure_paths, styles):
         ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
     ]))
     elements.append(conclusion_box)
-    
+    elements.append(Spacer(1, 6 * mm))
+
+    # ==========================================================================
+    # 7. CROSS-VALIDATION VT vs SmO2 + THb CONTEXT
+    # ==========================================================================
+
+    # Cross-validation note
+    vt1_cross = smo2_manual.get("lt1_watts", "---")
+    vt2_cross = smo2_manual.get("lt2_watts", "---")
+
+    cross_note_parts = []
+    cross_note_parts.append(
+        "<b>WALIDACJA KRZYŻOWA VT vs SmO₂:</b> "
+        "Progi wentylacyjne (VT) i progi oksygenacji mięśniowej (SmO₂-T) "
+        "to <i>różne sygnały fizjologiczne</i> (Feldmann et al. 2022, Perrey & Ferrari 2024). "
+    )
+
+    try:
+        vt1_f = float(smo2_manual.get("lt1_watts", 0) or 0)
+        vt2_f = float(smo2_manual.get("lt2_watts", 0) or 0)
+        vt1_ref = float(smo2_data.get("thresholds", {}).get("vt1_watts", 0) or 0) if isinstance(smo2_data.get("thresholds"), dict) else 0
+        vt2_ref = float(smo2_data.get("thresholds", {}).get("vt2_watts", 0) or 0) if isinstance(smo2_data.get("thresholds"), dict) else 0
+
+        if vt1_f > 0 and vt1_ref > 0:
+            div1 = abs(vt1_f - vt1_ref) / vt1_ref * 100
+            cross_note_parts.append(
+                f"Rozbieżność T1 vs VT1: {div1:.0f}% "
+                f"({'dobra zgodność' if div1 < 10 else 'umiarkowana — interpretować ostrożnie' if div1 < 15 else 'KRYTYCZNA — wymagana weryfikacja'}). "
+            )
+    except (ValueError, TypeError):
+        pass
+
+    cross_note_parts.append(
+        "Zgodność ICC SmO₂-T1 vs VT1 = 0.53 (umiarkowana), T2 vs VT2 = 0.80 (dobra) wg Perrey & Ferrari 2024."
+    )
+
+    elements.append(Paragraph("".join(cross_note_parts), styles["small"]))
+    elements.append(Spacer(1, 3 * mm))
+
+    # THb context note
+    elements.append(Paragraph(
+        "<b>Nota THb (Total Hemoglobin):</b> "
+        "THb jest wskaźnikiem objętości krwi w mięśniu (Alvares et al. 2020, r=0.72-0.83 z przepływem Doppler). "
+        "Rosnący THb = dobra wazodylatacja i perfuzja. Spadający THb przy umiarkowanej mocy = "
+        "ograniczenie naczyniowe lub mechaniczna kompresja. SmO₂ odzwierciedla zarówno "
+        "zwiększoną ekstrakcję O₂ JAK I zmniejszoną objętość krwi — THb pomaga rozróżnić te mechanizmy.",
+        styles["small"]
+    ))
+
     return elements
 
 
@@ -1976,6 +2062,55 @@ def build_page_pdc(
         styles["body"]
     ))
 
+    # === W' RECONSTITUTION INFO ===
+    elements.append(Spacer(1, 6 * mm))
+    elements.append(Paragraph("<b>REKONSTYTUCJA W' (Caen et al. 2021)</b>", styles["subheading"]))
+    elements.append(Spacer(1, 2 * mm))
+
+    try:
+        w_prime_val = float(w_prime_kj) if w_prime_kj not in ("brak danych", None, "") else 0
+        cp_val = float(cp_watts) if cp_watts not in ("brak danych", None, "") else 0
+    except (ValueError, TypeError):
+        w_prime_val = 0
+        cp_val = 0
+
+    if w_prime_val > 0 and cp_val > 0:
+        # Biexponential recovery model parameters (Caen 2021)
+        tau_fast = 300  # ~5min fast component
+        tau_slow = 900  # ~15min slow component
+
+        recon_data = [
+            ["Czas poniżej CP", "% W' odzyskane", "W' dostępne", "Praktyczny kontekst"],
+            ["30 sekund", "~10%", f"~{w_prime_val * 0.10:.1f} kJ", "Mikro-recovery w peletonie"],
+            ["2 minuty", "~30%", f"~{w_prime_val * 0.30:.1f} kJ", "Przerwa między atakami"],
+            ["5 minut", "~55%", f"~{w_prime_val * 0.55:.1f} kJ", "Recovery po podjeździe"],
+            ["10 minut", "~75%", f"~{w_prime_val * 0.75:.1f} kJ", "Pełna regeneracja po ataku"],
+            ["20 minut", "~90%", f"~{w_prime_val * 0.90:.1f} kJ", "Prawie pełne recovery"],
+        ]
+
+        recon_table = Table(recon_data, colWidths=[35 * mm, 30 * mm, 30 * mm, 70 * mm])
+        recon_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), HexColor("#2C3E50")),
+            ('TEXTCOLOR', (0, 0), (-1, 0), HexColor("#FFFFFF")),
+            ('FONTNAME', (0, 0), (-1, -1), FONT_FAMILY),
+            ('FONTNAME', (0, 0), (-1, 0), FONT_FAMILY_BOLD),
+            ('FONTSIZE', (0, 0), (-1, -1), 8),
+            ('ALIGN', (1, 0), (2, -1), 'CENTER'),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('GRID', (0, 0), (-1, -1), 0.5, HexColor("#555555")),
+            ('ROWHEIGHT', (0, 0), (-1, -1), 9 * mm),
+            ('BACKGROUND', (0, 1), (-1, -1), HexColor("#f8f9fa")),
+            ('BACKGROUND', (2, 1), (2, -1), HexColor("#E8F6EF")),
+        ]))
+        elements.append(recon_table)
+        elements.append(Spacer(1, 2 * mm))
+        elements.append(Paragraph(
+            "<font size='7' color='#95A5A6'><i>Wartości orientacyjne — rzeczywista rekonstytucja zależy od "
+            "intensywności recovery (im niżej pod CP, tym szybciej), stanu zmęczenia i treningu. "
+            "Model biexponential (Caen et al. 2021, MSSE).</i></font>",
+            styles["body"]
+        ))
+
     return elements
 
 
@@ -2027,12 +2162,14 @@ def build_page_interpretation(
     cp_watts = f"{cp_num:.0f}" if cp_num else "brak danych"
     
     # === VT1 ===
-    elements.append(Paragraph("Próg tlenowy (VT1)", styles["heading"]))
+    elements.append(Paragraph("Próg wentylacyjny 1 (VT1)", styles["heading"]))
     elements.append(Paragraph(
-        f"Twój próg tlenowy wynosi około <b>{vt1_watts} W</b>. "
+        f"Twój pierwszy próg wentylacyjny wynosi około <b>{vt1_watts} W (+/- 15 W)</b>. "
         "To moc, przy której możesz jechać komfortowo przez wiele godzin. "
         "Oddychasz spokojnie, możesz swobodnie rozmawiać. "
-        "Treningi poniżej VT1 budują bazę tlenową i służą regeneracji.",
+        "Treningi poniżej VT1 budują bazę tlenową i służą regeneracji. "
+        "<i>Uwaga: VT1 jest powiązany z pierwszym progiem mleczanowym (LT1), ale typowo "
+        "wypada ~10-15 W niżej niż LT1 wyznaczony z krwi (Pallares et al. 2016).</i>",
         styles["body"]
     ))
     elements.append(Spacer(1, 2 * mm))
@@ -2052,12 +2189,13 @@ def build_page_interpretation(
     elements.append(Spacer(1, 6 * mm))
     
     # === VT2 ===
-    elements.append(Paragraph("Próg beztlenowy (VT2)", styles["heading"]))
+    elements.append(Paragraph("Próg wentylacyjny 2 / RCP (VT2)", styles["heading"]))
     elements.append(Paragraph(
-        f"Twój próg beztlenowy wynosi około <b>{vt2_watts} W</b>. "
+        f"Twój drugi próg wentylacyjny (punkt kompensacji oddechowej) wynosi około <b>{vt2_watts} W (+/- 12 W)</b>. "
         "Powyżej tej mocy wysiłek staje się bardzo wymagający. "
         "Oddychasz ciężko, nie możesz swobodnie mówić. "
-        "Treningi powyżej VT2 rozwijają VO₂max, ale wymagają pełnej regeneracji.",
+        "Treningi powyżej VT2 rozwijają VO₂max, ale wymagają pełnej regeneracji. "
+        "<i>VT2/RCP odpowiada w przybliżeniu drugiemu progowi mleczanowemu (LT2/MLSS).</i>",
         styles["body"]
     ))
     elements.append(Spacer(1, 2 * mm))
@@ -2079,8 +2217,8 @@ def build_page_interpretation(
     # === TEMPO ZONE ===
     elements.append(Paragraph("Strefa Tempo/Sweet Spot", styles["heading"]))
     elements.append(Paragraph(
-        f"Strefa między <b>{vt1_watts}</b> a <b>{vt2_watts} W</b> to Twoja strefa 'tempo'. "
-        "Intensywne treningi wytrzymałościowe na granicy progu mleczanowego. "
+        f"Strefa między <b>~{vt1_watts}</b> a <b>~{vt2_watts} W</b> to Twoja strefa 'tempo'. "
+        "Intensywne treningi wytrzymałościowe na granicy progu wentylacyjnego. "
         "W tej strefie możesz spędzać znaczną część czasu treningowego bez nadmiernego zmęczenia.",
         styles["body"]
     ))
@@ -2205,7 +2343,7 @@ def build_page_cardiovascular(cardio_data: Dict[str, Any], styles: Dict) -> List
     card3 = build_card("DRYF HR", f"{drift:.1f}", "%", drift_interp, drift_color)
     
     # HR Recovery or CCI
-    if recovery:
+    if recovery and recovery > 0:
         rec_color = "#2ECC71" if recovery > 25 else ("#F39C12" if recovery > 15 else "#E74C3C")
         rec_interp = "Szybki" if recovery > 25 else ("Średni" if recovery > 15 else "Wolny")
         card4 = build_card("REGENERACJA HR", f"{recovery:.0f}", "bpm/min", rec_interp, rec_color)
@@ -2279,7 +2417,7 @@ def build_page_cardiovascular(cardio_data: Dict[str, Any], styles: Dict) -> List
         
         type_colors = {"TRENINGOWA": "#3498DB", "ŚRODOWISKOWA": "#9B59B6", "REGENERACJA": "#1ABC9C", "WYDAJNOŚĆ": "#2ECC71", "DIAGNOSTYCZNA": "#E74C3C"}
         
-        for rec in recommendations[:3]:
+        for rec in recommendations[:5]:
             rec_type = rec.get("type", "TRENINGOWA")
             action = rec.get("action", "---")
             expected = rec.get("expected", "---")
@@ -2303,7 +2441,59 @@ def build_page_cardiovascular(cardio_data: Dict[str, Any], styles: Dict) -> List
             ]))
             elements.append(card_table)
             elements.append(Spacer(1, 2 * mm))
-    
+
+    # ==========================================================================
+    # 5. HR RECOVERY KINETICS
+    # ==========================================================================
+    if recovery and recovery > 0:
+        elements.append(Spacer(1, 4 * mm))
+        elements.append(Paragraph("<b>KINETYKA REGENERACJI HR</b>", styles["subheading"]))
+        elements.append(Spacer(1, 2 * mm))
+
+        # Classify recovery quality (Daanen et al. 2012; Buchheit 2014)
+        if recovery > 30:
+            rec_class = "DOSKONAŁA"
+            rec_color = "#2ECC71"
+            rec_note = ("Szybki powrót HR po wysiłku wskazuje na dobrą reaktywność "
+                       "parasympatyczną i wysoki poziom wytrenowania aerobowego.")
+        elif recovery > 20:
+            rec_class = "DOBRA"
+            rec_color = "#27AE60"
+            rec_note = ("Regeneracja HR w normie dla wytrenowanego zawodnika. "
+                       "Układ autonomiczny dobrze reaguje na zaprzestanie wysiłku.")
+        elif recovery > 12:
+            rec_class = "ŚREDNIA"
+            rec_color = "#F39C12"
+            rec_note = ("Umiarkowana regeneracja HR może wskazywać na niedobór treningu "
+                       "aerobowego lub skumulowane zmęczenie. Monitoruj HRV w kolejnych dniach.")
+        else:
+            rec_class = "WOLNA"
+            rec_color = "#E74C3C"
+            rec_note = ("Wolna regeneracja HR (<12 bpm/min) może sygnalizować overreaching, "
+                       "odwodnienie lub niedostateczną bazę aerobową. Rozważ dodatkowy odpoczynek.")
+
+        rec_box_style = ParagraphStyle('rec_box', parent=styles["body"],
+                                        textColor=HexColor("#FFFFFF"), fontSize=9)
+        rec_content = (
+            f"<b>HR Recovery 1 min: {recovery:.0f} bpm/min → {rec_class}</b><br/>"
+            f"{rec_note}<br/>"
+            f"<font size='7'><i>Ref: Buchheit 2014 — HRR1 >25 bpm = bardzo dobra fitness aerobowa; "
+            f"<12 bpm = ryzyko overreaching/niedostatecznej bazy Z2.</i></font>"
+        )
+        rec_box = Table(
+            [[Paragraph(rec_content, rec_box_style)]],
+            colWidths=[170 * mm]
+        )
+        rec_box.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, -1), HexColor(rec_color)),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('LEFTPADDING', (0, 0), (-1, -1), 10),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 10),
+            ('TOPPADDING', (0, 0), (-1, -1), 8),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+        ]))
+        elements.append(rec_box)
+
     return elements
 
 
@@ -2387,11 +2577,21 @@ def build_page_ventilation(vent_data: Dict[str, Any], styles: Dict) -> List:
     slope_color = "#2ECC71" if ve_slope < 0.25 else ("#F39C12" if ve_slope < 0.4 else "#E74C3C")
     slope_interp = "Stabilny" if ve_slope < 0.25 else ("Rosnący" if ve_slope < 0.4 else "Stromy")
     card4 = build_card("VE SLOPE", f"{ve_slope:.2f}", "L/min/100W", slope_interp, slope_color)
-    
+
     cards_row = Table([[card1, card2, card3, card4]], colWidths=[44 * mm] * 4)
     cards_row.setStyle(TableStyle([('ALIGN', (0, 0), (-1, -1), 'CENTER'), ('VALIGN', (0, 0), (-1, -1), 'TOP')]))
     elements.append(cards_row)
-    elements.append(Spacer(1, 6 * mm))
+    elements.append(Spacer(1, 2 * mm))
+
+    # Ramp test context note for peak ventilatory values
+    elements.append(Paragraph(
+        "<font size='8' color='#7F8C8D'><i>Uwaga: wartości szczytowe (VE max, RR max) dotyczą "
+        "końcowej fazy rampy — przy wyczerpaniu. Nie należy ich porównywać z normami "
+        "dla wysiłku stacjonarnego. Kluczowa jest dynamika wzrostu (VE slope) i stosunek "
+        "VE/RR (głębokość oddechu), które lepiej odzwierciedlają ekonomię wentylacyjną.</i></font>",
+        styles["body"]
+    ))
+    elements.append(Spacer(1, 4 * mm))
     
     # ==========================================================================
     # 2. BREATHING PATTERN
@@ -2453,9 +2653,90 @@ def build_page_ventilation(vent_data: Dict[str, Any], styles: Dict) -> List:
     
     if ve_bp:
         elements.append(Paragraph(f"<b>VE Breakpoint:</b> {ve_bp:.0f}W – punkt załamania kontroli wentylacyjnej", styles["body"]))
-    
+
+    elements.append(Spacer(1, 4 * mm))
+
+    # ==========================================================================
+    # 3b. TIDAL VOLUME DECOMPOSITION (VE = TV × RR)
+    # ==========================================================================
+    elements.append(Paragraph("<b>DEKOMPOZYCJA WENTYLACJI (VE = TV × RR)</b>", styles["subheading"]))
+    elements.append(Spacer(1, 2 * mm))
+
+    # TV = VE/RR at different intensities
+    tv_avg = ve_avg / rr_avg if rr_avg > 0 else 0
+    tv_max = ve_max / rr_max if rr_max > 0 else 0
+
+    if tv_avg > 0:
+        # Determine breathing strategy
+        if tv_max < tv_avg * 0.85:
+            strategy = "PŁYTKI-SZYBKI"
+            strategy_color = "#E74C3C"
+            strategy_note = ("Przy wysokiej intensywności VE rośnie głównie przez RR (częstotliwość), "
+                           "nie TV (głębokość). Wskazuje na limit mechaniczny klatki piersiowej lub "
+                           "nieefektywny wzorzec oddechowy.")
+        elif tv_max > tv_avg * 1.15:
+            strategy = "GŁĘBOKI-WOLNY"
+            strategy_color = "#27AE60"
+            strategy_note = ("Przy wysokiej intensywności TV rośnie proporcjonalnie do RR — "
+                           "efektywny wzorzec oddechowy z dobrą mechaniką klatki piersiowej.")
+        else:
+            strategy = "ZBALANSOWANY"
+            strategy_color = "#3498DB"
+            strategy_note = ("TV i RR rosną proporcjonalnie. Typowy wzorzec dla umiarkowanie "
+                           "wytrenowanych zawodników.")
+
+        tv_data = [
+            ["Parametr", "Średnia", "Szczyt", "Interpretacja"],
+            ["Objętość oddechowa (TV)", f"{tv_avg:.2f} L", f"{tv_max:.2f} L",
+             f"{'↑' if tv_max > tv_avg else '↓'} {abs(tv_max - tv_avg) / tv_avg * 100:.0f}% zmiana"],
+            ["Częstość (RR)", f"{rr_avg:.0f} /min", f"{rr_max:.0f} /min",
+             f"↑ {(rr_max - rr_avg) / rr_avg * 100:.0f}% wzrost"],
+            ["Strategia oddechowa", "", "", strategy],
+        ]
+
+        tv_table = Table(tv_data, colWidths=[45 * mm, 30 * mm, 30 * mm, 60 * mm])
+        tv_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), HexColor("#2C3E50")),
+            ('TEXTCOLOR', (0, 0), (-1, 0), HexColor("#FFFFFF")),
+            ('FONTNAME', (0, 0), (-1, -1), FONT_FAMILY),
+            ('FONTNAME', (0, 0), (-1, 0), FONT_FAMILY_BOLD),
+            ('FONTSIZE', (0, 0), (-1, -1), 8),
+            ('ALIGN', (1, 0), (2, -1), 'CENTER'),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('GRID', (0, 0), (-1, -1), 0.5, HexColor("#555555")),
+            ('ROWHEIGHT', (0, 0), (-1, -1), 10 * mm),
+            ('BACKGROUND', (0, 1), (-1, -1), HexColor("#f8f9fa")),
+            ('BACKGROUND', (3, 3), (3, 3), HexColor(strategy_color)),
+            ('TEXTCOLOR', (3, 3), (3, 3), HexColor("#FFFFFF")),
+            ('FONTNAME', (3, 3), (3, 3), FONT_FAMILY_BOLD),
+        ]))
+        elements.append(tv_table)
+        elements.append(Spacer(1, 2 * mm))
+        elements.append(Paragraph(f"<font size='8'><i>{strategy_note}</i></font>", styles["body"]))
+
+    elements.append(Spacer(1, 4 * mm))
+
+    # ==========================================================================
+    # 3c. VENTILATORY RESERVE
+    # ==========================================================================
+    # MVV (Maximal Voluntary Ventilation) estimation: MVV ≈ FEV1 × 40
+    # Without FEV1, use population estimate: MVV ≈ 200 L/min (trained male)
+    # Breathing reserve = (1 - VEmax/MVV) × 100
+    mvv_estimated = 200.0  # Conservative estimate for trained male cyclist
+    breathing_reserve = (1 - ve_max / mvv_estimated) * 100 if ve_max > 0 else 100
+    br_color = "#27AE60" if breathing_reserve > 30 else ("#F39C12" if breathing_reserve > 15 else "#E74C3C")
+    br_label = "Wystarczająca" if breathing_reserve > 30 else ("Ograniczona" if breathing_reserve > 15 else "Wyczerpana")
+
+    elements.append(Paragraph(
+        f"<b>REZERWA WENTYLACYJNA:</b> <font color='{br_color}'><b>{breathing_reserve:.0f}%</b> ({br_label})</font>"
+        f" — VE max {ve_max:.0f} L/min vs szacowane MVV ~{mvv_estimated:.0f} L/min. "
+        f"{'Płuca NIE są czynnikiem limitującym.' if breathing_reserve > 30 else 'Płuca MOGĄ być czynnikiem limitującym — rozważ spirometrię.'}"
+        f" <font size='7' color='#95A5A6'>(MVV szacowane; do precyzyjnej oceny wymagana spirometria)</font>",
+        styles["body"]
+    ))
+
     elements.append(Spacer(1, 6 * mm))
-    
+
     # ==========================================================================
     # 4. DECISION CARDS
     # ==========================================================================
@@ -2466,7 +2747,7 @@ def build_page_ventilation(vent_data: Dict[str, Any], styles: Dict) -> List:
         
         type_colors = {"TRENINGOWA": "#3498DB", "TECHNICZNA": "#9B59B6", "WYDAJNOŚĆ": "#2ECC71", "INTENSYWNOŚĆ": "#1ABC9C", "PILNA": "#E74C3C", "DIAGNOSTYKA": "#F39C12", "MEDYCZNA": "#E74C3C"}
         
-        for rec in recommendations[:3]:
+        for rec in recommendations[:5]:
             rec_type = rec.get("type", "TRENINGOWA")
             action = rec.get("action", "---")
             expected = rec.get("expected", "---")
@@ -2675,7 +2956,7 @@ def build_page_metabolic_engine(metabolic_data: Dict[str, Any], styles: Dict) ->
     elements.append(Paragraph(f"<font size='9' color='#7F8C8D'>{weeks} tygodni | {block.get('primary_focus', '')}</font>", styles["body"]))
     elements.append(Spacer(1, 3 * mm))
     
-    for i, session in enumerate(sessions[:4]):
+    for i, session in enumerate(sessions[:5]):
         name = session.get("name", "---")
         power = session.get("power_range", "---")
         duration = session.get("duration", "---")
@@ -3415,7 +3696,7 @@ def build_page_thermal(
     else:
         recommendations = [
             "Adaptacja wystarczająca - możesz startować w cieple",
-            "Utrzymuj nawodnienie 400-600ml/h",
+            "Utrzymuj nawodnienie 500-750ml/h + elektrolity (Na+ 500-700mg/L)",
             "Kontynuuj okresowy trening w cieple (1x/tyg)",
         ]
     
@@ -3551,35 +3832,35 @@ def build_page_thermal(
     
     # === CLASSIFICATION VERDICT BOX ===
     # INTEGRATION: Cardiac drift interpretation now considers thermal verdict
+    # NOTE: This is the MECHANISM diagnosis box. The RACE SIMULATION box follows separately.
     if has_drift_data:
         base_mechanism = drift_interp.get("mechanism", "")
         delta_pct_abs = abs(delta_pct)
-        
+
         # Integrate thermal verdict with cardiac drift interpretation
         if tolerance == "poor" and delta_pct_abs > 5:
-            # High thermal risk + significant cardiac drift = central fatigue
             verdict_text = (
-                "<b>ZMĘCZENIE CENTRALNE (thermal + cardiac drift)</b><br/>"
+                "<b>DIAGNOZA MECHANIZMU: ZMĘCZENIE CENTRALNE</b><br/>"
                 f"Słaba tolerancja cieplna + dryf EF {delta_pct:+.1f}% → "
                 "Redystrybucja krwi do skóry ogranicza perfuzję mięśniową. "
                 "Priorytet: adaptacja cieplna przed intensyfikacją treningu."
             )
-            drift_color = "#E74C3C"  # Red for high risk
+            drift_color = "#E74C3C"
         elif tolerance == "moderate" and delta_pct_abs > 7:
-            # Moderate thermal stress + elevated cardiac drift
             verdict_text = (
-                "<b>ZMĘCZENIE CENTRALNE (thermal stress)</b><br/>"
+                "<b>DIAGNOZA MECHANIZMU: STRES TERMICZNY</b><br/>"
                 f"Umiarkowana tolerancja cieplna + dryf EF {delta_pct:+.1f}% → "
                 "Obciążenie termiczne przyspiesza dryf sercowy. "
                 "Zalecana adaptacja cieplna 5-10 dni przed zawodami."
             )
-            drift_color = "#F39C12"  # Orange for warning
+            drift_color = "#F39C12"
         else:
-            # Normal cardiac drift - thermal status not a primary factor
-            verdict_text = f"{base_mechanism}" if base_mechanism else "<b>NORMALNY DRYF SERCOWY</b><br/>Stabilność EF w akceptowalnym zakresie."
-            # Keep original drift_color from classification
+            verdict_text = (
+                "<b>DIAGNOZA MECHANIZMU:</b> " +
+                (f"{base_mechanism}" if base_mechanism else "Stabilność EF w akceptowalnym zakresie — normalny dryf sercowy.")
+            )
     else:
-        verdict_text = "<b>BRAK DANYCH DRYFU</b><br/>Analiza drift wymaga danych EF (power/HR)."
+        verdict_text = "<b>DIAGNOZA MECHANIZMU:</b> Brak danych dryfu — analiza wymaga danych EF (power/HR)."
         drift_color = "#808080"
 
     verdict_style = ParagraphStyle('verdict_white', parent=styles["body"], textColor=HexColor("#FFFFFF"), fontSize=9)
@@ -3667,14 +3948,7 @@ def build_page_thermal(
     elements.append(Spacer(1, 2 * mm))
     
     if has_drift_data:
-        implications = drift_interp.get("training_implications", [])[:4]  # Limit to 4 items
-        # Add extra recommendations
-        extra_implications = [
-            "Monitoruj EF w czasie rzeczywistym podczas długich wysiłków >2h",
-            "Stosuj pre-cooling przed zawodami w gorącu (kamizelka lodowa, zimny napój)",
-            "Nawadniaj regularnie: 500-750ml/h + 500-1000mg Na+/h w gorącu"
-        ]
-        implications.extend(extra_implications[:2])  # Add 2 extra
+        implications = drift_interp.get("training_implications", [])[:5]
     else:
         implications = [
             "Brak danych do wygenerowania rekomendacji",
@@ -3901,6 +4175,30 @@ def build_page_biomech(
             elements.append(Paragraph("<b>WPŁYW NA STYL JAZDY</b>", styles["heading"]))
             elements.append(Spacer(1, 2 * mm))
             elements.append(Paragraph(riding_style, styles["body"]))
+            elements.append(Spacer(1, 2 * mm))
+            # Cadence context for occlusion interpretation (Hammer et al. 2021)
+            avg_cadence = metrics.get("avg_cadence", 0)
+            if avg_cadence and avg_cadence > 0:
+                if avg_cadence < 75:
+                    cad_note = (
+                        f"<b>Kontekst kadencji ({avg_cadence:.0f} RPM):</b> Niska kadencja zwiększa "
+                        "moment obrotowy na obrót i wydłuża fazę skurczu izometrycznego, "
+                        "nasilając mechaniczną okluzję naczyń (Hammer et al. 2021). "
+                        "Rozważ podniesienie kadencji do 85-95 RPM w strefach Z3-Z4, "
+                        "aby zmniejszyć szczytowe ciśnienie śródmięśniowe."
+                    )
+                elif avg_cadence > 100:
+                    cad_note = (
+                        f"<b>Kontekst kadencji ({avg_cadence:.0f} RPM):</b> Wysoka kadencja "
+                        "minimalizuje okluzję mechaniczną, ale zwiększa koszt metaboliczny "
+                        "koordynacji nerwowo-mięśniowej. Optymalny zakres: 85-95 RPM."
+                    )
+                else:
+                    cad_note = (
+                        f"<b>Kontekst kadencji ({avg_cadence:.0f} RPM):</b> Kadencja w optymalnym "
+                        "zakresie, równoważącym okluzję mechaniczną z kosztem metabolicznym."
+                    )
+                elements.append(Paragraph(cad_note, styles["body"]))
             elements.append(Spacer(1, 4 * mm))
         
         # === TRAINING RECOMMENDATIONS ===
@@ -3957,40 +4255,29 @@ def build_page_drift(
         elements.extend(_build_chart(figure_paths["drift_heatmap_smo2"], "Mapa Oksydacji (SmO2 vs Power)", styles))
         elements.append(Spacer(1, 4 * mm))
     
-    # Drift education block - EXPANDED
+    # Drift heatmap interpretation guide
     elements.append(Spacer(1, 6 * mm))
     elements.extend(_build_education_block(
-        "Dlaczego to ma znaczenie? (Cardiac Drift)",
-        "Dryf tętna to sygnał ostrzegawczy Twojego układu chłodzenia, którego nie wolno ignorować. "
-        "Jeśli przy stałej mocy tętno systematycznie rośnie, serce musi pracować ciężej, "
-        "by przetłoczyć krew nie tylko do mięśni, ale i do skóry w celu ochłodzenia organizmu.",
+        "Jak czytać mapy dryfu?",
+        "Mapy cieplne pokazują zmianę HR i SmO₂ w funkcji mocy i czasu. "
+        "Ciepłe kolory (czerwony/żółty) oznaczają narastający koszt utrzymania danej mocy — "
+        "im szybciej pojawiają się przy niższych watach, tym gorsza tolerancja obciążenia.",
         styles
     ))
-    
-    # Additional theory paragraphs
+
     elements.append(Spacer(1, 4 * mm))
     elements.append(Paragraph(
-        "<b>Fizjologia dryfu sercowego:</b> Wzrost temperatury rdzenia o każdy 1°C powoduje "
-        "przyrost HR o 8-10 uderzeń/min oraz spadek VO₂max o 1.5-2%. Przy temperaturze "
-        "rdzenia >39°C następuje ochronne ograniczenie rekrutacji jednostek motorycznych "
-        "przez ośrodkowy układ nerwowy (central governor). Efektywność serca (EF) spada, "
-        "ponieważ każdy wat mocy wymaga większego nakładu pracy serca.",
+        "<b>Mapa HR vs Power:</b> Pionowe przejście kolorów (zielony→żółty→czerwony) "
+        "przy stałej mocy oznacza dryf sercowy — serce pracuje coraz ciężej bez wzrostu "
+        "mocy mechanicznej. Próg >5% decoupling (Pa:Hr) sygnalizuje konieczność korekty pacingu.",
         styles["body"]
     ))
     elements.append(Spacer(1, 3 * mm))
     elements.append(Paragraph(
-        "<b>Konsekwencje startowe:</b> W wyścigu przy wysokiej temperaturze otoczenia dryf "
-        "HR >10% w ciągu pierwszych 30-45 min oznacza, że pacing musi być skorygowany w dół. "
-        "Kontynuacja planowanej mocy przy rosnącym HR prowadzi do przedwczesnego wyczerpania "
-        "glikogenu, kumulacji ciepła i potencjalnego DNF. Adaptacja cieplna (heat acclimation) "
-        "redukuje dryf o 15-20% po 10-14 dniach ekspozycji.",
-        styles["body"]
-    ))
-    elements.append(Spacer(1, 3 * mm))
-    elements.append(Paragraph(
-        "<b>Praktyczne zalecenia:</b> Monitoruj EF w czasie rzeczywistym. Jeśli EF spada >8% "
-        "w pierwszych 45 min, zmniejsz moc o 3-5%. Stosuj pre-cooling przed startem "
-        "(kamizelka lodowa, zimny napój 500ml). Nawadniaj 500-750ml/h + elektrolity (500-1000mg Na+/h).",
+        "<b>Mapa SmO₂ vs Power:</b> Spadek SmO₂ przy rosnącej mocy jest fizjologiczny. "
+        "Kluczowe jest tempo spadku: >15%/100W sugeruje ograniczoną zdolność ekstrakcji O₂ "
+        "lub mechaniczną okluzję naczyń (Vasquez Bonilla et al. 2023). Stabilizacja SmO₂ "
+        "przy wysokich watach może wskazywać na osiągnięcie plateau ekstrakcji.",
         styles["body"]
     ))
     
@@ -4039,12 +4326,14 @@ def build_page_kpi_dashboard(
         except (ValueError, TypeError): return ("n/a", "BRAK", "#808080")
 
     def get_smo2_drift_status(val):
-        """SmO2 Drift status."""
+        """SmO2 Drift status — uses absolute value for classification."""
         if val is None: return ("n/a", "BRAK", "#808080")
         try:
             v = float(val)
-            if v < 5: return (f"{v:.1f}%", "STABILNY", "#27AE60")
-            else: return (f"{v:.1f}%", "ZMĘCZENIE OBWODOWE", "#F39C12")
+            v_abs = abs(v)
+            if v_abs < 5: return (f"{v:.1f}%", "STABILNY", "#27AE60")
+            elif v_abs < 15: return (f"{v:.1f}%", "UMIARKOWANY DRYF", "#F39C12")
+            else: return (f"{v:.1f}%", "WYSOKI DRYF OBWODOWY", "#E74C3C")
         except (ValueError, TypeError): return ("n/a", "BRAK", "#808080")
     
     # === GET VALUES ===
@@ -4076,7 +4365,7 @@ def build_page_kpi_dashboard(
         header,
         ["Efficiency Factor (EF)", ef_val, "<1.8 słabo | 1.8-2.2 ok | >2.2 b.dobrze", ef_status],
         ["Pa:Hr Decoupling", pahr_val, "<5% stab. | 5-8% ostrz. | >8% ryzyko", pahr_status],
-        ["SmO₂ Drift", smo2_val, "<5% stabilny | >5% zmęczenie", smo2_status],
+        ["SmO₂ Drift", smo2_val, "<5% stab. | 5-15% umiark. | >15% wysoki", smo2_status],
         ["VO₂max", vo2max_val, f"Źródło: {vo2max_source}", vo2max_status],
     ]
     

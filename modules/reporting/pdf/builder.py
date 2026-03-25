@@ -128,7 +128,7 @@ def map_ramp_json_to_pdf_data(report_json: Dict[str, Any], manual_overrides: Opt
     mapped_meta = {
         "test_date": meta.get("test_date", "brak danych"),
         "session_id": meta.get("session_id", "nieznany"),
-        "method_version": meta.get("method_version", "1.0.0"),
+        "method_version": meta.get("method_version", "2.0.0"),
         "protocol": meta.get("protocol", "Ramp Test"),
         "notes": meta.get("notes", "-"),
         "pmax_watts": pmax_val,
@@ -560,7 +560,7 @@ def build_ramp_pdf(
     
     # Store metadata for footer
     session_id = metadata.get("session_id", "")[:8]
-    method_version = metadata.get("method_version", "1.0.0")
+    method_version = metadata.get("method_version", "2.0.0")
     
     def add_page_footer(canvas, doc):
         """Add footer, watermark, and page bookmark to each page."""

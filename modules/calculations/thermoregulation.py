@@ -251,28 +251,30 @@ def _generate_hr_ef_connection(
 
 
 def _generate_thermo_recommendations(profile: ThermoProfile) -> List[str]:
-    """Generate specific thermoregulation recommendations."""
+    """Generate specific thermoregulation recommendations (~5 per tolerance)."""
     if profile.heat_tolerance == "poor":
         return [
-            "PRIORYTET: Trening w cieple (heat acclimation) - 10-14 dni, 60-90min @ Z2",
-            "Strategie chlodzenia: pre-cooling (kamizelka lodowa), chlodzenie przemienne",
-            "Nawodnienie: 500-800ml/h + elektrolity, pij PRZED pragnieniem",
-            "Unikaj zawodow w temperaturze >28C do czasu adaptacji",
-            "Obniz intensywnosc o 5-10% w ciepłe dni",
+            "HEAT ACCLIMATION: 10-14 dni, 60-90min @ Z2 w >28°C lub sauna 15-20min post-trening",
+            "PRE-COOLING: kamizelka lodowa 15min + zimny napój 500ml 30min przed startem",
+            "NAWODNIENIE: 600-800ml/h + 750-1000mg Na+/h, kontrola wagi przed/po (max -2%)",
+            "TRENING WIECZORNY: sesje >Z3 wyłącznie w temp. <20°C do czasu adaptacji (4-6 tyg.)",
+            "CHŁODZENIE AKTYWNE: woda na głowę/kark co 10-15min, lód w butelce na długich treningach",
         ]
-    elif profile.heat_tolerance == "moderate":
+    if profile.heat_tolerance == "moderate":
         return [
-            "Rozważ 5-7 dni treningu w cieple przed ważnymi zawodami",
-            "Chlodzenie zewnetrzne: woda na glowe i kark co 15-20 min",
-            "Nawodnienie: kontroluj wage przed/po treningu (max -2%)",
-            "W cieple preferuj poranne lub wieczorne starty",
+            "ADAPTACJA PRZED ZAWODAMI: 5-7 dni treningu Z2 (60min) w cieple lub sauna post-trening",
+            "CHŁODZENIE ZEWNĘTRZNE: woda na głowę i kark co 15-20min w treningach >90min",
+            "NAWODNIENIE: 500-700ml/h + elektrolity, kontrola wagi (utrata <2% = OK)",
+            "TIMING: preferuj poranne (6-9) lub wieczorne (18-21) sesje intensywne latem",
+            "MICRO-HEAT: 1×/tydz. 30min Z2 w ubraniu izolacyjnym — utrzymanie częściowej adaptacji",
         ]
-    else:
-        return [
-            "Adaptacja cieplna wystarczaca - mozesz startowac w ciepłe dni",
-            "Utrzymuj nawodnienie na poziomie 400-600ml/h",
-            "Kontynuuj okresowy trening w cieple (1x/tydzien) dla utrzymania adaptacji",
-        ]
+    return [
+        "UTRZYMANIE ADAPTACJI: 1×/tydz. sesja 60min Z2 w cieple lub sauna 15min post-trening",
+        "NAWODNIENIE BAZOWE: 400-600ml/h w treningu, 500mg Na+/h w gorące dni (>25°C)",
+        "SWOBODNA INTENSYWNOŚĆ: bez ograniczeń termicznych — pełne interwały Z4-Z5 w każdych warunkach",
+        "SYMULACJA WYŚCIGOWA: 1×/mies. trening w warunkach docelowych — walidacja strategii chłodzenia",
+        "MONITORING: core temp <39.0°C jako limit, po przekroczeniu zakończ sesję intensywną",
+    ]
 
 
 def format_thermo_for_report(profile: ThermoProfile) -> Dict[str, Any]:

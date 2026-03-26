@@ -363,65 +363,107 @@ def generate_cardio_recommendations(
     """Generate training and environmental recommendations."""
     
     recommendations = []
-    
+
     if status == "efficient":
         recommendations = [
             {
                 "type": "TRENINGOWA",
-                "action": "Utrzymanie treningu spolaryzowanego 80/20",
-                "expected": "Stabilizacja PP i EF na obecnym poziomie",
+                "action": "Trening polaryzowany 80/20: 4 sesje Z2 (2-4h) + 1 sesja interwałowa/tydz.",
+                "expected": "Utrzymanie PP i EF na obecnym poziomie",
                 "risk": "low"
             },
             {
                 "type": "PERFORMANCE",
-                "action": "Można zwiększyć intensywność interwałów",
+                "action": "VO₂max interwały: 5×4min @ 106-120% FTP, przerwa 3min, kadencja 90-100rpm",
                 "expected": "Wzrost PP o 5-10% w 4-6 tygodni",
                 "risk": "low"
-            }
+            },
+            {
+                "type": "TRENINGOWA",
+                "action": "Sweet Spot progresywny: 3×15min → 2×25min @ 88-94% FTP w ciągu 4 tyg.",
+                "expected": "Wzrost FTP o 3-5% bez nadmiernego obciążenia",
+                "risk": "low"
+            },
+            {
+                "type": "PERFORMANCE",
+                "action": "Sprint powtarzalny: 8×30s all-out / 4.5min recovery — rozwój W' i mocy szczytowej",
+                "expected": "Poprawa rekrutacji jednostek motorycznych, Pmax +3-5%",
+                "risk": "low"
+            },
+            {
+                "type": "TRENINGOWA",
+                "action": "Symulacja wyścigu: 90min z 3× wstawkami 10min @ 95-100% FTP w warunkach docelowych",
+                "expected": "Walidacja strategii pacingowej i żywieniowej",
+                "risk": "low"
+            },
         ]
     elif status == "compensating":
         recommendations = [
             {
                 "type": "TRENINGOWA",
-                "action": "Więcej objętości Z2 (3-4h sesje)",
-                "expected": "Poprawa PP o 0.1-0.2 W/bpm",
+                "action": "Z2 rozbudowane: 3-4h @ 55-75% FTP, kadencja swobodna — budowa pojemności minutowej",
+                "expected": "Poprawa PP o 0.1-0.2 W/bpm w 6-8 tygodni",
                 "risk": "low"
             },
             {
                 "type": "ŚRODOWISKOWA",
-                "action": "Nawadnianie 500-750ml/h + elektrolity",
-                "expected": "Redukcja Drift o 2-3%",
+                "action": "Nawadnianie: 500-750ml/h + 500-1000mg Na+/h, ważenie przed/po treningu",
+                "expected": "Redukcja Drift o 2-3%, stabilniejszy HR",
+                "risk": "low"
+            },
+            {
+                "type": "TRENINGOWA",
+                "action": "Tempo łagodne: 3×12min @ 82-88% FTP, przerwa 5min — stymulacja progu bez przeciążenia",
+                "expected": "Poprawa ekonomii pracy serca przy submax wysiłku",
                 "risk": "low"
             },
             {
                 "type": "RECOVERY",
-                "action": "Dłuższe przerwy między sesjami intensywnymi",
-                "expected": "Lepsza adaptacja sercowa",
+                "action": "48h przerwy między sesjami intensywnymi, aktywna regeneracja: 60min @ <55% FTP",
+                "expected": "Pełna adaptacja sercowa między bodźcami",
                 "risk": "low"
-            }
+            },
+            {
+                "type": "TRENINGOWA",
+                "action": "Fartlek Z2/Z3: 2h z 5× wstawkami 3min @ 85-90% FTP — łagodny bodziec krążeniowy",
+                "expected": "Poprawa odpowiedzi hemodynamicznej bez kumulacji zmęczenia",
+                "risk": "low"
+            },
         ]
     else:  # decompensating
         recommendations = [
             {
                 "type": "TRENINGOWA",
-                "action": "Redukcja TSS o 20-30%, focus na Z2",
-                "expected": "Spadek Drift poniżej 5%",
+                "action": "Redukcja TSS o 30%: 2 tygodnie wyłącznie Z1-Z2, max 90min/sesja",
+                "expected": "Spadek Drift poniżej 5%, odbudowa rezerwy sercowej",
                 "risk": "medium"
             },
             {
                 "type": "ŚRODOWISKOWA",
-                "action": "Adaptacja termiczna (10-14 dni w cieple)",
-                "expected": "Spadek HR o 10-15 bpm w cieple",
+                "action": "Heat acclimation: 10-14 dni, 60min @ Z2 w >28°C lub sauna 15min post-trening",
+                "expected": "Spadek HR o 10-15 bpm w cieple, poprawa termoregulacji",
                 "risk": "medium"
             },
             {
+                "type": "TRENINGOWA",
+                "action": "Micro-interwały: 10×1min @ 95-100% FTP / 2min recovery — bodziec przy niskim koszcie",
+                "expected": "Utrzymanie zdolności tlenowej bez kumulacji dryfu",
+                "risk": "low"
+            },
+            {
+                "type": "RECOVERY",
+                "action": "Aktywna regeneracja: pływanie 45min + joga 30min, 2-3×/tydz. zamiast roweru",
+                "expected": "Redukcja obciążenia ortopedycznego i sercowego",
+                "risk": "low"
+            },
+            {
                 "type": "DIAGNOSTYCZNA",
-                "action": "Rozważ badanie kardiologiczne (EKG, echo)",
-                "expected": "Wykluczenie patologii",
+                "action": "Badanie kardiologiczne: EKG wysiłkowe + echo serca + panel krwi (ferrytyna, TSH)",
+                "expected": "Wykluczenie patologii, identyfikacja niedoborów",
                 "risk": "high"
-            }
+            },
         ]
-    
+
     return recommendations
 
 

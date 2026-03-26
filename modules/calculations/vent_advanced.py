@@ -344,61 +344,103 @@ def generate_vent_recommendations(
         return [
             {
                 "type": "PERFORMANCE",
-                "action": "Utrzymanie obecnego treningu polaryzowanego",
-                "expected": "Stabilny VE/RR ratio, brak zmian",
+                "action": "Trening polaryzowany 80/20 — utrzymanie bieżącego planu z kontrolą VE/RR",
+                "expected": "Stabilny VE/RR ratio, utrzymanie ekonomii oddechowej",
                 "risk": "low"
             },
             {
                 "type": "INTENSYWNOŚĆ",
-                "action": "Można zwiększyć objętość interwałów VO₂max",
-                "expected": "Poprawa VE peak o 5-10%",
+                "action": "VO₂max interwały: 5×4min @ 106-120% FTP, świadomy oddech 2:3 (wdech:wydech)",
+                "expected": "Poprawa VE peak o 5-10%, wzrost tolerancji hipoksji",
                 "risk": "low"
-            }
-        ]
-    
-    elif status == "compensatory":
-        return [
+            },
             {
                 "type": "TRENINGOWA",
-                "action": "Tempo 2×20min z kontrolowanym oddechem",
-                "expected": "Wzrost VE/RR o 0.3-0.5",
+                "action": "Tempo z kontrolą oddechu: 2×20min @ 88-93% FTP, rytm oddechowy zsynchronizowany z kadencją",
+                "expected": "Utrzymanie niskiego RR przy wysokiej mocy, VE/RR >2.5",
                 "risk": "low"
             },
             {
                 "type": "TECHNICZNA",
-                "action": "Praca nad tolerancją CO₂ (box breathing)",
-                "expected": "Spadek RR o 5-10/min przy tej samej mocy",
+                "action": "Nasal breathing Z2: 30min oddychanie wyłącznie nosem @ 55-65% FTP — tolerancja CO₂",
+                "expected": "Wzrost BOLT score o 3-5s, głębszy oddech na co dzień",
+                "risk": "low"
+            },
+            {
+                "type": "PERFORMANCE",
+                "action": "Symulacja wyścigu: 60-90min z 3× blokami 10min @ 95% FTP — walidacja kontroli wentylacji",
+                "expected": "Stabilny VE slope mimo kumulacji zmęczenia",
+                "risk": "low"
+            },
+        ]
+
+    if status == "compensatory":
+        return [
+            {
+                "type": "TRENINGOWA",
+                "action": "Tempo z kontrolą oddechu: 3×12min @ 85-90% FTP, wdech 3s / wydech 5s",
+                "expected": "Wzrost VE/RR o 0.3-0.5, głębszy oddech",
+                "risk": "low"
+            },
+            {
+                "type": "TECHNICZNA",
+                "action": "Box breathing: 4×(4s wdech / 4s pauza / 4s wydech / 4s pauza) × 5 cykli, 2×/dziennie",
+                "expected": "Spadek spoczynkowego RR o 2-4/min, lepsza tolerancja CO₂",
+                "risk": "low"
+            },
+            {
+                "type": "TRENINGOWA",
+                "action": "Z2 z oddechem przeponowym: 2h @ 60-70% FTP, focus na brzuchu nie klatce",
+                "expected": "Poprawa TV (objętości oddechowej) o 10-15%",
+                "risk": "low"
+            },
+            {
+                "type": "INTENSYWNOŚĆ",
+                "action": "Over-under z kontrolą RR: 3×(4min@95% + 2min@80% FTP), RR <45/min nawet w bloku wyżej",
+                "expected": "Lepsza kontrola wentylacji w zmiennym obciążeniu",
                 "risk": "low"
             },
             {
                 "type": "DIAGNOSTYKA",
-                "action": "Kontrola spirometryczna (FEV1, FVC)",
-                "expected": "Wykluczenie ograniczeń mechanicznych",
-                "risk": "low"
-            }
-        ]
-    
-    else:  # unstable
-        return [
-            {
-                "type": "PILNA",
-                "action": "Redukcja intensywności o 15-20%",
-                "expected": "Spadek RR max poniżej 50/min",
-                "risk": "medium"
-            },
-            {
-                "type": "TECHNICZNA",
-                "action": "Nauka oddychania przeponowego pod wysiłkiem",
-                "expected": "Wzrost TV, spadek RR",
+                "action": "Spirometria kontrolna: FEV1, FVC, MVV — wykluczenie ograniczeń mechanicznych",
+                "expected": "Identyfikacja ewentualnych restrykcji/obstrukcji",
                 "risk": "low"
             },
-            {
-                "type": "MEDYCZNA",
-                "action": "Konsultacja pulmonologiczna",
-                "expected": "Wykluczenie EIB/astmy wysiłkowej",
-                "risk": "high"
-            }
         ]
+
+    # unstable
+    return [
+        {
+            "type": "PILNA",
+            "action": "Redukcja intensywności o 15-20%: max Z3, sesje do 75min — stabilizacja oddechu",
+            "expected": "Spadek RR max poniżej 50/min w ciągu 2-3 tygodni",
+            "risk": "medium"
+        },
+        {
+            "type": "TECHNICZNA",
+            "action": "Oddychanie przeponowe pod wysiłkiem: 3×10min @ Z2, ręce na brzuchu — nauka wzorca",
+            "expected": "Wzrost TV (objętości oddechowej), spadek RR o 5-10/min",
+            "risk": "low"
+        },
+        {
+            "type": "TRENINGOWA",
+            "action": "Z2 krótkie: 5×60min @ <65% FTP w tygodniu — baza aerobowa bez stresu wentylacyjnego",
+            "expected": "Poprawa ekonomii oddechowej w 4-6 tygodni",
+            "risk": "low"
+        },
+        {
+            "type": "TECHNICZNA",
+            "action": "Wydłużony wydech: trening 2×/dziennie 5min — wydech 2× dłuższy niż wdech (np. 3s/6s)",
+            "expected": "Aktywacja układu przywspółczulnego, redukcja hiperwen­tylacji",
+            "risk": "low"
+        },
+        {
+            "type": "MEDYCZNA",
+            "action": "Konsultacja pulmonologiczna: spirometria + test prowokacyjny metacholiną — wykluczenie EIB/astmy",
+            "expected": "Diagnostyka i ewentualne leczenie ograniczeń wentylacyjnych",
+            "risk": "high"
+        },
+    ]
 
 
 # =============================================================================

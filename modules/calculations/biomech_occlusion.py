@@ -187,30 +187,32 @@ def _generate_riding_style_impact(
 
 
 def _generate_training_recommendations(profile: OcclusionProfile) -> List[str]:
-    """Generate specific training recommendations."""
+    """Generate specific training recommendations (~5 per classification)."""
+    torque_limit = int(profile.torque_at_minus_10) if profile.torque_at_minus_10 > 0 else "max"
+
     if profile.classification == "high":
         return [
-            "Priorytet: PRACA NAD KADENCJĄ - interwały 3x5min @ 95-100rpm w Z3-Z4",
-            "Treningi submaksymalne z monitoringiem SmO₂ - utrzymuj SmO₂ >55%",
-            "Single Leg Drills - poprawa efektywności pedalowania",
-            "Unikaj: ciężkich przełożeń przy mocach >85% CP",
+            "KADENCJA WYSOKA: 3×5min @ 95-105rpm w Z3-Z4, przerwa 3min — redukcja okluzji mechanicznej",
+            "SINGLE LEG DRILLS: 6×2min każda noga @ Z2, kadencja 85-95rpm — poprawa koordynacji",
+            "SPIN-UPS: 8×30s stopniowe przyspieszanie do 120+rpm — rekrutacja szybkich włókien bez siły",
+            "Z2 KADENCYJNE: 2-3h @ 60-70% FTP, kadencja >90rpm — baza aerobowa bez okluzji",
+            "INTERWAŁY SUBMAKS: 5×4min @ 90-95% FTP, kadencja 95rpm — VO₂ bodziec przy niskim momencie",
         ]
-    elif profile.classification == "moderate":
+    if profile.classification == "moderate":
         return [
-            "Zróżnicowany trening: 60% kadencja / 40% siła",
-            "Interwały FRC z rotacją kadencji (80-90-100 rpm)",
-            "Wspinaczki siedzące z kontrolowanym momentem (<{}Nm)".format(
-                int(profile.torque_at_minus_10) if profile.torque_at_minus_10 > 0 else "max"
-            ),
-            "Ćwiczenia core - redukcja kompensacyjnych ruchów miednicy",
+            f"WSPINACZKA SIEDZĄCA: 4×6min @ Z3, kadencja 75-80rpm, moment <{torque_limit}Nm — kontrolowana siła",
+            "KADENCJA ROTACYJNA: 3×10min @ Z3 (3min@80rpm → 3min@90rpm → 4min@100rpm) — elastyczność",
+            "FRC INTERWAŁY: 5×3min @ 105-115% FTP, kadencja 85-95rpm, przerwa 5min — moc bez okluzji",
+            "CORE + MIEDNICA: 2×/tydz. 30min stabilizacja tułowia + stretching bioder — redukcja kompensacji",
+            "OVER-UNDER Z KADENCJĄ: 3×(3min@95% + 2min@85% FTP), kadencja >88rpm — tolerancja progu",
         ]
-    else:
-        return [
-            "Możliwość dalszej pracy siłowej - interwały Big Gear",
-            "Treningi Strength Endurance: 4x10min @ 50-60rpm, Z3",
-            "Wspinaczki stojące z wysokim momentem obrotowym",
-            "Rozważ trening kolarski na bieżni z oporem (hill repeats)",
-        ]
+    return [
+        "BIG GEAR INTERWAŁY: 4×8min @ 50-60rpm, Z3 — budowa siły mięśniowej",
+        "STRENGTH ENDURANCE: 3×12min @ Z3, 55-65rpm, wzniesienie 4-6% — siła specjalna",
+        "WSPINACZKA STOJĄCA: 6×2min all-out na 8-10% wzniesieniu — rekrutacja + moment obrotowy",
+        "HILL REPEATS: 5×4min @ 105% FTP, wzniesienie 5-8%, kadencja swobodna — FRC + siła",
+        "TORQUE TEST: 3×5min @ Z3, 45-55rpm na płaskim — rozwój maksymalnego momentu",
+    ]
 
 
 def format_occlusion_for_report(profile: OcclusionProfile) -> Dict[str, Any]:

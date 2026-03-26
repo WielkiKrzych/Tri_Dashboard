@@ -303,61 +303,69 @@ def _generate_key_signals_summary(profile: CardiacDriftProfile) -> str:
 
 
 def _generate_training_implications(profile: CardiacDriftProfile) -> List[str]:
-    """Generate specific training recommendations based on drift analysis."""
-    implications = []
-    
+    """Generate specific training recommendations based on drift analysis.
+
+    Always returns ~5 concrete training units with intensity, duration,
+    cadence and recovery context.
+    """
     if profile.drift_classification == "minimal":
-        implications = [
-            "Możesz utrzymać obecny plan treningowy",
-            "Interwały do 20min w strefie Z4 są bezpieczne",
-            "Monitoruj utrzymanie stabilności EF w kolejnych testach",
+        return [
+            "INTERWAŁY VO₂max: 5×4min @ 106-120% FTP, przerwa 3min, kadencja 90-100rpm",
+            "TEMPO DŁUGIE: 2×20min @ 88-93% FTP, przerwa 5min, EF powinno być stabilne",
+            "SWEET SPOT: 3×15min @ 88-94% FTP, przerwa 3min — budowa wytrzymałości progowej",
+            "Z2 DŁUGIE: 3-4h @ 55-75% FTP, kadencja swobodna — utrzymanie bazy aerobowej",
+            "SPRINT POWTARZALNY: 8×30s all-out / 4.5min recovery — praca nad W' i rekrutacją",
         ]
-    elif profile.drift_classification == "moderate":
+
+    if profile.drift_classification == "moderate":
         if profile.drift_type == "thermal":
-            implications = [
-                "SKRÓĆ INTERWAŁY do 10-15min w cieple",
-                "Stosuj chłodzenie: woda na głowę co 10-15min",
-                "Rozważ 5-7 dni adaptacji cieplnej",
-                "Obniż intensywność o 5% w temperaturze >25°C",
+            return [
+                "HEAT ADAPT Z2: 60-90min @ 60-70% FTP w cieple (>25°C) lub w ubraniu izolacyjnym",
+                "TEMPO KRÓTKIE: 4×10min @ 85-90% FTP, przerwa 5min — skrócone vs standardu",
+                "KADENCJA CHŁODZĄCA: 3×12min @ Z3, kadencja 95-105rpm — mniejszy koszt termiczny",
+                "Z2 Z CHŁODZENIEM: 2h @ 60-70% FTP + woda na głowę co 15min — adaptacja cieplna",
+                "INTERWAŁY WIECZORNE: 5×5min @ 95-100% FTP, temp. <20°C — obejście stresu termicznego",
             ]
-        elif profile.drift_type == "metabolic":
-            implications = [
-                "PRIORYTET: Treningi tempo 2x20min Z3",
-                "Praca nad wytrzymałością mięśniową (strength endurance)",
-                "Zwiększ kadencję o 5-10 rpm dla lepszej perfuzji",
+        if profile.drift_type == "metabolic":
+            return [
+                "TEMPO PROGOWE: 2×20min @ 88-93% FTP, przerwa 5min — budowa progu metabolicznego",
+                "STRENGTH ENDURANCE: 4×8min @ Z3, 50-60rpm — poprawa siły mięśniowej",
+                "OVER-UNDER: 3×(4min@95% + 2min@85% FTP) × 3 — tolerancja zmian pH",
+                "Z2 DŁUGIE Z KADENCJĄ: 3h @ 65% FTP, co 30min blok 5min @ 100rpm — perfuzja",
+                "FARTLEK Z2/Z3: 90min z 6× wstawkami 3min @ Z3 — stymulacja bez przeciążenia",
             ]
-        else:
-            implications = [
-                "Zredukuj długość interwałów o 20%",
-                "Zwiększ przerwy między powtórzeniami",
-                "Monitoruj HR i SmO2 podczas treningów",
-            ]
-    else:  # high
-        if profile.drift_type == "thermal":
-            implications = [
-                "PILNE: Obniż intensywność o 10-15% w cieple",
-                "LIMIT: Interwały max 8-10min",
-                "Heat acclimation: 10-14 dni, 60min @ Z2 w 30°C",
-                "Pre-cooling przed zawodami (kamizelka lodowa)",
-                "Monitoruj EF w czasie rzeczywistym podczas długich wysiłków >2h",
-                "Stosuj pre-cooling przed zawodami w gorącu (kamizelka lodowa, zimny napój)",
-            ]
-        elif profile.drift_type == "metabolic":
-            implications = [
-                "PILNE: Redukcja intensywności o 10%",
-                "Mikrocykle recovery po każdych 2 tygodniach intensywnych",
-                "Sprawdź poziom żelaza i hemoglobiny",
-                "Rozważ suplementację B12 i żelaza",
-            ]
-        else:
-            implications = [
-                "KONSULTACJA LEKARSKA: wysoki dryf kardiologiczny",
-                "Obniż intensywność do Z2-Z3",
-                "EKG wysiłkowe rekomendowane",
-                "Max Interval: 5-8min do stabilizacji",
-            ]
-    
-    return implications
+        return [
+            "TEMPO UMIARKOWANE: 3×12min @ 85-90% FTP, przerwa 4min — redukcja obciążenia vs standardu",
+            "Z2 ROZBUDOWANE: 2.5-3h @ 60-70% FTP — budowa bazy bez dryfu",
+            "INTERWAŁY SUBMAKS: 5×5min @ 90-95% FTP, przerwa 3min — kontrolowany bodziec",
+            "KADENCJA ROTACYJNA: 3×10min @ Z3 (80→90→100rpm co 3min) — poprawa pedalowania",
+            "RECOVERY AKTYWNE: 60-90min @ <55% FTP + stretching — regeneracja układu krążenia",
+        ]
+
+    # high drift
+    if profile.drift_type == "thermal":
+        return [
+            "PILNE — HEAT ACCLIMATION: 10-14 dni, 60min @ Z2 w warunkach >28°C lub sauna post-trening",
+            "INTERWAŁY KRÓTKIE: 6×3min @ 95-105% FTP, przerwa 4min — bodźce bez kumulacji ciepła",
+            "PRE-COOLING SESSION: 15min zimny napój (500ml) + kamizelka, potem 4×5min @ Z3",
+            "Z2 NOCNE/PORANNE: 2h @ 60-65% FTP, temp. <18°C — obejście stresu termicznego",
+            "SIŁOWE W KLIMAT.: 4×6min @ 50-60rpm, Z3 w klimatyzowanym pomieszczeniu — siła bez ciepła",
+        ]
+    if profile.drift_type == "metabolic":
+        return [
+            "REDUKCJA TSS: 2 tygodnie @ 70% planowanej objętości — rozładowanie metaboliczne",
+            "Z2 REGENERACYJNE: 3×90min @ 55-65% FTP — odbudowa mitochondriów bez obciążenia",
+            "TEMPO OSTROŻNE: 2×12min @ 82-88% FTP, przerwa 6min — łagodna stymulacja progu",
+            "SUPLEMENTACJA + DIAGNOSTYKA: badanie żelaza/ferrytyny/B12, korekcja niedoborów",
+            "MICRO-INTERWAŁY: 10×1min @ 100% FTP / 2min recovery — bodziec przy niskim koszcie",
+        ]
+    return [
+        "KONSULTACJA LEKARSKA: EKG wysiłkowe + echo serca przed kontynuacją intensywnego treningu",
+        "Z2 WYŁĄCZNIE: max 90min @ <65% FTP, HR <75% HRmax — bezpieczna baza",
+        "KONTROLOWANY TEST: 20min @ Z3 z monitoringiem EF — ocena postępu co 2 tygodnie",
+        "ODDYCHANIE + CORE: 30min ćwiczenia oddechowe + stabilizacja tułowia — wsparcie układu",
+        "PŁYWANIE/ROWER STACJONARNY: 45-60min @ Z2 — niskoudarowy trening w kontrolowanych warunkach",
+    ]
 
 
 def format_drift_for_report(profile: CardiacDriftProfile) -> Dict[str, Any]:

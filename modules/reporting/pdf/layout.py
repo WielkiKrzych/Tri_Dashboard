@@ -774,12 +774,10 @@ def build_page_executive_summary(
     elements.append(Spacer(1, 6 * mm))
     
     # ==========================================================================
-    # 5. TRAINING DECISION CARDS - na osobnej stronie dla spójności
+    # 5. TRAINING DECISION CARDS
     # ==========================================================================
-    
-    # PageBreak przed sekcją DECYZJE TRENINGOWE aby karty były na tej samej stronie co nagłówek
-    elements.append(PageBreak())
-    
+
+    elements.append(Spacer(1, 4 * mm))
     elements.append(Paragraph("<b>DECYZJE TRENINGOWE</b>", styles["subheading"]))
     elements.append(Spacer(1, 3 * mm))
     
@@ -1434,16 +1432,36 @@ def build_page_cover(
     else:
         upper_aerobic_range = "brak danych"
     
+    # Use Paragraph cells for automatic text wrapping
+    cell_style = ParagraphStyle('cell', parent=styles["body"], fontSize=9, leading=11,
+                                alignment=0, fontName=FONT_FAMILY)
+    cell_style_bold = ParagraphStyle('cell_bold', parent=cell_style, fontName=FONT_FAMILY_BOLD)
+    cell_style_center = ParagraphStyle('cell_center', parent=cell_style, alignment=1)
+    header_style = ParagraphStyle('header_white', parent=cell_style_bold,
+                                  textColor=HexColor("#FFFFFF"), alignment=1)
+
     data = [
-        ["Parametr", "Wartość", "Interpretacja"],
-        ["VT1 (Próg wentylacyjny 1)", f"~{vt1_watts} W (+/- 15 W)", "Strefa równowagi tlenowej"],
-        ["VT2 (Próg wentylacyjny 2)", f"~{vt2_watts} W (+/- 12 W)", "Strefa progowa"],
-        ["Zakres Upper Aerobic*", upper_aerobic_range, "Pośrednia VT1→VT2 (inny model niż strefy poniżej)"],
-        ["Critical Power (CP)", f"{cp_watts} W", "Moc krytyczna"],
-        ["W' (Rezerwa)", f"{w_prime_kj} kJ", "Rezerwa anaerobowa"],
+        [Paragraph("Parametr", header_style),
+         Paragraph("Wartość", header_style),
+         Paragraph("Interpretacja", header_style)],
+        [Paragraph("VT1 (Próg wentylacyjny 1)", cell_style_bold),
+         Paragraph(f"~{vt1_watts} W (+/- 15 W)", cell_style_center),
+         Paragraph("Strefa równowagi tlenowej", cell_style)],
+        [Paragraph("VT2 (Próg wentylacyjny 2)", cell_style_bold),
+         Paragraph(f"~{vt2_watts} W (+/- 12 W)", cell_style_center),
+         Paragraph("Strefa progowa", cell_style)],
+        [Paragraph("Zakres Upper Aerobic*", cell_style_bold),
+         Paragraph(upper_aerobic_range, cell_style_center),
+         Paragraph("Pośrednia VT1→VT2 (inny model niż strefy poniżej)", cell_style)],
+        [Paragraph("Critical Power (CP)", cell_style_bold),
+         Paragraph(f"{cp_watts} W", cell_style_center),
+         Paragraph("Moc krytyczna", cell_style)],
+        [Paragraph("W' (Rezerwa)", cell_style_bold),
+         Paragraph(f"{w_prime_kj} kJ", cell_style_center),
+         Paragraph("Rezerwa anaerobowa", cell_style)],
     ]
-    
-    table = Table(data, colWidths=[55 * mm, 35 * mm, 55 * mm])
+
+    table = Table(data, colWidths=[55 * mm, 40 * mm, 75 * mm])
     table.setStyle(get_table_style())
     elements.append(table)
     elements.append(Spacer(1, 8 * mm))
@@ -3650,7 +3668,7 @@ def build_page_thermal(
     elements.append(Spacer(1, 6 * mm))
     
     # === HR/EF CONNECTION ===
-    elements.append(PageBreak())
+    elements.append(Spacer(1, 6 * mm))
     elements.append(Paragraph("<b>POŁĄCZENIE Z DRYFEM HR I EF</b>", styles["heading"]))
     elements.append(Spacer(1, 2 * mm))
     elements.append(Paragraph(
@@ -3712,8 +3730,8 @@ def build_page_thermal(
     ]))
     elements.append(rec_table)
     
-    # FORCE PAGE BREAK BEFORE CARDIAC DRIFT ANALYSIS
-    elements.append(PageBreak())
+    # Conditional spacing before cardiac drift analysis
+    elements.append(Spacer(1, 8 * mm))
     
     # ========================================================================
     # CARDIAC DRIFT ANALYSIS - PRO LAYOUT
@@ -4008,7 +4026,7 @@ def build_page_biomech(
         metrics = biomech_data["metrics"]
         classification = biomech_data.get("classification", {})
         
-        elements.append(PageBreak())
+        elements.append(Spacer(1, 6 * mm))
         elements.append(Paragraph("KLUCZOWE LICZBY", styles["heading"]))
         elements.append(Spacer(1, 2 * mm))
         
@@ -4358,18 +4376,33 @@ def build_page_kpi_dashboard(
         vo2max_status = "BRAK"
         vo2max_color = "#808080"
     
-    # === BUILD KPI TABLE - Polish chars with proper encoding ===
-    header = ["Metryka", "Wartość", "Zakres Ref.", "Status"]
-    
+    # === BUILD KPI TABLE - Polish chars with proper encoding, Paragraph wrapping ===
+    kpi_cell = ParagraphStyle('kpi_cell', parent=styles["body"], fontSize=9, leading=11,
+                              fontName=FONT_FAMILY, alignment=0)
+    kpi_cell_c = ParagraphStyle('kpi_cell_c', parent=kpi_cell, alignment=1)
+    kpi_header = ParagraphStyle('kpi_header', parent=kpi_cell, fontName=FONT_FAMILY_BOLD,
+                                textColor=HexColor("#FFFFFF"), alignment=1)
+    kpi_status = ParagraphStyle('kpi_status', parent=kpi_cell, fontName=FONT_FAMILY_BOLD,
+                                textColor=HexColor("#FFFFFF"), alignment=1, fontSize=8, leading=10)
+
     rows = [
-        header,
-        ["Efficiency Factor (EF)", ef_val, "<1.8 słabo | 1.8-2.2 ok | >2.2 b.dobrze", ef_status],
-        ["Pa:Hr Decoupling", pahr_val, "<5% stab. | 5-8% ostrz. | >8% ryzyko", pahr_status],
-        ["SmO₂ Drift", smo2_val, "<5% stab. | 5-15% umiark. | >15% wysoki", smo2_status],
-        ["VO₂max", vo2max_val, f"Źródło: {vo2max_source}", vo2max_status],
+        [Paragraph("Metryka", kpi_header), Paragraph("Wartość", kpi_header),
+         Paragraph("Zakres Ref.", kpi_header), Paragraph("Status", kpi_header)],
+        [Paragraph("Efficiency Factor (EF)", kpi_cell), Paragraph(ef_val, kpi_cell_c),
+         Paragraph("<1.8 słabo | 1.8-2.2 ok | >2.2 b.dobrze", kpi_cell),
+         Paragraph(ef_status, kpi_status)],
+        [Paragraph("Pa:Hr Decoupling", kpi_cell), Paragraph(pahr_val, kpi_cell_c),
+         Paragraph("<5% stab. | 5-8% ostrz. | >8% ryzyko", kpi_cell),
+         Paragraph(pahr_status, kpi_status)],
+        [Paragraph("SmO₂ Drift", kpi_cell), Paragraph(smo2_val, kpi_cell_c),
+         Paragraph("<5% stab. | 5-15% umiark. | >15% wysoki", kpi_cell),
+         Paragraph(smo2_status, kpi_status)],
+        [Paragraph("VO₂max", kpi_cell), Paragraph(vo2max_val, kpi_cell_c),
+         Paragraph(f"Źródło: {vo2max_source}", kpi_cell),
+         Paragraph(vo2max_status, kpi_status)],
     ]
-    
-    table = Table(rows, colWidths=[40 * mm, 28 * mm, 65 * mm, 32 * mm])
+
+    table = Table(rows, colWidths=[38 * mm, 25 * mm, 60 * mm, 42 * mm])
     
     # Dynamic styling based on status colors
     table_style = [

@@ -377,25 +377,37 @@ def classify_smo2_limiter(metrics: SmO2AdvancedMetrics) -> Tuple[str, float, str
 
 
 def get_recommendations_for_limiter(limiter_type: str) -> List[str]:
-    """Get training recommendations for a given limiter type."""
+    """Get training recommendations for a given limiter type (~5 per type)."""
     recommendations = {
         "local": [
-            "Sweet Spot 2×20min @ 88-94% FTP",
-            "Siłowy 4×8min @ 50-60rpm pod LT1",
-            "Objętość Z2 3-4h ciągła",
+            "SWEET SPOT: 2×20min @ 88-94% FTP, kadencja 85-95rpm — kapilaryzacja mięśniowa",
+            "SIŁOWY POD LT1: 4×8min @ 50-60rpm, Z3 — poprawa perfuzji przy wysokim momencie",
+            "Z2 CIĄGŁE: 3-4h @ 55-75% FTP — rozbudowa sieci kapilarnej i gęstości mitochondriów",
+            "SmO₂ INTERWAŁY: 5×3min @ Z4 z monitoringiem SmO₂ — utrzymuj >50% w przerwie",
+            "KADENCJA WYSOKA Z3: 3×10min @ 85-90% FTP, 95-105rpm — redukcja okluzji mechanicznej",
         ],
         "central": [
-            "VO₂max 4-6×4min @ 106-120% FTP",
-            "Tempo 60-90min @ 80-90% FTP",
-            "Z2 długie 4-5h",
+            "VO₂max INTERWAŁY: 5×4min @ 106-120% FTP, przerwa 3min, kadencja 90-100rpm",
+            "TEMPO CIĄGŁE: 60-90min @ 80-90% FTP — podniesienie pojemności minutowej serca",
+            "Z2 DŁUGIE: 4-5h @ 55-70% FTP — budowa objętości wyrzutowej (SV)",
+            "TABATA ZMODYFIKOWANE: 8×40s @ 130% FTP / 20s recovery × 3 serie — stymulacja VO₂max",
+            "PROGRESYWNE: start Z2 → finish Z4, 90min z ostatnimi 20min @ 90-95% FTP — adaptacja centralna",
         ],
         "metabolic": [
-            "Z2 bardzo długie 4-5h @ 60-70% FTP",
-            "Treningi na czczo 1.5-2h",
-            "Tempo pod LT1 2×30min",
+            "Z2 BARDZO DŁUGIE: 4-5h @ 60-70% FTP — przesunięcie fat/carb crossover w prawo",
+            "FASTED RIDE: 1.5-2h @ 55-65% FTP na czczo (rano) — stymulacja oksydacji lipidów",
+            "TEMPO POD LT1: 2×30min @ 75-85% FTP — poprawa clearance laktatanu",
+            "Z2 Z FAT ADAPT: 3h @ 60-70% FTP z niskim carb intake (<30g/h) — trening metaboliczny",
+            "DOUBLE DAY: rano 90min Z2 fasted + wieczór 60min Z2 normalnie — podwójny bodziec mitochondrialny",
         ],
     }
-    return recommendations.get(limiter_type, ["Trening zrównoważony"])
+    return recommendations.get(limiter_type, [
+        "TRENING ZRÓWNOWAŻONY: 2×Z2 (2-3h) + 1×tempo (2×15min @ Z3) + 1×interwały (4×4min @ Z4)/tydz.",
+        "DIAGNOSTYKA LIMITERA: powtórz test rampowy z pełnym monitoringiem SmO₂/HR/VE",
+        "Z2 BAZOWE: 3×2h @ 55-70% FTP — budowa fundamentu aerobowego",
+        "MICRO-INTERWAŁY: 10×1min @ 100% FTP / 2min recovery — uniwersalny bodziec",
+        "CROSS-TRENING: pływanie/bieg 2×/tydz. — rozwój ogólnej wydolności bez specyficznego obciążenia",
+    ])
 
 
 # =============================================================================

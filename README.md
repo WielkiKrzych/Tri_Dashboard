@@ -37,7 +37,20 @@ Tri_Dashboard to platforma analityczna dla **trenerów**, **naukowców sportu** 
 | **Physiology** | SmO2 kinetics, HRV (DFA α1), termoregulacja, biomechanika |
 | **Thresholds** | 4-point CPET: VT1_onset, VT1_steady, RCP_onset, RCP_steady |
 | **AI Coach** | Multi-sensor fusion, limiter diagnosis, rekomendacje |
-| **Reports** | PDF 32-stronicowy, DOCX, PNG export, SQLite baza danych |
+| **Reports** | PDF ~36-stronicowy, DOCX, PNG export, SQLite baza danych, CLI generator |
+
+### 🆕 PDF Report v3.2 — New Sections & Microcycle Periodization (2026-03-26)
+
+4 new PDF report pages, expanded training recommendations, CLI PDF generator.
+
+| Category | Change | Reference |
+|:---------|:-------|:----------|
+| **NEW** | HRV/DFA Alpha-1 page: zone classification, RMSSD/SDNN, autonomic fitness | Mateo-March 2024, Iannetta 2024 |
+| **NEW** | Skin Temperature Gradient page: core-skin ΔT for thermoregulatory efficiency | Périard 2021, Racinais 2019 |
+| **NEW** | Altitude Adjustment page: VO₂max sea-level equivalent table | Wehrlin & Hallen 2006 |
+| **NEW** | Microcycle Periodization page: weekly schedule from training block with TSS | Auto-generated |
+| **NEW** | CLI PDF generator: `scripts/generate_pdf_from_csv.py` for headless PDF generation | — |
+| **IMPROVED** | 5 diverse training recommendations per classification in all 6 calc modules | biomech, cardiac_drift, cardio, smo2, thermo, vent |
 
 ### 🆕 PDF Report Quality Audit v3.1 (2026-03-25)
 

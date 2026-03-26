@@ -44,6 +44,10 @@ from .layout import (
     build_title_page,
     build_contact_footer,
     build_page_test_profile,
+    build_page_hrv,
+    build_page_skin_temp,
+    build_page_altitude,
+    build_page_microcycle,
 )
 from ...calculations.executive_summary import generate_executive_summary
 
@@ -731,8 +735,15 @@ def build_ramp_pdf(
             styles=styles
         ))
         story.append(PageBreak())
-    
-    # === 2.5 KRZYWA MOCY (PDC) ===
+
+        # === 2.5 PERIODYZACJA MIKROCYKLOWA ===
+        story.extend(build_page_microcycle(
+            metabolic_data=metabolic_data,
+            styles=styles
+        ))
+        story.append(PageBreak())
+
+    # === 2.6 KRZYWA MOCY (PDC) ===
     story.extend(build_page_pdc(
         cp_model=cp_model,
         metadata=metadata,
@@ -740,7 +751,16 @@ def build_ramp_pdf(
         styles=styles
     ))
     story.append(PageBreak())
-    
+
+    # === 2.7 KOREKTA ŚRODOWISKOWA (WYSOKOŚĆ) ===
+    canonical_data = pdf_data.get("canonical_physiology", {})
+    if canonical_data:
+        story.extend(build_page_altitude(
+            canonical_data=canonical_data,
+            styles=styles
+        ))
+        story.append(PageBreak())
+
     # ===========================================================================
     # ROZDZIAŁ 3: DIAGNOSTYKA UKŁADÓW
     # ===========================================================================
@@ -772,6 +792,15 @@ def build_ramp_pdf(
     ))
     story.append(PageBreak())
     
+    # === 3.5 HRV / DFA ALPHA-1 ===
+    hrv_data = pdf_data.get("hrv_analysis", {})
+    if hrv_data and hrv_data.get("summary", {}).get("windows_analyzed", 0) > 0:
+        story.extend(build_page_hrv(
+            hrv_data=hrv_data,
+            styles=styles
+        ))
+        story.append(PageBreak())
+
     # === 3.4 BIOMECHANIKA ===
     from .layout import build_page_biomech, build_page_drift_kpi
     biomech_data = pdf_data.get("biomech_occlusion", {})
@@ -813,7 +842,17 @@ def build_ramp_pdf(
         styles=styles
     ))
     story.append(PageBreak())
-    
+
+    # === 4.4 GRADIENT TEMPERATURY (RDZEŃ − SKÓRA) ===
+    time_series = pdf_data.get("time_series", {})
+    if time_series.get("core_temp") and time_series.get("skin_temp"):
+        story.extend(build_page_skin_temp(
+            thermo_data=pdf_data.get("thermo_analysis", {}),
+            time_series=time_series,
+            styles=styles
+        ))
+        story.append(PageBreak())
+
     # ===========================================================================
     # ROZDZIAŁ 5: PODSUMOWANIE
     # ===========================================================================

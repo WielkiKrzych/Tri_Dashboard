@@ -4553,6 +4553,799 @@ def build_page_limiters(
 # PAGE 8: DODATKOWE ANALIZY
 # ============================================================================
 
+# ============================================================================
+# PAGE: HRV / DFA ALPHA-1 ANALYSIS
+# ============================================================================
+
+
+def build_page_hrv(hrv_data: Dict[str, Any], styles: Dict) -> List:
+    """Build HRV / DFA Alpha-1 analysis page.
+
+    Displays DFA Alpha-1 zone classification, RMSSD/SDNN metrics,
+    and autonomic fitness interpretation with literature references.
+    """
+
+    elements = []
+
+    elements.append(Paragraph(
+        "<font size='14'>3.5 ZMIENNOŚĆ RYTMU SERCA (HRV / DFA Alpha-1)</font>",
+        styles["center"]
+    ))
+    elements.append(Paragraph(
+        "<font size='10' color='#7F8C8D'>Analiza fraktalna RR — klasyfikacja stref, fitness autonomiczny</font>",
+        styles["center"]
+    ))
+    elements.append(Spacer(1, 6 * mm))
+
+    # Intro
+    elements.append(Paragraph(
+        "DFA Alpha-1 to wskaźnik fraktalnej korelacji odstępów R-R serca. "
+        "Wartość Alpha-1 ≈ 0.75 odpowiada progowi aerobowemu (HRVT1), "
+        "a Alpha-1 ≈ 0.50 progowi anaerobowemu (HRVT2). "
+        "Metoda jest niezależna od progów wentylacyjnych i SmO₂ — pozwala na krzyżową walidację.",
+        styles["body"]
+    ))
+    elements.append(Spacer(1, 4 * mm))
+
+    # Extract data
+    summary = hrv_data.get("summary", {})
+    quality = hrv_data.get("quality", {})
+    zones = hrv_data.get("zone_classification", {})
+
+    mean_alpha1 = summary.get("mean_alpha1")
+    mean_rmssd = summary.get("mean_rmssd")
+    mean_sdnn = summary.get("mean_sdnn")
+    windows_count = summary.get("windows_analyzed", 0)
+    quality_grade = quality.get("grade", "n/a")
+    is_uncertain = quality.get("is_uncertain", True)
+    quality_reasons = quality.get("reasons", [])
+
+    # === METRIC CARDS ===
+    elements.append(Paragraph("<b>KLUCZOWE METRYKI HRV</b>", styles["subheading"]))
+    elements.append(Spacer(1, 2 * mm))
+
+    def _hrv_card(title, value, unit, color, subtitle=""):
+        card_content = [
+            Paragraph(f"<font size='8' color='#7F8C8D'>{title}</font>", styles["center"]),
+            Paragraph(f"<font size='14' color='{color}'><b>{value}</b></font>", styles["center"]),
+            Paragraph(f"<font size='9'>{unit}</font>", styles["center"]),
+        ]
+        if subtitle:
+            card_content.append(Paragraph(
+                f"<font size='7' color='#95A5A6'>{subtitle}</font>", styles["center"]
+            ))
+        card_table = Table([[card_content]], colWidths=[42 * mm])
+        card_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, -1), HexColor("#F8F9FA")),
+            ('BOX', (0, 0), (-1, -1), 1, HexColor(color)),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('TOPPADDING', (0, 0), (-1, -1), 6),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+        ]))
+        return card_table
+
+    # Alpha-1 classification
+    if mean_alpha1 is not None:
+        if mean_alpha1 > 0.75:
+            a1_color = "#27AE60"
+            a1_zone = "Aerobowa (Z1-Z2)"
+        elif mean_alpha1 > 0.5:
+            a1_color = "#F39C12"
+            a1_zone = "Przejściowa (Z3)"
+        else:
+            a1_color = "#E74C3C"
+            a1_zone = "Anaerobowa (Z4-Z5)"
+        a1_val = f"{mean_alpha1:.2f}"
+    else:
+        a1_color = "#808080"
+        a1_zone = "brak danych"
+        a1_val = "n/a"
+
+    # RMSSD classification
+    if mean_rmssd is not None:
+        if mean_rmssd > 50:
+            rmssd_color = "#27AE60"
+            rmssd_interp = "Wysoka"
+        elif mean_rmssd > 20:
+            rmssd_color = "#F39C12"
+            rmssd_interp = "Umiarkowana"
+        else:
+            rmssd_color = "#E74C3C"
+            rmssd_interp = "Niska"
+        rmssd_val = f"{mean_rmssd:.0f}"
+    else:
+        rmssd_color = "#808080"
+        rmssd_interp = "brak"
+        rmssd_val = "n/a"
+
+    # SDNN
+    sdnn_val = f"{mean_sdnn:.0f}" if mean_sdnn is not None else "n/a"
+    sdnn_color = "#3498DB"
+
+    # Quality grade color
+    grade_colors = {"A": "#27AE60", "B": "#2ECC71", "C": "#F39C12", "D": "#E74C3C", "F": "#C0392B"}
+    grade_color = grade_colors.get(quality_grade, "#808080")
+
+    card1 = _hrv_card("DFA Alpha-1", a1_val, "fraktalny", a1_color, a1_zone)
+    card2 = _hrv_card("RMSSD", rmssd_val, "ms", rmssd_color, rmssd_interp)
+    card3 = _hrv_card("SDNN", sdnn_val, "ms", sdnn_color, "zmienność ogólna")
+    card4 = _hrv_card("JAKOŚĆ", quality_grade, f"({windows_count} okien)", grade_color,
+                       "niepewny" if is_uncertain else "wiarygodny")
+
+    cards_row = Table([[card1, card2, card3, card4]], colWidths=[44 * mm] * 4)
+    cards_row.setStyle(TableStyle([
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+    ]))
+    elements.append(cards_row)
+    elements.append(Spacer(1, 6 * mm))
+
+    # === ZONE CLASSIFICATION TABLE ===
+    elements.append(Paragraph("<b>KLASYFIKACJA STREF DFA</b>", styles["subheading"]))
+    elements.append(Spacer(1, 2 * mm))
+
+    zone_table_data = [
+        ["Strefa", "Alpha-1", "Opis fizjologiczny", "Zastosowanie treningowe"],
+        ["Z1-Z2 Aerobowa", "> 0.75", "Korelacje fraktalne zachowane, dominacja parasympatyczna",
+         "Treningi bazowe, recovery, długie Z2"],
+        ["Z3 Przejściowa", "0.50 - 0.75", "Utrata korelacji, równowaga sympatyczna/parasympatyczna",
+         "Tempo, Sweet Spot — strefa 'szarego pola'"],
+        ["Z4-Z5 Anaerobowa", "< 0.50", "Korelacje antypersystentne, dominacja sympatyczna",
+         "VO₂max interwały, powtórzenia ponadprogowe"],
+    ]
+
+    zt = Table(zone_table_data, colWidths=[30 * mm, 22 * mm, 55 * mm, 55 * mm])
+    zt.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), HexColor("#1F77B4")),
+        ('TEXTCOLOR', (0, 0), (-1, 0), HexColor("#FFFFFF")),
+        ('FONTNAME', (0, 0), (-1, -1), 'DejaVuSans'),
+        ('FONTNAME', (0, 0), (-1, 0), 'DejaVuSans-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 7),
+        ('ALIGN', (1, 0), (1, -1), 'CENTER'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('GRID', (0, 0), (-1, -1), 0.5, HexColor("#CCCCCC")),
+        ('ROWHEIGHT', (0, 0), (-1, -1), 12 * mm),
+        ('BACKGROUND', (0, 1), (-1, 1), HexColor("#d5f5e3")),
+        ('BACKGROUND', (0, 2), (-1, 2), HexColor("#fdebd0")),
+        ('BACKGROUND', (0, 3), (-1, 3), HexColor("#fadbd8")),
+    ]))
+    elements.append(zt)
+    elements.append(Spacer(1, 6 * mm))
+
+    # === QUALITY WARNINGS ===
+    if quality_reasons:
+        elements.append(Paragraph("<b>UWAGI DOTYCZĄCE JAKOŚCI</b>", styles["subheading"]))
+        elements.append(Spacer(1, 2 * mm))
+        for reason in quality_reasons[:4]:
+            elements.append(Paragraph(
+                f"<font size='8' color='#E74C3C'>• {reason}</font>", styles["body"]
+            ))
+        elements.append(Spacer(1, 4 * mm))
+
+    # === INTERPRETATION ===
+    if mean_alpha1 is not None:
+        if mean_alpha1 > 0.75:
+            interp_text = (
+                "<b>DOMINACJA AEROBOWA (Alpha-1 > 0.75)</b><br/>"
+                "Przeciętna wartość Alpha-1 wskazuje na dominację metabolizmu tlenowego. "
+                "Układ autonomiczny jest dobrze zbalansowany. Trening bazowy (Z1-Z2) jest optymalny — "
+                "moment na budowanie objętości i gęstości mitochondriów."
+            )
+            interp_color = "#27AE60"
+        elif mean_alpha1 > 0.5:
+            interp_text = (
+                "<b>STREFA PRZEJŚCIOWA (Alpha-1 0.50-0.75)</b><br/>"
+                "Przeciętna wartość Alpha-1 odpowiada strefie progu aerobowego (HRVT1). "
+                "Jest to 'szare pole' — system glikolizowy jest aktywny, ale nie dominuje. "
+                "Odpowiada to pracy Tempo/Sweet Spot."
+            )
+            interp_color = "#F39C12"
+        else:
+            interp_text = (
+                "<b>DOMINACJA ANAEROBOWA (Alpha-1 < 0.50)</b><br/>"
+                "Przeciętna wartość Alpha-1 wskazuje na intensywność powyżej HRVT2. "
+                "Układ sympatyczny dominuje. Ten zakres odpowiada pracy VO₂max / Z4-Z5."
+            )
+            interp_color = "#E74C3C"
+
+        white_style = ParagraphStyle(
+            'hrv_interp', parent=styles["body"],
+            textColor=HexColor("#FFFFFF"), fontSize=9
+        )
+        interp_box = Table(
+            [[Paragraph(interp_text, white_style)]],
+            colWidths=[165 * mm]
+        )
+        interp_box.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, -1), HexColor(interp_color)),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('LEFTPADDING', (0, 0), (-1, -1), 8),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 8),
+            ('TOPPADDING', (0, 0), (-1, -1), 6),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+        ]))
+        elements.append(interp_box)
+        elements.append(Spacer(1, 6 * mm))
+
+    # === REFERENCES ===
+    elements.append(Paragraph(
+        "<font size='7' color='#95A5A6'><i>"
+        "Ref: Mateo-March et al. 2024 — HRVT1 ICC=0.87, HRVT2 ICC=0.97. "
+        "Iannetta et al. 2024 — DFA-a1 reliability ICC=0.76-0.86. "
+        "Rogers et al. 2023 — validated in female cyclists. "
+        "Cassirame et al. 2025 — SNR and motion artifact concerns."
+        "</i></font>",
+        styles["body"]
+    ))
+
+    return elements
+
+
+# ============================================================================
+# PAGE: SKIN TEMPERATURE GRADIENT (CORE − SKIN)
+# ============================================================================
+
+
+def build_page_skin_temp(thermo_data: Dict[str, Any], time_series: Dict[str, Any],
+                         styles: Dict) -> List:
+    """Build Skin Temperature Gradient analysis section.
+
+    Displays core-skin temperature gradient as indicator of
+    thermoregulatory efficiency (Périard et al. 2021).
+    """
+
+    elements = []
+
+    elements.append(Paragraph(
+        "<font size='14'>4.4 GRADIENT TEMPERATURY (RDZEŃ − SKÓRA)</font>",
+        styles["center"]
+    ))
+    elements.append(Paragraph(
+        "<font size='10' color='#7F8C8D'>"
+        "Efektywność chłodzenia — Périard et al. 2021"
+        "</font>",
+        styles["center"]
+    ))
+    elements.append(Spacer(1, 6 * mm))
+
+    elements.append(Paragraph(
+        "Gradient core-skin (ΔT = T<sub>core</sub> − T<sub>skin</sub>) jest wskaźnikiem "
+        "efektywności termoregulacji. Wysoki gradient (>3°C) oznacza skuteczne chłodzenie — "
+        "ciepło jest efektywnie odprowadzane z rdzenia do skóry. Spadek gradientu poniżej 2°C "
+        "sygnalizuje, że skóra nie nadąża z chłodzeniem lub warunki otoczenia ograniczają konwekcję.",
+        styles["body"]
+    ))
+    elements.append(Spacer(1, 4 * mm))
+
+    # Extract time series data
+    core_temps = time_series.get("core_temp", [])
+    skin_temps = time_series.get("skin_temp", [])
+
+    if not core_temps or not skin_temps or len(core_temps) < 10:
+        elements.append(Paragraph(
+            "<font color='#E74C3C'><b>Brak wystarczających danych temperatury skóry i/lub rdzenia.</b></font>",
+            styles["body"]
+        ))
+        return elements
+
+    import numpy as np
+    core_arr = np.array(core_temps, dtype=float)
+    skin_arr = np.array(skin_temps, dtype=float)
+
+    # Filter valid values
+    valid_mask = (core_arr > 35) & (core_arr < 42) & (skin_arr > 25) & (skin_arr < 40)
+    if np.sum(valid_mask) < 10:
+        elements.append(Paragraph(
+            "<font color='#E74C3C'><b>Zbyt mało prawidłowych pomiarów temperatury.</b></font>",
+            styles["body"]
+        ))
+        return elements
+
+    core_valid = core_arr[valid_mask]
+    skin_valid = skin_arr[valid_mask]
+    gradient = core_valid - skin_valid
+
+    # Metrics
+    grad_start = float(np.mean(gradient[:30])) if len(gradient) > 30 else float(gradient[0])
+    grad_end = float(np.mean(gradient[-30:])) if len(gradient) > 30 else float(gradient[-1])
+    grad_min = float(np.min(gradient))
+    grad_max = float(np.max(gradient))
+    grad_mean = float(np.mean(gradient))
+    grad_delta = grad_end - grad_start
+
+    # Classification
+    if grad_mean > 3.0:
+        class_label = "EFEKTYWNE CHŁODZENIE"
+        class_color = "#27AE60"
+        class_desc = (
+            "Gradient >3°C — termoregulacja skuteczna. Ciepło jest efektywnie "
+            "odprowadzane z rdzenia do skóry i dalej do otoczenia."
+        )
+    elif grad_mean > 2.0:
+        class_label = "UMIARKOWANE CHŁODZENIE"
+        class_color = "#F39C12"
+        class_desc = (
+            "Gradient 2-3°C — chłodzenie obecne, ale nie optymalne. "
+            "W warunkach ciepłych (>28°C) może dojść do kumulacji ciepła."
+        )
+    else:
+        class_label = "OGRANICZONE CHŁODZENIE"
+        class_color = "#E74C3C"
+        class_desc = (
+            "Gradient <2°C — chłodzenie niewystarczające. Skóra jest blisko temperatury "
+            "rdzenia, co ogranicza odprowadzanie ciepła. Ryzyko przegrzania."
+        )
+
+    # === KEY METRICS TABLE ===
+    elements.append(Paragraph("<b>KLUCZOWE METRYKI</b>", styles["subheading"]))
+    elements.append(Spacer(1, 2 * mm))
+
+    metrics_data = [
+        ["Metryka", "Wartość", "Interpretacja"],
+        ["Gradient start", f"{grad_start:.1f} °C", "Początkowy gradient (pierwsze 30s)"],
+        ["Gradient koniec", f"{grad_end:.1f} °C", "Końcowy gradient (ostatnie 30s)"],
+        ["Gradient średni", f"{grad_mean:.1f} °C", class_label],
+        ["Gradient min", f"{grad_min:.1f} °C", "Najwęższy punkt chłodzenia"],
+        ["Zmiana gradientu", f"{grad_delta:+.1f} °C", "Spadek = pogorszenie chłodzenia"],
+    ]
+
+    mt = Table(metrics_data, colWidths=[40 * mm, 30 * mm, 95 * mm])
+    mt.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), HexColor("#1F77B4")),
+        ('TEXTCOLOR', (0, 0), (-1, 0), HexColor("#FFFFFF")),
+        ('FONTNAME', (0, 0), (-1, -1), 'DejaVuSans'),
+        ('FONTNAME', (0, 0), (-1, 0), 'DejaVuSans-Bold'),
+        ('FONTNAME', (0, 1), (0, -1), 'DejaVuSans-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 8),
+        ('ALIGN', (1, 0), (1, -1), 'CENTER'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('GRID', (0, 0), (-1, -1), 0.5, HexColor("#555555")),
+        ('ROWHEIGHT', (0, 0), (-1, -1), 10 * mm),
+        ('BACKGROUND', (0, 3), (-1, 3), HexColor(class_color)),
+        ('TEXTCOLOR', (0, 3), (-1, 3), HexColor("#FFFFFF")),
+    ]))
+    elements.append(mt)
+    elements.append(Spacer(1, 6 * mm))
+
+    # === CLASSIFICATION VERDICT ===
+    white_style = ParagraphStyle(
+        'skin_verdict', parent=styles["body"],
+        textColor=HexColor("#FFFFFF"), fontSize=9
+    )
+    verdict_box = Table(
+        [[Paragraph(f"<b>{class_label}</b><br/>{class_desc}", white_style)]],
+        colWidths=[165 * mm]
+    )
+    verdict_box.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), HexColor(class_color)),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 8),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 8),
+        ('TOPPADDING', (0, 0), (-1, -1), 6),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+    ]))
+    elements.append(verdict_box)
+    elements.append(Spacer(1, 6 * mm))
+
+    # === TRAINING IMPLICATIONS ===
+    elements.append(Paragraph("<b>IMPLIKACJE TRENINGOWE</b>", styles["subheading"]))
+    elements.append(Spacer(1, 2 * mm))
+
+    if grad_mean > 3.0:
+        recs = [
+            "Termoregulacja nie jest limiterem — kontynuuj intensywny trening w normalnych warunkach",
+            "Przy starcie w gorącu (>30°C): pre-cooling kamizelka + zimny napój jako dodatkowe zabezpieczenie",
+            "Monitoruj gradient w treningach >2h — nawet dobra termoregulacja może się wyczerpać",
+        ]
+    elif grad_mean > 2.0:
+        recs = [
+            "Heat acclimation: 7-10 dni, 60min @ Z2 w ubraniu izolacyjnym lub temp. >28°C",
+            "Chłodzenie aktywne: woda na kark/głowę co 10-15min w treningach >90min",
+            "Preferuj poranne sesje (6-9) latem — niższa temperatura otoczenia = lepszy gradient",
+            "Nawodnienie: 500-750ml/h + 500mg Na+/h — odwodnienie pogarsza gradient",
+        ]
+    else:
+        recs = [
+            "PILNE: Heat acclimation 10-14 dni, 60-90min @ Z2 w kontrolowanym cieple",
+            "Pre-cooling obowiązkowe: kamizelka lodowa 20min + 500ml zimnego napoju przed startem",
+            "Unikaj intensywnych sesji (>Z3) w temp. >25°C do czasu poprawy gradientu",
+            "Diagnostyka: sprawdź nawodnienie (waga przed/po), sprawdź odzież treningową (wentylacja)",
+            "Sauna post-trening: 15-20min × 3-4×/tydz. — wspomaganie adaptacji cieplnej",
+        ]
+
+    white_rec_style = ParagraphStyle(
+        'rec_skin', parent=styles["body"],
+        textColor=HexColor("#FFFFFF"), fontSize=9
+    )
+    rec_data = [[Paragraph(f"• {rec}", white_rec_style)] for rec in recs]
+    rec_table = Table(rec_data, colWidths=[165 * mm])
+    rec_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), HexColor("#16213e")),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 8),
+        ('TOPPADDING', (0, 0), (-1, -1), 4),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+    ]))
+    elements.append(rec_table)
+    elements.append(Spacer(1, 6 * mm))
+
+    # === REFERENCE ===
+    elements.append(Paragraph(
+        "<font size='7' color='#95A5A6'><i>"
+        "Ref: Périard et al. 2021 — Core-skin gradient as thermoregulatory efficiency marker. "
+        "Racinais et al. 2019 — Heat acclimation improves gradient by 0.5-1.0°C. "
+        "Tyler et al. 2015 — Pre-cooling effects on core-skin differential."
+        "</i></font>",
+        styles["body"]
+    ))
+
+    return elements
+
+
+# ============================================================================
+# PAGE: ALTITUDE / ENVIRONMENTAL ADJUSTMENT
+# ============================================================================
+
+
+def build_page_altitude(canonical_data: Dict[str, Any], styles: Dict) -> List:
+    """Build altitude/environmental adjustment page.
+
+    Shows VO2max adjustment for altitude using Wehrlin & Hallen 2006 model
+    and environmental context for performance interpretation.
+    """
+
+    elements = []
+
+    elements.append(Paragraph(
+        "<font size='14'>2.6 KOREKTA ŚRODOWISKOWA (WYSOKOŚĆ)</font>",
+        styles["center"]
+    ))
+    elements.append(Paragraph(
+        "<font size='10' color='#7F8C8D'>"
+        "Wehrlin &amp; Hallen 2006 — wpływ wysokości na VO₂max"
+        "</font>",
+        styles["center"]
+    ))
+    elements.append(Spacer(1, 6 * mm))
+
+    elements.append(Paragraph(
+        "VO₂max spada liniowo o ~6.3% na każde 1000m powyżej poziomu morza (Wehrlin &amp; Hallen 2006). "
+        "Efekt jest widoczny już od ~500m n.p.m. i wynika z obniżonego ciśnienia parcjalnego O₂. "
+        "Przeliczenie na sea-level equivalent pozwala porównać wyniki testów wykonanych na różnych wysokościach.",
+        styles["body"]
+    ))
+    elements.append(Spacer(1, 4 * mm))
+
+    # Get altitude data
+    altitude_adj = canonical_data.get("altitude_adjustment", {})
+    vo2max_data = canonical_data.get("vo2max", {})
+
+    altitude_m = altitude_adj.get("altitude_m", 0)
+    is_adjusted = altitude_adj.get("is_adjusted", False)
+    reduction_pct = altitude_adj.get("reduction_pct", 0)
+    vo2max_adjusted = altitude_adj.get("vo2max_adjusted", 0)
+    vo2max_sea = vo2max_data.get("value", 0)
+
+    # === ALTITUDE MODEL TABLE ===
+    elements.append(Paragraph("<b>MODEL REDUKCJI VO₂max</b>", styles["subheading"]))
+    elements.append(Spacer(1, 2 * mm))
+
+    altitude_levels = [
+        ["Wysokość (m)", "Redukcja VO₂max", "Szacowany VO₂max", "Kontekst"],
+        ["0 (p.m.)", "0%", f"{vo2max_sea:.1f} ml/kg/min" if vo2max_sea > 0 else "---", "Poziom morza — wartość referencyjna"],
+        ["500", "3.2%", f"{vo2max_sea * 0.968:.1f}" if vo2max_sea > 0 else "---", "Minimalna hipoksja"],
+        ["1000", "6.3%", f"{vo2max_sea * 0.937:.1f}" if vo2max_sea > 0 else "---", "Kraków, Monachium"],
+        ["1500", "9.5%", f"{vo2max_sea * 0.905:.1f}" if vo2max_sea > 0 else "---", "Livigno, Font Romeu"],
+        ["2000", "12.6%", f"{vo2max_sea * 0.874:.1f}" if vo2max_sea > 0 else "---", "Sierra Nevada, Flagstaff"],
+        ["2500", "15.8%", f"{vo2max_sea * 0.842:.1f}" if vo2max_sea > 0 else "---", "La Paz, Bogota"],
+    ]
+
+    at = Table(altitude_levels, colWidths=[28 * mm, 28 * mm, 38 * mm, 70 * mm])
+    at.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), HexColor("#1F77B4")),
+        ('TEXTCOLOR', (0, 0), (-1, 0), HexColor("#FFFFFF")),
+        ('FONTNAME', (0, 0), (-1, -1), 'DejaVuSans'),
+        ('FONTNAME', (0, 0), (-1, 0), 'DejaVuSans-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 7),
+        ('ALIGN', (0, 0), (2, -1), 'CENTER'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('GRID', (0, 0), (-1, -1), 0.5, HexColor("#CCCCCC")),
+        ('ROWHEIGHT', (0, 0), (-1, -1), 9 * mm),
+        ('BACKGROUND', (0, 1), (-1, 1), HexColor("#d5f5e3")),
+    ]))
+    elements.append(at)
+    elements.append(Spacer(1, 6 * mm))
+
+    # === CURRENT TEST CONTEXT ===
+    if is_adjusted and altitude_m > 0:
+        elements.append(Paragraph("<b>KOREKTA DLA BIEŻĄCEGO TESTU</b>", styles["subheading"]))
+        elements.append(Spacer(1, 2 * mm))
+
+        adj_data = [
+            ["Parametr", "Wartość"],
+            ["Wysokość testu", f"{altitude_m:.0f} m n.p.m."],
+            ["Redukcja VO₂max", f"-{reduction_pct:.1f}%"],
+            ["VO₂max na wysokości", f"{vo2max_adjusted:.1f} ml/kg/min"],
+            ["VO₂max sea-level equiv.", f"{vo2max_sea:.1f} ml/kg/min"],
+        ]
+
+        adj_t = Table(adj_data, colWidths=[50 * mm, 50 * mm])
+        adj_t.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), HexColor("#8E44AD")),
+            ('TEXTCOLOR', (0, 0), (-1, 0), HexColor("#FFFFFF")),
+            ('FONTNAME', (0, 0), (-1, -1), 'DejaVuSans'),
+            ('FONTNAME', (0, 0), (-1, 0), 'DejaVuSans-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 9),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('GRID', (0, 0), (-1, -1), 0.5, HexColor("#CCCCCC")),
+            ('ROWHEIGHT', (0, 0), (-1, -1), 10 * mm),
+        ]))
+        elements.append(adj_t)
+        elements.append(Spacer(1, 4 * mm))
+    else:
+        elements.append(Paragraph(
+            "<font color='#27AE60'><b>Test wykonany na niskiej wysokości (&lt;500m n.p.m.) — "
+            "korekta nie jest wymagana.</b></font>",
+            styles["body"]
+        ))
+        elements.append(Spacer(1, 4 * mm))
+
+    # === PRACTICAL IMPLICATIONS ===
+    elements.append(Paragraph("<b>IMPLIKACJE PRAKTYCZNE</b>", styles["subheading"]))
+    elements.append(Spacer(1, 2 * mm))
+
+    elements.append(Paragraph(
+        "<b>Dla zawodnika:</b> Jeśli trenujesz lub startujesz na wysokości, Twoja moc na progu "
+        "i VO₂max będą niższe niż na poziomie morza. Strefy treningowe należy obniżyć proporcjonalnie. "
+        "Pełna aklimatyzacja wysokościowa wymaga 14-21 dni (live high, train low model).",
+        styles["body"]
+    ))
+    elements.append(Spacer(1, 2 * mm))
+
+    elements.append(Paragraph(
+        "<b>Altitude Training Camp:</b> Optymalny zakres to 2000-2500m n.p.m. do mieszkania "
+        "i <1200m do treningu intensywnego (LHTL). Efekt: wzrost masy hemoglobiny o 1-3% w 3 tygodnie "
+        "(Garvican-Lewis et al. 2016), przekładający się na +1-2% VO₂max po powrocie na niziny.",
+        styles["body"]
+    ))
+    elements.append(Spacer(1, 6 * mm))
+
+    # === REFERENCE ===
+    elements.append(Paragraph(
+        "<font size='7' color='#95A5A6'><i>"
+        "Ref: Wehrlin &amp; Hallen 2006 — 6.3%/1000m linear model. "
+        "Pühringer et al. 2022 — 5.0-11.6%/1000m above 1500m. "
+        "Townsend et al. 2017 — curvilinear meta-regression. "
+        "Garvican-Lewis et al. 2016 — hemoglobin mass response to altitude."
+        "</i></font>",
+        styles["body"]
+    ))
+
+    return elements
+
+
+# ============================================================================
+# PAGE: MICROCYCLE PERIODIZATION
+# ============================================================================
+
+
+def build_page_microcycle(metabolic_data: Dict[str, Any], styles: Dict) -> List:
+    """Build weekly microcycle periodization page.
+
+    Generates a 7-day training schedule based on the training block
+    from metabolic engine, distributing sessions across the week.
+    """
+
+    elements = []
+
+    elements.append(Paragraph(
+        "<font size='14'>2.5 PERIODYZACJA MIKROCYKLOWA</font>",
+        styles["center"]
+    ))
+    elements.append(Paragraph(
+        "<font size='10' color='#7F8C8D'>"
+        "Tygodniowy rozkład treningowy — automatyczna periodyzacja"
+        "</font>",
+        styles["center"]
+    ))
+    elements.append(Spacer(1, 6 * mm))
+
+    block = metabolic_data.get("training_block", {})
+    sessions = block.get("sessions", [])
+    block_name = block.get("name", "Training Block")
+    primary_focus = block.get("primary_focus", "")
+
+    if not sessions:
+        elements.append(Paragraph(
+            "<font color='#E74C3C'><b>Brak danych bloku treningowego.</b></font>",
+            styles["body"]
+        ))
+        return elements
+
+    elements.append(Paragraph(
+        f"Na podstawie bloku <b>{block_name}</b> ({primary_focus}), "
+        "poniżej proponowany rozkład tygodniowy. Kolejność sesji uwzględnia "
+        "zasadę superkompensacji: sesje intensywne rozdzielone 48h, "
+        "sesje bazowe (Z2) jako aktywna regeneracja.",
+        styles["body"]
+    ))
+    elements.append(Spacer(1, 4 * mm))
+
+    # Build weekly schedule from sessions
+    # Strategy: distribute sessions across 7 days with recovery logic
+    day_names_pl = [
+        "Poniedziałek", "Wtorek", "Środa", "Czwartek",
+        "Piątek", "Sobota", "Niedziela"
+    ]
+
+    # Classify sessions by intensity
+    intense_sessions = []
+    moderate_sessions = []
+    easy_sessions = []
+
+    for s in sessions:
+        name_lower = s.get("name", "").lower()
+        if any(k in name_lower for k in ["vo2", "hill", "sprint", "over-under", "frc", "threshold", "race"]):
+            intense_sessions.append(s)
+        elif any(k in name_lower for k in ["tempo", "sweet spot", "strength", "cadence", "double"]):
+            moderate_sessions.append(s)
+        else:
+            easy_sessions.append(s)
+
+    # Build weekly plan
+    weekly_plan = [None] * 7  # Mon=0 ... Sun=6
+
+    # Place intense sessions: Tue(1), Thu(3), Sat(5) — separated by 48h
+    intense_slots = [1, 3, 5]
+    for i, slot in enumerate(intense_slots):
+        if i < len(intense_sessions):
+            weekly_plan[slot] = intense_sessions[i]
+
+    # Place moderate sessions: Wed(2), Fri(4)
+    moderate_slots = [2, 4]
+    for i, slot in enumerate(moderate_slots):
+        if i < len(moderate_sessions):
+            weekly_plan[slot] = moderate_sessions[i]
+
+    # Place easy sessions on remaining days
+    easy_slots = [s for s in range(7) if weekly_plan[s] is None]
+    for i, slot in enumerate(easy_slots):
+        if i < len(easy_sessions):
+            weekly_plan[slot] = easy_sessions[i]
+
+    # === WEEKLY TABLE ===
+    elements.append(Paragraph("<b>PRZYKŁADOWY MIKROCYKL TYGODNIOWY</b>", styles["subheading"]))
+    elements.append(Spacer(1, 2 * mm))
+
+    week_data = [["Dzień", "Sesja", "Moc / Czas", "Intensywność"]]
+
+    for day_idx, session in enumerate(weekly_plan):
+        day_name = day_names_pl[day_idx]
+        if session is None:
+            if day_idx == 0:  # Monday = rest
+                week_data.append([day_name, "ODPOCZYNEK / REGENERACJA", "---", "REST"])
+            elif day_idx == 6:  # Sunday
+                week_data.append([day_name, "Z2 Długie lub ODPOCZYNEK", "2-4h @ 55-70% FTP", "Z1-Z2"])
+            else:
+                week_data.append([day_name, "Z2 Bazowe", "60-90min @ 55-70% FTP", "Z2"])
+        else:
+            name = session.get("name", "---")
+            power = session.get("power_range", "---")
+            duration = session.get("duration", "---")
+            # Determine intensity label
+            name_l = name.lower()
+            if any(k in name_l for k in ["vo2", "hill", "sprint", "over-under", "frc", "threshold", "race"]):
+                intensity = "Z4-Z5"
+            elif any(k in name_l for k in ["tempo", "sweet", "strength", "cadence"]):
+                intensity = "Z3-Z4"
+            else:
+                intensity = "Z1-Z2"
+            week_data.append([day_name, name, f"{power}\n{duration}", intensity])
+
+    wt = Table(week_data, colWidths=[28 * mm, 48 * mm, 52 * mm, 28 * mm])
+    wt.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), HexColor("#1A5276")),
+        ('TEXTCOLOR', (0, 0), (-1, 0), HexColor("#FFFFFF")),
+        ('FONTNAME', (0, 0), (-1, -1), 'DejaVuSans'),
+        ('FONTNAME', (0, 0), (-1, 0), 'DejaVuSans-Bold'),
+        ('FONTNAME', (0, 1), (0, -1), 'DejaVuSans-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 7),
+        ('ALIGN', (0, 0), (0, -1), 'LEFT'),
+        ('ALIGN', (3, 0), (3, -1), 'CENTER'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('GRID', (0, 0), (-1, -1), 0.5, HexColor("#CCCCCC")),
+        ('ROWHEIGHT', (0, 0), (-1, -1), 12 * mm),
+    ]))
+
+    # Color-code intensity column
+    for row_idx in range(1, len(week_data)):
+        intensity = week_data[row_idx][3]
+        if intensity == "REST":
+            color = "#d5f5e3"
+        elif intensity in ("Z1-Z2", "Z2"):
+            color = "#d5f5e3"
+        elif intensity in ("Z3-Z4",):
+            color = "#fdebd0"
+        elif intensity in ("Z4-Z5",):
+            color = "#fadbd8"
+        else:
+            color = "#f5f5f5"
+        wt.setStyle(TableStyle([
+            ('BACKGROUND', (3, row_idx), (3, row_idx), HexColor(color)),
+        ]))
+        # Monday rest = full row green
+        if intensity == "REST":
+            wt.setStyle(TableStyle([
+                ('BACKGROUND', (0, row_idx), (-1, row_idx), HexColor("#d5f5e3")),
+            ]))
+
+    elements.append(wt)
+    elements.append(Spacer(1, 6 * mm))
+
+    # === PERIODIZATION RULES ===
+    elements.append(Paragraph("<b>ZASADY PERIODYZACJI</b>", styles["subheading"]))
+    elements.append(Spacer(1, 2 * mm))
+
+    rules = [
+        "Sesje intensywne (Z4-Z5) rozdzielone minimum 48h — pełna resynteza glikogenu i adaptacja nerwowo-mięśniowa",
+        "Poniedziałek = odpoczynek po weekendowej długiej sesji (superkompensacja)",
+        "Bloki Tempo/Sweet Spot w środku tygodnia — kompromis między bodźcem a recovery",
+        "Tygodniowy rozkład objętości: ~80% Z1-Z2, ~15% Z3-Z4, ~5% Z5 (model polaryzowany)",
+        "Co 3-4 tygodnie: tydzień rozładowczy (TSS -40%) — zapobieganie overreaching",
+    ]
+
+    for rule in rules:
+        elements.append(Paragraph(f"<font size='8'>• {rule}</font>", styles["body"]))
+
+    elements.append(Spacer(1, 6 * mm))
+
+    # === TSS ESTIMATION ===
+    elements.append(Paragraph("<b>SZACUNKOWY TSS TYGODNIOWY</b>", styles["subheading"]))
+    elements.append(Spacer(1, 2 * mm))
+
+    # Estimate weekly TSS from sessions
+    total_estimated_tss = 0
+    for session in weekly_plan:
+        if session is None:
+            total_estimated_tss += 30  # Rest / easy day
+        else:
+            name_l = session.get("name", "").lower()
+            if any(k in name_l for k in ["vo2", "hill", "sprint", "frc", "race"]):
+                total_estimated_tss += 100
+            elif any(k in name_l for k in ["tempo", "sweet", "threshold", "over-under"]):
+                total_estimated_tss += 85
+            elif any(k in name_l for k in ["strength", "cadence", "double"]):
+                total_estimated_tss += 70
+            elif any(k in name_l for k in ["long", "base", "z2", "fasted", "sub-lt1"]):
+                total_estimated_tss += 120
+            else:
+                total_estimated_tss += 60
+
+    tss_data = [
+        ["Metryka", "Wartość", "Kontekst"],
+        ["TSS/tydzień (szacunkowy)", f"~{total_estimated_tss}", "Na podstawie rozkładu sesji"],
+        ["TSS/tydzień rozładowczy", f"~{int(total_estimated_tss * 0.6)}", "Co 3-4 tygodnie, -40%"],
+        ["CTL target (6 tyg.)", f"~{int(total_estimated_tss * 0.8)}", "Chronic Training Load"],
+    ]
+
+    tss_t = Table(tss_data, colWidths=[45 * mm, 35 * mm, 80 * mm])
+    tss_t.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), HexColor("#1F77B4")),
+        ('TEXTCOLOR', (0, 0), (-1, 0), HexColor("#FFFFFF")),
+        ('FONTNAME', (0, 0), (-1, -1), 'DejaVuSans'),
+        ('FONTNAME', (0, 0), (-1, 0), 'DejaVuSans-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 8),
+        ('ALIGN', (1, 0), (1, -1), 'CENTER'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('GRID', (0, 0), (-1, -1), 0.5, HexColor("#CCCCCC")),
+        ('ROWHEIGHT', (0, 0), (-1, -1), 10 * mm),
+    ]))
+    elements.append(tss_t)
+
+    return elements
+
+
 def build_page_extra(
     figure_paths: Dict[str, str],
     styles: Dict

@@ -96,6 +96,7 @@ def main():
         "torque": "torque_nm",
         "cadence": "cadence_rpm", "cad": "cadence_rpm",
         "core_temperature": "core_temp",
+        "skin_temperature": "skin_temp",
         "heatstrainindex": "hsi", "heat_strain_index": "hsi",
     }
     ts_data = {}
@@ -216,6 +217,44 @@ def main():
             logger.info("Cardiac drift analysis complete")
         except Exception as e:
             logger.warning("Cardiac drift failed: %s", e)
+
+    # HRV / DFA Alpha-1
+    hrv_col = next((c for c in ["hrv", "rr", "rr_interval", "ibi"] if c in analysis_df.columns), None)
+    if hrv_col:
+        try:
+            from modules.calculations.hrv import calculate_dynamic_dfa_v2, validate_dfa_quality
+            hrv_df = analysis_df[["time", hrv_col]].copy()
+            hrv_results, hrv_err = calculate_dynamic_dfa_v2(hrv_df, window_sec=300, step_sec=30)
+            if hrv_results is not None and len(hrv_results) > 0:
+                mean_a1 = float(hrv_results["alpha1"].mean())
+                mean_rmssd = float(hrv_results["rmssd"].mean())
+                mean_sdnn = float(hrv_results["sdnn"].mean())
+                windows_count = len(hrv_results)
+                data_quality_ratio = 1.0 - (hrv_results["alpha1"].isna().sum() / max(1, len(hrv_results)))
+                is_uncertain, reasons, grade = validate_dfa_quality(
+                    300, data_quality_ratio, mean_a1, windows_count
+                )
+                data["hrv_analysis"] = {
+                    "summary": {
+                        "mean_alpha1": round(mean_a1, 3),
+                        "mean_rmssd": round(mean_rmssd, 1),
+                        "mean_sdnn": round(mean_sdnn, 1),
+                        "windows_analyzed": windows_count,
+                    },
+                    "quality": {
+                        "grade": grade,
+                        "is_uncertain": is_uncertain,
+                        "reasons": reasons,
+                    },
+                    "zone_classification": {
+                        "dominant_zone": "aerobic" if mean_a1 > 0.75 else ("transitional" if mean_a1 > 0.5 else "anaerobic"),
+                    },
+                }
+                logger.info("HRV/DFA analysis complete: Alpha-1=%.2f, grade=%s, %d windows", mean_a1, grade, windows_count)
+            else:
+                logger.warning("HRV/DFA returned no results: %s", hrv_err)
+        except Exception as e:
+            logger.warning("HRV/DFA analysis failed: %s", e)
 
     # VO2max estimate
     if "watts" in analysis_df.columns:

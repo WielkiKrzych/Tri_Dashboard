@@ -636,35 +636,39 @@ def build_ramp_pdf(
         {"title": "1. PODSUMOWANIE WYKONAWCZE", "page": "3", "level": 0},
         {"title": "1.1 Raport potestowy", "page": "3", "level": 1},
         {"title": "1.2 Przebieg testu", "page": "4", "level": 1},
-        
+
         # === ROZDZIAŁ 2: PROGI METABOLICZNE ===
         {"title": "2. PROGI METABOLICZNE", "page": "5", "level": 0},
         {"title": "2.1 Szczegóły VT1/VT2", "page": "5", "level": 1},
         {"title": "2.2 Co oznaczają wyniki?", "page": "6", "level": 1},
         {"title": "2.3 Model metaboliczny", "page": "7", "level": 1},
         {"title": "2.4 Silnik metaboliczny", "page": "8", "level": 1},
-        {"title": "2.5 Krzywa mocy (PDC)", "page": "10", "level": 1},
-        
+        {"title": "2.5 Periodyzacja mikrocyklowa", "page": "9", "level": 1},
+        {"title": "2.6 Krzywa mocy (PDC)", "page": "10", "level": 1},
+        {"title": "2.7 Korekta wysokościowa", "page": "11", "level": 1},
+
         # === ROZDZIAŁ 3: DIAGNOSTYKA UKŁADÓW ===
         {"title": "3. DIAGNOSTYKA UKŁADÓW", "page": "12", "level": 0},
         {"title": "3.1 Kontrola oddychania", "page": "12", "level": 1},
         {"title": "3.2 Układ sercowo-naczyniowy", "page": "13", "level": 1},
         {"title": "3.3 Oksygenacja mięśniowa (SmO₂)", "page": "14", "level": 1},
         {"title": "3.4 Biomechanika", "page": "16", "level": 1},
-        
+        {"title": "3.5 Zmienność rytmu serca (HRV)", "page": "18", "level": 1},
+
         # === ROZDZIAŁ 4: LIMITERY I OBCIĄŻENIE CIEPLNE ===
-        {"title": "4. LIMITERY I OBCIĄŻENIE CIEPLNE", "page": "17", "level": 0},
-        {"title": "4.1 Radar obciążenia systemów", "page": "17", "level": 1},
-        {"title": "4.2 Dryf fizjologiczny", "page": "18", "level": 1},
-        {"title": "4.3 Termoregulacja", "page": "19", "level": 1},
-        
+        {"title": "4. LIMITERY I OBCIĄŻENIE CIEPLNE", "page": "19", "level": 0},
+        {"title": "4.1 Radar obciążenia systemów", "page": "19", "level": 1},
+        {"title": "4.2 Dryf fizjologiczny", "page": "20", "level": 1},
+        {"title": "4.3 Termoregulacja", "page": "21", "level": 1},
+        {"title": "4.4 Gradient temperatury", "page": "22", "level": 1},
+
         # === ROZDZIAŁ 5: PODSUMOWANIE ===
-        {"title": "5. PODSUMOWANIE", "page": "21", "level": 0},
-        {"title": "5.1 Wskaźniki KPI", "page": "21", "level": 1},
-        {"title": "5.2 Podsumowanie fizjologiczne", "page": "22", "level": 1},
-        {"title": "5.3 Werdykt fizjologiczny", "page": "23", "level": 1},
-        {"title": "5.4 Protokół testu", "page": "24", "level": 1},
-        {"title": "5.5 Ograniczenia interpretacji", "page": "25", "level": 1},
+        {"title": "5. PODSUMOWANIE", "page": "23", "level": 0},
+        {"title": "5.1 Wskaźniki KPI", "page": "23", "level": 1},
+        {"title": "5.2 Podsumowanie fizjologiczne", "page": "24", "level": 1},
+        {"title": "5.3 Werdykt fizjologiczny", "page": "25", "level": 1},
+        {"title": "5.4 Protokół testu", "page": "26", "level": 1},
+        {"title": "5.5 Ograniczenia interpretacji", "page": "27", "level": 1},
     ]
     
     story.extend(build_table_of_contents(styles=styles, section_titles=section_titles))
@@ -772,7 +776,7 @@ def build_ramp_pdf(
             vent_data=vent_data,
             styles=styles
         ))
-        # No forced PageBreak — let cardiovascular flow naturally from ventilation
+        story.append(PageBreak())
 
     # === 3.2 UKŁAD SERCOWO-NACZYNIOWY ===
     cardio_data = pdf_data.get("cardio_advanced", {})
@@ -781,7 +785,7 @@ def build_ramp_pdf(
             cardio_data=cardio_data,
             styles=styles
         ))
-        # No forced PageBreak — let SmO2 flow naturally from cardiovascular
+        story.append(PageBreak())
 
     # === 3.3 OKSYGENACJA MIĘŚNIOWA (SmO2) ===
     story.extend(build_page_smo2(
@@ -792,15 +796,6 @@ def build_ramp_pdf(
     ))
     story.append(PageBreak())
 
-    # === 3.5 HRV / DFA ALPHA-1 ===
-    hrv_data = pdf_data.get("hrv_analysis", {})
-    if hrv_data and hrv_data.get("summary", {}).get("windows_analyzed", 0) > 0:
-        story.extend(build_page_hrv(
-            hrv_data=hrv_data,
-            styles=styles
-        ))
-        story.append(PageBreak())
-
     # === 3.4 BIOMECHANIKA ===
     from .layout import build_page_biomech, build_page_drift_kpi
     biomech_data = pdf_data.get("biomech_occlusion", {})
@@ -810,11 +805,24 @@ def build_ramp_pdf(
             styles=styles,
             biomech_data=biomech_data
         ))
-        # No forced PageBreak — let drift/limiter flow naturally after biomech recs
+        story.append(PageBreak())
+
+    # === 3.5 HRV / DFA ALPHA-1 ===
+    hrv_data = pdf_data.get("hrv_analysis", {})
+    if hrv_data and hrv_data.get("summary", {}).get("windows_analyzed", 0) > 0:
+        story.extend(build_page_hrv(
+            hrv_data=hrv_data,
+            styles=styles
+        ))
+        story.append(PageBreak())
 
     # ===========================================================================
     # ROZDZIAŁ 4: LIMITERY I OBCIĄŻENIE CIEPLNE
     # ===========================================================================
+
+    # Chapter 4 heading — always rendered (independent of limiter_data)
+    from reportlab.platypus import Paragraph as _Paragraph
+    story.append(_Paragraph("4. LIMITERY I OBCIĄŻENIE CIEPLNE", styles["title"]))
 
     # === 4.1 RADAR OBCIĄŻENIA SYSTEMÓW ===
     limiter_data = pdf_data.get("limiter_analysis", {})
@@ -833,8 +841,8 @@ def build_ramp_pdf(
             figure_paths=figure_paths,
             styles=styles
         ))
-        # No forced PageBreak — let thermal flow naturally after drift explanation
-    
+        story.append(PageBreak())
+
     # === 4.3 TERMOREGULACJA ===
     story.extend(build_page_thermal(
         thermo_data=pdf_data.get("thermo_analysis", {}),
@@ -856,14 +864,14 @@ def build_ramp_pdf(
     # ===========================================================================
     # ROZDZIAŁ 5: PODSUMOWANIE
     # ===========================================================================
-    
+
     # === 5.1 WSKAŹNIKI KPI ===
     from .layout import build_page_kpi_dashboard
     story.extend(build_page_kpi_dashboard(
         kpi=pdf_data["kpi"],
         styles=styles
     ))
-    # No forced PageBreak — let executive summary flow naturally from KPI dashboard
+    story.append(PageBreak())
 
     # === 5.2 PODSUMOWANIE FIZJOLOGICZNE ===
     story.extend(build_page_executive_summary(
@@ -871,7 +879,7 @@ def build_ramp_pdf(
         metadata=metadata,
         styles=styles
     ))
-    # No forced PageBreak — let verdict flow naturally from executive summary
+    story.append(PageBreak())
 
     # === 5.3 WERDYKT FIZJOLOGICZNY ===
     story.extend(build_page_executive_verdict(
@@ -889,7 +897,7 @@ def build_ramp_pdf(
     if not compact_mode:
         from .layout import build_page_protocol
         story.extend(build_page_protocol(styles=styles))
-        # No forced PageBreak — let limitations flow naturally from protocol
+        story.append(PageBreak())
 
     # === 5.5 OGRANICZENIA INTERPRETACJI ===
     story.extend(build_page_limitations(

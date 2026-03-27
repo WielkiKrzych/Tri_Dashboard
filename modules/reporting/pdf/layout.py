@@ -2010,7 +2010,7 @@ def build_page_pdc(
     """
     elements = []
     
-    elements.append(Paragraph("<font size='14'>2.5 KRZYWA MOCY (PDC)</font>", styles["center"]))
+    elements.append(Paragraph("<font size='14'>2.6 KRZYWA MOCY (PDC)</font>", styles["center"]))
     elements.append(Spacer(1, 6 * mm))
     
     # === EXPLANATION ===
@@ -3065,8 +3065,7 @@ def build_page_limiter_radar(
     
     elements = []
     
-    # Title
-    elements.append(Paragraph("4. LIMITERY I OBCIĄŻENIE CIEPLNE", styles["title"]))
+    # Title (Chapter heading "4. LIMITERY..." is rendered by builder.py)
     elements.append(Paragraph("<font size='14'>4.1 RADAR OBCIĄŻENIA SYSTEMÓW</font>", styles["center"]))
     elements.append(Paragraph(
         "<font size='10' color='#7F8C8D'>Analiza limiterów fizjologicznych dla 20 min (FTP)</font>",
@@ -5047,7 +5046,7 @@ def build_page_altitude(canonical_data: Dict[str, Any], styles: Dict) -> List:
     elements = []
 
     elements.append(Paragraph(
-        "<font size='14'>2.6 KOREKTA ŚRODOWISKOWA (WYSOKOŚĆ)</font>",
+        "<font size='14'>2.7 KOREKTA ŚRODOWISKOWA (WYSOKOŚĆ)</font>",
         styles["center"]
     ))
     elements.append(Paragraph(

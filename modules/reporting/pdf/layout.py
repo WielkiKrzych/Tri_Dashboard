@@ -571,12 +571,13 @@ def build_page_executive_summary(
     limiter_icon = limiter.get("icon", "⚖️")
     limiter_name = limiter.get("name", "NIEZNANY")
     
-    # Title row
-    elements.append(Paragraph(
+    # Title row — collect with first content block to prevent orphan heading
+    intro_elements = []
+    intro_elements.append(Paragraph(
         "<font size='14'>5.2 PODSUMOWANIE FIZJOLOGICZNE</font>",
         styles["center"]
     ))
-    
+
     # Status badge + date row
     status_text = f"{limiter_icon} {limiter_name}"
     header_table = Table([
@@ -590,8 +591,8 @@ def build_page_executive_summary(
         ('ALIGN', (0, 0), (0, 0), 'LEFT'),
         ('ALIGN', (1, 0), (1, 0), 'RIGHT'),
     ]))
-    elements.append(header_table)
-    elements.append(Spacer(1, 6 * mm))
+    intro_elements.append(header_table)
+    intro_elements.append(Spacer(1, 2 * mm))
     
     # ==========================================================================
     # 2. PHYSIOLOGICAL VERDICT CARD
@@ -630,9 +631,11 @@ def build_page_executive_summary(
         ('TOPPADDING', (0, 0), (-1, -1), 10),
         ('BOTTOMPADDING', (0, 0), (-1, -1), 10),
     ]))
-    elements.append(verdict_table)
+    # Only keep heading + a minimal anchor to prevent orphan heading
+    # The verdict_table is too large to keep together with the heading
+    elements.append(KeepTogether(intro_elements + [verdict_table]))
     elements.append(Spacer(1, 6 * mm))
-    
+
     # ==========================================================================
     # 3. SIGNAL AGREEMENT MATRIX
     # ==========================================================================
@@ -771,16 +774,17 @@ def build_page_executive_summary(
     elements.append(confidence_row)
     if limiting_factor and limiting_factor != "---":
         elements.append(Paragraph(f"<font size='9' color='#7F8C8D'>Uwaga: jakość ograniczona przez <b>{limiting_factor}</b></font>", styles["body"]))
-    elements.append(Spacer(1, 6 * mm))
-    
+    elements.append(Spacer(1, 4 * mm))
+
     # ==========================================================================
     # 5. TRAINING DECISION CARDS
     # ==========================================================================
 
-    elements.append(Spacer(1, 4 * mm))
-    elements.append(Paragraph("<b>DECYZJE TRENINGOWE</b>", styles["subheading"]))
-    elements.append(Spacer(1, 3 * mm))
-    
+    training_card_elements = []
+    training_card_elements.append(Paragraph("<b>DECYZJE TRENINGOWE</b>", styles["subheading"]))
+    training_card_elements.append(Spacer(1, 3 * mm))
+
+    first_card_added = False
     for i, card in enumerate(training_cards[:3], 1):
         strategy = card.get("strategy_name", "---")
         power = card.get("power_range", "---")
@@ -817,9 +821,20 @@ def build_page_executive_summary(
             ('TOPPADDING', (0, 0), (-1, -1), 6),
             ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
         ]))
-        elements.append(card_table)
-        elements.append(Spacer(1, 2 * mm))
-    
+        if not first_card_added:
+            # Keep heading + first card together to prevent orphan heading
+            training_card_elements.append(card_table)
+            training_card_elements.append(Spacer(1, 2 * mm))
+            elements.append(KeepTogether(training_card_elements))
+            first_card_added = True
+        else:
+            elements.append(card_table)
+            elements.append(Spacer(1, 2 * mm))
+
+    if not first_card_added and training_card_elements:
+        # No cards were added, still add the heading
+        elements.extend(training_card_elements)
+
     return elements
 
 
@@ -1528,7 +1543,7 @@ def build_page_test_profile(
     
     # === RAMP PROFILE CHART ===
     if figure_paths and "ramp_profile" in figure_paths:
-        elements.extend(_build_chart(figure_paths["ramp_profile"], "", styles))
+        elements.extend(_build_chart(figure_paths["ramp_profile"], "", styles, max_height_mm=130))
         elements.append(Spacer(1, 4 * mm))
     
     # === TEST PROTOCOL DESCRIPTION ===
@@ -1959,18 +1974,18 @@ def build_page_smo2(smo2_data, smo2_manual, figure_paths, styles):
         "Zgodność ICC SmO₂-T1 vs VT1 = 0.53 (umiarkowana), T2 vs VT2 = 0.80 (dobra) wg Perrey & Ferrari 2024."
     )
 
-    elements.append(Paragraph("".join(cross_note_parts), styles["small"]))
-    elements.append(Spacer(1, 3 * mm))
-
-    # THb context note
-    elements.append(Paragraph(
-        "<b>Nota THb (Total Hemoglobin):</b> "
-        "THb jest wskaźnikiem objętości krwi w mięśniu (Alvares et al. 2020, r=0.72-0.83 z przepływem Doppler). "
-        "Rosnący THb = dobra wazodylatacja i perfuzja. Spadający THb przy umiarkowanej mocy = "
-        "ograniczenie naczyniowe lub mechaniczna kompresja. SmO₂ odzwierciedla zarówno "
-        "zwiększoną ekstrakcję O₂ JAK I zmniejszoną objętość krwi — THb pomaga rozróżnić te mechanizmy.",
-        styles["small"]
-    ))
+    from reportlab.platypus import KeepTogether as KT
+    cross_thb_block = [
+        Paragraph("".join(cross_note_parts), styles["small"]),
+        Spacer(1, 2 * mm),
+        Paragraph(
+            "<b>Nota THb:</b> THb (Total Hemoglobin) odzwierciedla objętość krwi w mięśniu "
+            "(Alvares et al. 2020). Rosnący THb = wazodylatacja; spadający = okluzja naczyniowa. "
+            "THb pomaga odróżnić zwiększoną ekstrakcję O₂ od zmniejszonego przepływu.",
+            styles["small"]
+        ),
+    ]
+    elements.append(KT(cross_thb_block))
 
     return elements
 
@@ -2081,10 +2096,6 @@ def build_page_pdc(
     ))
 
     # === W' RECONSTITUTION INFO ===
-    elements.append(Spacer(1, 6 * mm))
-    elements.append(Paragraph("<b>REKONSTYTUCJA W' (Caen et al. 2021)</b>", styles["subheading"]))
-    elements.append(Spacer(1, 2 * mm))
-
     try:
         w_prime_val = float(w_prime_kj) if w_prime_kj not in ("brak danych", None, "") else 0
         cp_val = float(cp_watts) if cp_watts not in ("brak danych", None, "") else 0
@@ -2093,6 +2104,9 @@ def build_page_pdc(
         cp_val = 0
 
     if w_prime_val > 0 and cp_val > 0:
+        elements.append(Spacer(1, 6 * mm))
+        elements.append(Paragraph("<b>REKONSTYTUCJA W' (Caen et al. 2021)</b>", styles["subheading"]))
+        elements.append(Spacer(1, 2 * mm))
         # Biexponential recovery model parameters (Caen 2021)
         tau_fast = 300  # ~5min fast component
         tau_slow = 900  # ~15min slow component
@@ -2373,20 +2387,20 @@ def build_page_cardiovascular(cardio_data: Dict[str, Any], styles: Dict) -> List
     cards_row = Table([[card1, card2, card3, card4]], colWidths=[44 * mm] * 4)
     cards_row.setStyle(TableStyle([('ALIGN', (0, 0), (-1, -1), 'CENTER'), ('VALIGN', (0, 0), (-1, -1), 'TOP')]))
     elements.append(cards_row)
-    elements.append(Spacer(1, 6 * mm))
-    
+    elements.append(Spacer(1, 4 * mm))
+
     # ==========================================================================
     # 2. CCI METRIC PANEL
     # ==========================================================================
-    
+
     elements.append(Paragraph("<b>INDEKS KOSZTU SERCOWO-NACZYNIOWEGO (CCI)</b>", styles["subheading"]))
     elements.append(Spacer(1, 2 * mm))
-    
+
     cci_text = f"<b>CCI = {cci:.4f}</b> bpm/W – koszt tętna na jednostkę mocy."
     if cci_bp:
         cci_text += f" <b>Breakpoint</b> przy {cci_bp:.0f}W – punkt załamania efektywności."
     elements.append(Paragraph(cci_text, styles["body"]))
-    elements.append(Spacer(1, 4 * mm))
+    elements.append(Spacer(1, 3 * mm))
     
     # ==========================================================================
     # 3. EFFICIENCY VERDICT PANEL
@@ -2416,26 +2430,26 @@ def build_page_cardiovascular(cardio_data: Dict[str, Any], styles: Dict) -> List
         ('BOTTOMPADDING', (0, 0), (-1, -1), 10),
     ]))
     elements.append(verdict_table)
-    elements.append(Spacer(1, 3 * mm))
+    elements.append(Spacer(1, 2 * mm))
 
     # Interpretation
     if interpretation:
-        for line in interpretation.split('\n')[:3]:
+        for line in interpretation.split('\n')[:2]:
             line_with_confidence = get_confidence_prefix(confidence) + line + get_confidence_suffix(confidence)
             elements.append(Paragraph(line_with_confidence, styles["body"]))
-    elements.append(Spacer(1, 6 * mm))
-    
+    elements.append(Spacer(1, 3 * mm))
+
     # ==========================================================================
     # 4. DECISION CARDS
     # ==========================================================================
-    
+
     if recommendations:
         elements.append(Paragraph("<b>DECYZJE TRENINGOWE I ŚRODOWISKOWE</b>", styles["subheading"]))
-        elements.append(Spacer(1, 3 * mm))
-        
+        elements.append(Spacer(1, 2 * mm))
+
         type_colors = {"TRENINGOWA": "#3498DB", "ŚRODOWISKOWA": "#9B59B6", "REGENERACJA": "#1ABC9C", "WYDAJNOŚĆ": "#2ECC71", "DIAGNOSTYCZNA": "#E74C3C"}
-        
-        for rec in recommendations[:5]:
+
+        for rec in recommendations[:4]:
             rec_type = rec.get("type", "TRENINGOWA")
             action = rec.get("action", "---")
             expected = rec.get("expected", "---")
@@ -2454,17 +2468,17 @@ def build_page_cardiovascular(cardio_data: Dict[str, Any], styles: Dict) -> List
                 ('BACKGROUND', (0, 0), (-1, -1), COLORS["background"]),
                 ('BOX', (0, 0), (-1, -1), 0.5, COLORS["border"]),
                 ('LEFTPADDING', (0, 0), (-1, -1), 8),
-                ('TOPPADDING', (0, 0), (-1, -1), 6),
-                ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+                ('TOPPADDING', (0, 0), (-1, -1), 4),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
             ]))
             elements.append(card_table)
-            elements.append(Spacer(1, 2 * mm))
+            elements.append(Spacer(1, 1.5 * mm))
 
     # ==========================================================================
     # 5. HR RECOVERY KINETICS
     # ==========================================================================
     if recovery and recovery > 0:
-        elements.append(Spacer(1, 4 * mm))
+        elements.append(Spacer(1, 3 * mm))
         elements.append(Paragraph("<b>KINETYKA REGENERACJI HR</b>", styles["subheading"]))
         elements.append(Spacer(1, 2 * mm))
 
@@ -3307,52 +3321,53 @@ def build_page_limitations(
 # HELPER FUNCTIONS
 # ============================================================================
 
-def _build_chart(chart_path: str, title: str, styles: Dict) -> List:
+def _build_chart(chart_path: str, title: str, styles: Dict, max_height_mm: int = 90) -> List:
     """Build a chart section with image.
-    
+
     Args:
         chart_path: Path to chart PNG file
         title: Section title
         styles: Paragraph styles dictionary
-        
+        max_height_mm: Maximum image height in mm (default 90)
+
     Returns:
         List of flowables
     """
     from reportlab.platypus import KeepTogether
-    
+
     chart_elements = []
-    
+
     # Title for the chart
     chart_elements.append(Paragraph(title, styles["subheading"]))
-    
+
     # 1. Check if file exists
     if not chart_path or not os.path.exists(chart_path):
         logger.warning(f"PDF Layout: Chart file missing for '{title}' at path: {chart_path}")
         chart_elements.append(Paragraph("Wykres niedostępny", styles["small"]))
         return [KeepTogether(chart_elements)]
-    
+
     # 2. Embed image
     try:
         available_width = PAGE_WIDTH - 2 * MARGIN
         img = Image(chart_path)
-        
+
         # Scale to fit width
         aspect = img.imageHeight / img.imageWidth
         img_width = min(available_width, 150 * mm)
         img_height = img_width * aspect
-        
+
         # Limit height
-        if img_height > 90 * mm:
-            img_height = 90 * mm
+        if img_height > max_height_mm * mm:
+            img_height = max_height_mm * mm
             img_width = img_height / aspect
-        
+
         img.drawWidth = img_width
         img.drawHeight = img_height
-        
+
         chart_elements.append(img)
     except Exception as e:
         logger.error(f"PDF Layout: Error embedding chart '{title}' from {chart_path}: {e}")
-    
+
     # Wrap in KeepTogether to prevent title/chart separation across pages
     return [KeepTogether(chart_elements)]
 
@@ -3666,9 +3681,8 @@ def build_page_thermal(
     ]))
     elements.append(verdict_box)
     elements.append(Spacer(1, 6 * mm))
-    
+
     # === HR/EF CONNECTION ===
-    elements.append(Spacer(1, 6 * mm))
     elements.append(Paragraph("<b>POŁĄCZENIE Z DRYFEM HR I EF</b>", styles["heading"]))
     elements.append(Spacer(1, 2 * mm))
     elements.append(Paragraph(
@@ -3730,15 +3744,18 @@ def build_page_thermal(
     ]))
     elements.append(rec_table)
     
-    # Conditional spacing before cardiac drift analysis
-    elements.append(Spacer(1, 8 * mm))
-    
     # ========================================================================
     # CARDIAC DRIFT ANALYSIS - PRO LAYOUT
     # ========================================================================
-    elements.append(Paragraph("Analiza Dryfu Efektywności (Cardiac Drift)", styles["title"]))
-    elements.append(Paragraph("<font size='10' color='#7F8C8D'>Dynamika EF, klasyfikacja dryfu, implikacje treningowe</font>", styles["body"]))
-    elements.append(Spacer(1, 6 * mm))
+    # Use KeepTogether to prevent orphan heading
+    drift_header = [
+        Spacer(1, 6 * mm),
+        Paragraph("Analiza Dryfu Efektywności (Cardiac Drift)", styles["title"]),
+        Paragraph("<font size='10' color='#7F8C8D'>Dynamika EF, klasyfikacja dryfu, implikacje treningowe</font>", styles["body"]),
+        Spacer(1, 4 * mm),
+        Paragraph("KLUCZOWE SYGNAŁY", styles["heading"]),
+    ]
+    elements.append(KeepTogether(drift_header))
     
     # Get drift data from thermo_data (will be populated by persistence.py)
     drift_data = thermo_data.get("cardiac_drift", {})
@@ -3795,9 +3812,8 @@ def build_page_thermal(
         smo2_status, smo2_color = ("BRAK", "#808080")
     
     # === KEY SIGNALS BOX ===
-    elements.append(Paragraph("KLUCZOWE SYGNAŁY", styles["heading"]))
     elements.append(Spacer(1, 2 * mm))
-    
+
     key_signals_data = [
         ["Sygnał", "Wartość", "Status"],
         ["EF Start", f"{ef_start:.2f} W/bpm" if ef_start > 0 else "---", "BAZOWY"],

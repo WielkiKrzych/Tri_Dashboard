@@ -772,8 +772,8 @@ def build_ramp_pdf(
             vent_data=vent_data,
             styles=styles
         ))
-        story.append(PageBreak())
-    
+        # No forced PageBreak — let cardiovascular flow naturally from ventilation
+
     # === 3.2 UKŁAD SERCOWO-NACZYNIOWY ===
     cardio_data = pdf_data.get("cardio_advanced", {})
     if cardio_data:
@@ -781,8 +781,8 @@ def build_ramp_pdf(
             cardio_data=cardio_data,
             styles=styles
         ))
-        story.append(PageBreak())
-    
+        # No forced PageBreak — let SmO2 flow naturally from cardiovascular
+
     # === 3.3 OKSYGENACJA MIĘŚNIOWA (SmO2) ===
     story.extend(build_page_smo2(
         smo2_data=pdf_data["smo2"],
@@ -791,7 +791,7 @@ def build_ramp_pdf(
         styles=styles
     ))
     story.append(PageBreak())
-    
+
     # === 3.5 HRV / DFA ALPHA-1 ===
     hrv_data = pdf_data.get("hrv_analysis", {})
     if hrv_data and hrv_data.get("summary", {}).get("windows_analyzed", 0) > 0:
@@ -810,12 +810,12 @@ def build_ramp_pdf(
             styles=styles,
             biomech_data=biomech_data
         ))
-        story.append(PageBreak())
-    
+        # No forced PageBreak — let drift/limiter flow naturally after biomech recs
+
     # ===========================================================================
     # ROZDZIAŁ 4: LIMITERY I OBCIĄŻENIE CIEPLNE
     # ===========================================================================
-    
+
     # === 4.1 RADAR OBCIĄŻENIA SYSTEMÓW ===
     limiter_data = pdf_data.get("limiter_analysis", {})
     if limiter_data:
@@ -825,7 +825,7 @@ def build_ramp_pdf(
             styles=styles
         ))
         story.append(PageBreak())
-    
+
     # === 4.2 DRYF FIZJOLOGICZNY ===
     if any(k in figure_paths for k in ["drift_heatmap_hr", "drift_heatmap_smo2"]):
         story.extend(build_page_drift_kpi(
@@ -833,7 +833,7 @@ def build_ramp_pdf(
             figure_paths=figure_paths,
             styles=styles
         ))
-        story.append(PageBreak())
+        # No forced PageBreak — let thermal flow naturally after drift explanation
     
     # === 4.3 TERMOREGULACJA ===
     story.extend(build_page_thermal(
@@ -863,16 +863,16 @@ def build_ramp_pdf(
         kpi=pdf_data["kpi"],
         styles=styles
     ))
-    story.append(PageBreak())
-    
+    # No forced PageBreak — let executive summary flow naturally from KPI dashboard
+
     # === 5.2 PODSUMOWANIE FIZJOLOGICZNE ===
     story.extend(build_page_executive_summary(
         executive_data=pdf_data.get("executive_summary", {}),
         metadata=metadata,
         styles=styles
     ))
-    story.append(PageBreak())
-    
+    # No forced PageBreak — let verdict flow naturally from executive summary
+
     # === 5.3 WERDYKT FIZJOLOGICZNY ===
     story.extend(build_page_executive_verdict(
         canonical_physio=pdf_data.get("canonical_physiology", {}),
@@ -889,8 +889,8 @@ def build_ramp_pdf(
     if not compact_mode:
         from .layout import build_page_protocol
         story.extend(build_page_protocol(styles=styles))
-        story.append(PageBreak())
-    
+        # No forced PageBreak — let limitations flow naturally from protocol
+
     # === 5.5 OGRANICZENIA INTERPRETACJI ===
     story.extend(build_page_limitations(
         styles=styles,

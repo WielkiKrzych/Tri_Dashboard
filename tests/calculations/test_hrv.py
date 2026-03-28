@@ -34,9 +34,10 @@ class TestCalculateDynamicDfaV2:
 
     def test_insufficient_data_returns_error(self):
         """Test with insufficient data points."""
-        # Only 50 RR intervals (below min_samples_hrv default of 100)
+        n = 50
         short_df = pd.DataFrame({
-            "rr": np.random.uniform(800, 1200, 50)
+            "time": np.arange(n, dtype=float),
+            "rr": np.random.uniform(800, 1200, n),
         })
 
         result_df, error = calculate_dynamic_dfa_v2(short_df)
@@ -45,8 +46,10 @@ class TestCalculateDynamicDfaV2:
 
     def test_handles_rr_in_seconds(self):
         """Test RR values in seconds (0.8-1.2 range)."""
+        n = 200
         df = pd.DataFrame({
-            "rr": np.random.uniform(0.8, 1.2, 200)
+            "time": np.arange(n, dtype=float),
+            "rr": np.random.uniform(0.8, 1.2, n),
         })
 
         result_df, error = calculate_dynamic_dfa_v2(df)
@@ -56,8 +59,10 @@ class TestCalculateDynamicDfaV2:
 
     def test_handles_rr_in_microseconds(self):
         """Test RR values in microseconds."""
+        n = 200
         df = pd.DataFrame({
-            "rr": np.random.uniform(800000, 1200000, 200)
+            "time": np.arange(n, dtype=float),
+            "rr": np.random.uniform(800000, 1200000, n),
         })
 
         result_df, error = calculate_dynamic_dfa_v2(df)
@@ -76,10 +81,14 @@ class TestCalculateDynamicDfaV2:
 
     def test_handles_nan_values(self):
         """Test handling of NaN values in RR data."""
-        rr_data = np.random.uniform(800, 1200, 200)
+        n = 200
+        rr_data = np.random.uniform(800, 1200, n)
         rr_data[50:55] = np.nan  # Insert NaN values
 
-        df = pd.DataFrame({"rr": rr_data})
+        df = pd.DataFrame({
+            "time": np.arange(n, dtype=float),
+            "rr": rr_data,
+        })
 
         result_df, error = calculate_dynamic_dfa_v2(df)
 
@@ -88,7 +97,7 @@ class TestCalculateDynamicDfaV2:
 
     def test_empty_dataframe_returns_error(self):
         """Test with empty dataframe."""
-        df = pd.DataFrame({"rr": []})
+        df = pd.DataFrame({"time": pd.Series(dtype=float), "rr": pd.Series(dtype=float)})
 
         result_df, error = calculate_dynamic_dfa_v2(df)
 

@@ -313,7 +313,7 @@ def calculate_dynamic_dfa_v2(
             else:
                 return np.nan  # Out of range
 
-        # Handle string formats (e.g., "648", "681:07:00")
+        # Handle string formats (e.g., "648", "584:583", "681:07:00")
         if isinstance(val, str):
             val = val.strip()
             # Try parsing as simple number first
@@ -323,16 +323,28 @@ def calculate_dynamic_dfa_v2(
             except ValueError:
                 pass
 
-            # Handle HH:MM:SS format (Excel time export artifact)
             if ":" in val:
                 parts = val.split(":")
+
+                # Handle colon-separated R-R intervals (e.g., "584:583", "587:587:591")
+                # Common format from chest straps reporting multiple beats per second.
+                # Return last valid beat to preserve beat-to-beat variability for DFA.
+                if len(parts) >= 2:
+                    try:
+                        values = [float(p) for p in parts if p]
+                        valid = [v for v in values if 250 <= v <= 2000]
+                        if valid:
+                            return valid[-1]
+                    except ValueError:
+                        pass
+
+                # Handle HH:MM:SS format (Excel time export artifact)
                 if len(parts) == 3:
                     try:
                         hours = float(parts[0])
                         minutes = float(parts[1])
                         seconds = float(parts[2])
                         total_ms = (hours * 3600 + minutes * 60 + seconds) * 1000
-                        # Validate: if result is > 10 seconds, it's likely an error
                         if 300 <= total_ms <= 2000:
                             return total_ms
                     except ValueError:

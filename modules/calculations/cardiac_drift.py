@@ -110,10 +110,14 @@ def analyze_cardiac_drift(
         profile.mechanism_description = "Za mało danych EF do analizy."
         return profile
     
-    # EF at start (first 60 seconds) and end (last 60 seconds)
+    # === ADAPTIVE WINDOW for EF comparison ===
+    # Short sessions (<10 min): use 25% of data
+    # Long sessions (>30 min / steady-state): use 25% of data (not fixed 60s!)
+    # Fixed 60s window is misleading for long steady-state efforts because
+    # it compares warmup (low HR) vs end, inflating drift artificially.
     n_points = len(ef_valid)
-    start_window = min(60, n_points // 4)
-    end_window = min(60, n_points // 4)
+    start_window = max(30, n_points // 4)
+    end_window = max(30, n_points // 4)
     
     profile.ef_start = float(np.nanmean(ef_valid[:start_window]))
     profile.ef_end = float(np.nanmean(ef_valid[-end_window:]))

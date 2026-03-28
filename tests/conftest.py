@@ -37,10 +37,14 @@ def sample_power_df_with_smooth(sample_power_df):
 
 @pytest.fixture
 def sample_hrv_df():
-    """Sample HRV data with R-R intervals."""
+    """Sample HRV data with R-R intervals.
+
+    Must cover at least 1200s (2× default DFA window of 600s)
+    to produce valid DFA alpha-1 results.
+    """
     np.random.seed(42)
-    n = 500
-    
+    n = 1500
+
     return pd.DataFrame({
         'time': np.arange(n, dtype=float),
         'rr': np.random.normal(800, 50, n).clip(600, 1200),  # R-R in ms

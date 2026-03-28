@@ -103,9 +103,24 @@ class TestCleanHrvValue:
     def test_plain_number(self):
         assert _clean_hrv_value("55.3") == pytest.approx(55.3)
 
-    def test_colon_separated(self):
-        result = _clean_hrv_value("50:60:55")
-        assert result == pytest.approx(55.0)
+    def test_colon_separated_rr_intervals(self):
+        """Colon-separated R-R intervals: return last valid beat (preserves HRV)."""
+        result = _clean_hrv_value("584:583")
+        assert result == pytest.approx(583.0)
+
+    def test_colon_separated_subphysiological(self):
+        """R-R intervals below 250ms are artifacts — filtered out."""
+        assert np.isnan(_clean_hrv_value("50:60:55"))
+
+    def test_colon_separated_mixed_validity(self):
+        """Mixed valid/invalid: return last valid beat."""
+        result = _clean_hrv_value("1108:547")
+        assert result == pytest.approx(547.0)
+
+    def test_colon_separated_three_beats(self):
+        """Three valid R-R intervals: return last."""
+        result = _clean_hrv_value("587:591:583")
+        assert result == pytest.approx(583.0)
 
     def test_nan_string(self):
         assert np.isnan(_clean_hrv_value("nan"))
@@ -126,11 +141,18 @@ class TestCleanHrvValue:
 
 class TestProcessHrvColumn:
     def test_hrv_column_cleaned(self):
-        df = pd.DataFrame({"hrv": ["50", "60:70", "nan", "45.5"]})
+        df = pd.DataFrame({"hrv": ["500", "584:583", "nan", "455.5"]})
         result = _process_hrv_column(df)
         assert "hrv" in result.columns
         assert result["hrv"].dtype == np.float64 or pd.api.types.is_float_dtype(result["hrv"])
         assert not result["hrv"].isna().all()
+
+    def test_hrv_column_not_interpolated(self):
+        """HRV must NOT be interpolated — preserves DFA alpha-1 accuracy."""
+        df = pd.DataFrame({"hrv": ["500", "nan", "nan", "600"]})
+        result = _process_hrv_column(df)
+        # Middle values should remain NaN (not interpolated)
+        assert result["hrv"].isna().sum() == 2
 
     def test_no_hrv_column_unchanged(self):
         df = pd.DataFrame({"watts": [100, 200]})

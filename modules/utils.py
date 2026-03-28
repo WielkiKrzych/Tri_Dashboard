@@ -123,7 +123,10 @@ _COLUMN_ALIAS_INDEX = {
 def _clean_hrv_value(val: str) -> float:
     """Clean a single HRV value string.
 
-    Handles formats: plain numbers, colon-separated values (e.g., "50:60:55")
+    Handles formats: plain numbers, colon-separated values (e.g., "584:583").
+    For colon-separated R-R intervals, returns the LAST value (most recent beat)
+    to preserve beat-to-beat variability needed for DFA alpha-1.
+    Averaging destroys HRV information — use last beat as representative.
     """
     val = val.strip().lower()
     if val == "nan" or val == "":
@@ -132,7 +135,14 @@ def _clean_hrv_value(val: str) -> float:
     if ":" in val:
         try:
             parts = [float(x) for x in val.split(":") if x]
-            return np.mean(parts) if parts else np.nan
+            if not parts:
+                return np.nan
+            # Filter out physiologically implausible values (artifacts)
+            valid_parts = [p for p in parts if 250 <= p <= 2000]
+            if not valid_parts:
+                return np.nan
+            # Return last valid R-R interval to preserve beat-to-beat variability
+            return valid_parts[-1]
         except ValueError:
             return np.nan
 
@@ -181,11 +191,17 @@ def _read_raw_file(file) -> pd.DataFrame:
 
 
 def _process_hrv_column(df: pd.DataFrame) -> pd.DataFrame:
-    """Process and clean HRV column if present."""
+    """Process and clean HRV column if present.
+
+    IMPORTANT: HRV/R-R data must NOT be interpolated — interpolation creates
+    artificial smoothness that corrupts DFA alpha-1 calculations.
+    Only convert to numeric and leave NaN gaps intact.
+    """
     if "hrv" in df.columns:
         df["hrv"] = df["hrv"].astype(str).apply(_clean_hrv_value)
         df["hrv"] = pd.to_numeric(df["hrv"], errors="coerce")
-        df["hrv"] = df["hrv"].interpolate(method="linear").ffill().bfill()
+        # DO NOT interpolate — DFA alpha-1 requires true beat-to-beat variability.
+        # Interpolation biases alpha-1 toward 1.0 (ordered), masking real HRV signal.
     return df
 
 

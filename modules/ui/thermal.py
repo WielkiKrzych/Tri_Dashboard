@@ -7,6 +7,7 @@ import plotly.express as px
 from typing import Optional
 from modules.calculations import calculate_thermal_decay
 from modules.ui.utils import hash_dataframe as _hash_dataframe
+from modules.plots import CHART_CONFIG
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
@@ -83,7 +84,7 @@ def render_thermal_tab(df_plot):
     # Use cached chart building
     fig_t = _build_thermal_chart(df_plot)
     if fig_t is not None:
-        st.plotly_chart(fig_t, use_container_width=True)
+        st.plotly_chart(fig_t, use_container_width=True, config=CHART_CONFIG)
     
     with st.expander("🌡️ Teoria: Koszt Termiczny Wydajności (WKO5/INSCYD)", expanded=False):
         st.markdown("""
@@ -152,7 +153,7 @@ def render_thermal_tab(df_plot):
                 height=450, margin=dict(l=10, r=10, t=40, b=10),
                 hovermode="x unified"
             )
-            st.plotly_chart(fig_te, use_container_width=True)
+            st.plotly_chart(fig_te, use_container_width=True, config=CHART_CONFIG)
             
             st.info("""
             ℹ️ **Interpretacja WKO5:**
@@ -338,7 +339,7 @@ def _render_thermal_prediction_section(df_plot, decay_result):
         legend=dict(orientation="h", y=1.1, x=0)
     )
     
-    st.plotly_chart(fig_cp, use_container_width=True)
+    st.plotly_chart(fig_cp, use_container_width=True, config=CHART_CONFIG)
     
     # Wnioski
     if prediction['temp_delta'] > 1.5:

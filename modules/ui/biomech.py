@@ -3,6 +3,7 @@ Biomechanical Stress tab — cadence, torque, and neuro-muscular load.
 """
 import streamlit as st
 import plotly.graph_objects as go
+from modules.plots import CHART_CONFIG
 
 def render_biomech_tab(df_plot, df_plot_resampled):
     st.header("Biomechaniczny Stres")
@@ -61,7 +62,7 @@ def render_biomech_tab(df_plot, df_plot_resampled):
             height=450
         )
         
-        st.plotly_chart(fig_b, use_container_width=True)
+        st.plotly_chart(fig_b, use_container_width=True, config=CHART_CONFIG)
         
         st.info("""
         **💡 Kompendium: Moment Obrotowy (Siła) vs Kadencja (Szybkość)**
@@ -153,7 +154,7 @@ def render_biomech_tab(df_plot, df_plot_resampled):
             height=450
         )
         
-        st.plotly_chart(fig_ts, use_container_width=True)
+        st.plotly_chart(fig_ts, use_container_width=True, config=CHART_CONFIG)
         
         st.info("""
         **💡 Fizjologia Okluzji (Analiza Koszykowa):**
@@ -295,7 +296,7 @@ def _render_occlusion_cadence_analysis(df_plot):
         bgcolor="rgba(0,0,0,0.5)", borderpad=4
     )
     
-    st.plotly_chart(fig_heatmap, use_container_width=True)
+    st.plotly_chart(fig_heatmap, use_container_width=True, config=CHART_CONFIG)
     
     # === WNIOSKI ===
     st.markdown("### 📋 Wnioski")

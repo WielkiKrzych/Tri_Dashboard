@@ -8,7 +8,7 @@ import pandas as pd
 import numpy as np
 from typing import Dict, Any, Optional
 from modules.config import Config
-from modules.plots import apply_chart_style
+from modules.plots import apply_chart_style, CHART_CONFIG, CHART_HEIGHT_SMALL
 from modules.ui.utils import hash_dataframe as _hash_dataframe, hash_params as _hash_params
 from modules.calculations import (
     calculate_power_duration_curve,
@@ -41,6 +41,11 @@ def _build_power_w_chart(df_resampled: pd.DataFrame, cp_input: int, w_prime_inpu
             hovertemplate="Moc: %{y:.0f} W<extra></extra>",
         )
     )
+    w_prime_pct = (
+        df_resampled["w_prime_balance"] / w_prime_input * 100
+        if w_prime_input > 0
+        else df_resampled["w_prime_balance"] * 0
+    )
     fig.add_trace(
         go.Scatter(
             x=df_resampled["time_min"],
@@ -48,7 +53,8 @@ def _build_power_w_chart(df_resampled: pd.DataFrame, cp_input: int, w_prime_inpu
             name="W' Bal",
             yaxis="y2",
             line=dict(color=Config.COLOR_HR, width=2),
-            hovertemplate="W' Bal: %{y:.0f} J<extra></extra>",
+            customdata=w_prime_pct,
+            hovertemplate="W' Bal: %{y:.0f} J (%{customdata:.0f}% zasobu)<extra></extra>",
         )
     )
     fig.update_layout(
@@ -110,13 +116,18 @@ def _build_fri_gauge(fri: float) -> go.Figure:
             value=fri,
             domain={"x": [0, 1], "y": [0, 1]},
             gauge={
-                "axis": {"range": [0.6, 1.0], "tickwidth": 1},
+                "axis": {
+                    "range": [0, 1.0],
+                    "tickwidth": 1,
+                    "tickvals": [0, 0.5, 0.6, 0.75, 0.85, 0.92, 1.0],
+                },
                 "bar": {"color": "#FFD700"},
                 "steps": [
-                    {"range": [0.6, 0.75], "color": "#FF4500"},
+                    {"range": [0, 0.60],   "color": "#6b0000"},
+                    {"range": [0.60, 0.75], "color": "#FF4500"},
                     {"range": [0.75, 0.85], "color": "#FFA500"},
                     {"range": [0.85, 0.92], "color": "#32CD32"},
-                    {"range": [0.92, 1.0], "color": "#00CED1"},
+                    {"range": [0.92, 1.0],  "color": "#00CED1"},
                 ],
                 "threshold": {
                     "line": {"color": "white", "width": 2},
@@ -128,7 +139,7 @@ def _build_fri_gauge(fri: float) -> go.Figure:
         )
     )
     fig.update_layout(
-        template="plotly_dark", height=250, margin=dict(l=30, r=30, t=50, b=10)
+        template="plotly_dark", height=CHART_HEIGHT_SMALL, margin=dict(l=30, r=30, t=50, b=10)
     )
     return fig
 
@@ -183,7 +194,7 @@ def render_power_tab(
     st.subheader("Wykres Mocy i W'")
     # Use cached chart building
     fig_pw = _build_power_w_chart(df_plot_resampled, cp_input, w_prime_input)
-    st.plotly_chart(fig_pw, use_container_width=True)
+    st.plotly_chart(fig_pw, use_container_width=True, config=CHART_CONFIG)
 
     st.info("""
     **💡 Interpretacja: Energia Beztlenowa (W' Balance)**
@@ -207,7 +218,7 @@ def render_power_tab(
     st.subheader("Czas w Strefach Mocy (Time in Zones)")
     fig_z = _build_zones_chart(df_plot, cp_input)
     if fig_z is not None:
-        st.plotly_chart(fig_z, use_container_width=True)
+        st.plotly_chart(fig_z, use_container_width=True, config=CHART_CONFIG)
 
         st.info("""
         **💡 Interpretacja Treningowa:**
@@ -406,7 +417,7 @@ def render_power_tab(
 
         # FRI gauge - use cached version
         fig_fri = _build_fri_gauge(fri)
-        st.plotly_chart(fig_fri, use_container_width=True)
+        st.plotly_chart(fig_fri, use_container_width=True, config=CHART_CONFIG)
     else:
         st.warning("Potrzeba danych ≥5 minut i ≥20 minut dla obliczenia FRI.")
 

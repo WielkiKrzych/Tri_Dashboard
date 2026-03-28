@@ -19,6 +19,7 @@ from typing import Optional
 from modules.config import Config
 from modules.calculations.thresholds import analyze_step_test
 from modules.calculations.smo2_advanced import detect_smo2_thresholds_moxy
+from modules.plots import CHART_CONFIG
 
 from .summary_calculations import _hash_dataframe, _calculate_np, _estimate_cp_wprime
 from .summary_charts import (
@@ -113,9 +114,14 @@ def render_summary_tab(
     # =========================================================================
     st.subheader("1️⃣ Przebieg Treningu")
 
-    fig_training = _build_training_timeline_chart(df_plot)
+    fig_training = _build_training_timeline_chart(
+        df_plot,
+        cp_input=cp_input,
+        vt1_watts=eff_vt1,
+        vt2_watts=eff_vt2,
+    )
     if fig_training is not None:
-        st.plotly_chart(fig_training, use_container_width=True)
+        st.plotly_chart(fig_training, use_container_width=True, config=CHART_CONFIG)
 
     # =========================================================================
     # 1a. METRYKI POD WYKRESEM
@@ -173,7 +179,7 @@ def render_summary_tab(
         )
         fig_ve_br.update_yaxes(title_text="VE (L/min)", secondary_y=False)
         fig_ve_br.update_yaxes(title_text="BR (/min)", secondary_y=True)
-        st.plotly_chart(fig_ve_br, use_container_width=True)
+        st.plotly_chart(fig_ve_br, use_container_width=True, config=CHART_CONFIG)
 
         ve_min = df_plot["tymeventilation"].min()
         ve_max = df_plot["tymeventilation"].max()

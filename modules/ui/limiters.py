@@ -4,6 +4,7 @@ Limiters tab — identifies the primary performance limiter (central vs local vs
 import streamlit as st
 import plotly.graph_objects as go
 import pandas as pd
+from modules.plots import CHART_CONFIG, CHART_HEIGHT_RADAR
 
 def render_limiters_tab(df_plot, cp_input, vt2_vent):
     st.header("Analiza Limiterów Fizjologicznych (INSCYD-style)")
@@ -146,7 +147,15 @@ def render_limiters_tab(df_plot, cp_input, vt2_vent):
                     values += [values[0]]
                     categories += [categories[0]]
 
+                    # Reference ring for trained elite (population norms)
+                    elite_ref = [85, 80, 70, 95]
+                    elite_r = elite_ref + [elite_ref[0]]
+
+                    max_val = max(values)
+                    range_max = 100 if max_val < 100 else (max_val + 10)
+
                     fig_radar = go.Figure()
+                    # User profile
                     fig_radar.add_trace(go.Scatterpolar(
                         r=values,
                         theta=categories,
@@ -156,18 +165,33 @@ def render_limiters_tab(df_plot, cp_input, vt2_vent):
                         fillcolor='rgba(0, 204, 150, 0.3)',
                         hovertemplate="%{theta}: <b>%{r:.1f}%</b><extra></extra>"
                     ))
-
-                    max_val = max(values)
-                    range_max = 100 if max_val < 100 else (max_val + 10)
+                    # Elite reference ring
+                    fig_radar.add_trace(go.Scatterpolar(
+                        r=elite_r,
+                        theta=categories,
+                        fill=None,
+                        name="Norma Elity",
+                        line=dict(color="rgba(255,255,255,0.35)", dash="dot", width=1),
+                        hovertemplate="%{theta}: <b>%{r:.0f}%</b> (norma)<extra></extra>",
+                    ))
 
                     fig_radar.update_layout(
-                        polar=dict(radialaxis=dict(visible=True, range=[0, range_max])),
+                        polar=dict(
+                            radialaxis=dict(
+                                visible=True,
+                                range=[0, range_max],
+                                tickvals=[25, 50, 75, 100],
+                                ticksuffix="%",
+                                showticklabels=True,
+                            )
+                        ),
                         template="plotly_dark",
                         title=f"Profil Obciążenia: {selected_window_name} ({peak_w_avg:.0f} W)",
-                        height=450
+                        height=CHART_HEIGHT_RADAR,
+                        legend=dict(orientation="h", y=1.05, x=0),
                     )
-                    
-                    st.plotly_chart(fig_radar, use_container_width=True)
+
+                    st.plotly_chart(fig_radar, use_container_width=True, config=CHART_CONFIG)
                     
                     # Diagnoza — use normalized values for fair comparison
                     limiting_factor = "Serce" if norm_hr >= max(norm_ve, norm_smo2) else ("Płuca" if norm_ve >= norm_smo2 else "Mięśnie")

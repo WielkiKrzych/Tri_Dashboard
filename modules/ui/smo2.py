@@ -7,6 +7,7 @@ import pandas as pd
 from scipy import stats
 from modules.calculations.kinetics import generate_state_timeline
 from modules.calculations.quality import check_signal_quality
+from modules.plots import CHART_CONFIG
 
 
 def render_smo2_tab(target_df, training_notes, uploaded_file_name):
@@ -245,6 +246,7 @@ def render_smo2_tab(target_df, training_notes, uploaded_file_name):
             key="smo2_chart",
             on_select="rerun",
             selection_mode="box",
+            config=CHART_CONFIG,
         )
 
         # ===== WYKRES THb (taki sam jak SmO2) =====
@@ -345,7 +347,7 @@ def render_smo2_tab(target_df, training_notes, uploaded_file_name):
                 hovermode="x unified",
             )
 
-            st.plotly_chart(fig_thb, use_container_width=True, key="thb_chart")
+            st.plotly_chart(fig_thb, use_container_width=True, key="thb_chart", config=CHART_CONFIG)
 
         # Obsługa zaznaczenia
         if selected and "selection" in selected and "box" in selected["selection"]:
@@ -399,7 +401,7 @@ def render_smo2_tab(target_df, training_notes, uploaded_file_name):
                     height=400,
                     hovermode="closest",
                 )
-                st.plotly_chart(fig_scatter, use_container_width=True)
+                st.plotly_chart(fig_scatter, use_container_width=True, config=CHART_CONFIG)
 
             # THb Visualization
             if "thb" in interval_data.columns:
@@ -429,7 +431,7 @@ def render_smo2_tab(target_df, training_notes, uploaded_file_name):
                     height=300,
                     hovermode="x unified",
                 )
-                st.plotly_chart(fig_thb, use_container_width=True)
+                st.plotly_chart(fig_thb, use_container_width=True, config=CHART_CONFIG)
 
     else:
         st.warning("Brak danych w wybranym zakresie.")

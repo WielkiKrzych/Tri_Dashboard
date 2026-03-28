@@ -39,6 +39,25 @@ Tri_Dashboard to platforma analityczna dla **trenerów**, **naukowców sportu** 
 | **AI Coach** | Multi-sensor fusion, limiter diagnosis, rekomendacje |
 | **Reports** | PDF ~36-stronicowy, DOCX, PNG export, SQLite baza danych, CLI generator |
 
+### 🆕 Chart & Visualization Overhaul v1.0 (2026-03-28)
+
+Complete audit and improvement of all Plotly charts in the Streamlit dashboard.
+
+| Category | Change | Files |
+|:---------|:-------|:------|
+| **BREAKING** | Main timeline split into 2 stacked subplots: Power+HR (top) / SmO2+VE (bottom) — eliminates 4 overlapping right-hand axes | `summary_charts.py` |
+| **NEW** | Training zone bands Z1–Z6 rendered as `add_hrect()` background on power panel | `summary_charts.py` |
+| **NEW** | CP / VT1 / VT2 threshold `hline` annotations on power panel | `summary_charts.py` |
+| **NEW** | Range slider (`rangeslider`) on x-axis for session navigation | `summary_charts.py` |
+| **NEW** | Radar chart: elite reference ring + `tickvals`/`ticksuffix` on radial axis | `limiters.py` |
+| **FIX** | SmO2 color unified — `Config.COLOR_SMO2` used everywhere (was hardcoded `#2ca02c` in 3 places) | `summary_charts.py` |
+| **FIX** | FRI gauge: axis range extended from `[0.6, 1.0]` to `[0, 1.0]` + critical zone `<0.60` added | `power.py` |
+| **FIX** | W' Balance hovertemplate now shows `%{y:.0f} J (%{customdata:.0f}% zasobu)` | `power.py` |
+| **FIX** | Legend position changed to `y=1.03, yanchor="bottom"` — no more clipping by Streamlit container | `summary_charts.py` |
+| **FIX** | Eliminated double rolling-mean via `_get_smooth()` helper (was applying `.rolling(5)` on pre-smoothed data) | `summary_charts.py` |
+| **GLOBAL** | `CHART_CONFIG` (no Plotly logo, hover modebar, scroll zoom, retina PNG export) applied to all `st.plotly_chart()` calls | `plots.py` + 7 UI files |
+| **GLOBAL** | `CHART_HEIGHT_MAIN/SUB/SMALL/HEATMAP/RADAR` constants replace scattered hardcoded px values | `plots.py` |
+
 ### 🆕 PDF Report v3.2 — New Sections & Microcycle Periodization (2026-03-26)
 
 4 new PDF report pages, expanded training recommendations, CLI PDF generator.
@@ -280,6 +299,20 @@ Tri_Dashboard/
 ---
 
 ## 📋 Changelog
+
+### 2026-03-28 — Chart & Visualization Overhaul v1.0
+
+- Main timeline chart replaced with 2-row subplots (Power+HR / SmO2+VE) — 4 overlapping axes eliminated
+- Training zone bands Z1–Z6 as background `hrect` on power panel
+- CP/VT1/VT2 `hline` annotations on power panel
+- Range slider on x-axis for session navigation
+- FRI gauge axis `[0.6, 1.0]` → `[0, 1.0]` + critical zone `<0.60`
+- SmO2 color unified to `Config.COLOR_SMO2` across all charts
+- W' Balance hover: value in J + % of W' reserve
+- Radar: elite reference ring + % tick labels on radial axis
+- `CHART_CONFIG` (logo off, hover modebar, scroll zoom, retina export) applied to all 20+ chart calls
+- `CHART_HEIGHT_*` constants replace hardcoded px values in 7 files
+- `_get_smooth()` helper eliminates double rolling-mean on pre-smoothed columns
 
 ### 2026-02-28 - Ramp Report Review Fixes
 

@@ -729,6 +729,25 @@ def run_ramp_test_pipeline(
     # Calculate MMP curve (PDC)
     mmp_curve = calculate_power_duration_curve(preprocessed.df)
 
+    # Fit CP model from MMP curve if not provided externally
+    if cp_watts is None and mmp_curve:
+        valid_points = {d: p for d, p in mmp_curve.items() if p is not None}
+        if len(valid_points) >= 3:
+            try:
+                from modules.power_duration import fit_critical_power
+                cp_result = fit_critical_power(
+                    durations=list(valid_points.keys()),
+                    max_mean_powers=list(valid_points.values()),
+                )
+                cp_watts = cp_result.cp
+                w_prime_joules = cp_result.w_prime
+                logger.info(
+                    "CP model fitted: CP=%.1fW, W'=%.0fJ (R²=%.3f)",
+                    cp_watts, w_prime_joules, cp_result.r_squared,
+                )
+            except (ValueError, Exception) as e:
+                logger.warning("CP model fitting failed: %s", e)
+
     # Calculate HR for manual thresholds
     smo2_manual_lt1_hr = None
     smo2_manual_lt2_hr = None

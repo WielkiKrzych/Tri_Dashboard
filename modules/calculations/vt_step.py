@@ -90,7 +90,17 @@ def detect_vt_from_steps(
                     return i + w, slope, stages[i + w - 1], i  # Return start index too
         return None, None, None, None
 
-    s_idx, s_slope, s_stage, _ = search(0, VT1_SLOPE_SPIKE_SKIP)
+    # Spike skip: only check the first 2 stages for warmup artifacts
+    # (beyond that, high slopes are real VT transitions, not artifacts)
+    max_spike_search = min(2, len(stages))
+    s_idx, s_slope, s_stage, _ = None, None, None, None
+    for i in range(max_spike_search):
+        if stages[i]["ve_slope"] > VT1_SLOPE_SPIKE_SKIP:
+            s_idx = i + 1
+            s_slope = stages[i]["ve_slope"]
+            s_stage = stages[i]
+            break
+
     vt1_start = s_idx if s_stage else 0
     if s_stage:
         result.notes.append(

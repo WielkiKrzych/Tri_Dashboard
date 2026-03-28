@@ -178,7 +178,7 @@ def map_ramp_json_to_pdf_data(report_json: Dict[str, Any], manual_overrides: Opt
         logger.info(f"PDF: step_increment set to {mapped_meta['step_increment']}W (manual)")
 
     # 2. Thresholds (midpoints and ranges)
-    thresholds = report_json.get("thresholds", {})
+    thresholds = report_json.get("thresholds") or {}
     
     # Debug helper for VE (guard against JSON null)
     vt1_data = _safe(thresholds.get("vt1"))
@@ -195,8 +195,8 @@ def map_ramp_json_to_pdf_data(report_json: Dict[str, Any], manual_overrides: Opt
         "vt2_ve": get_num("thresholds", "vt2", ["vt2", "midpoint_ve"]),
         "vt2_range_watts": get_num("thresholds", "vt2", ["vt2", "range_watts"]),
         
-        "vt1_raw_midpoint": _safe(report_json.get("thresholds", {}).get("vt1")).get("midpoint_watts"), # for calcs
-        "vt2_raw_midpoint": _safe(report_json.get("thresholds", {}).get("vt2")).get("midpoint_watts"),
+        "vt1_raw_midpoint": _safe((report_json.get("thresholds") or {}).get("vt1")).get("midpoint_watts"), # for calcs
+        "vt2_raw_midpoint": _safe((report_json.get("thresholds") or {}).get("vt2")).get("midpoint_watts"),
     }
     
     # =========================================================================

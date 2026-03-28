@@ -45,7 +45,7 @@ def generate_ramp_profile_chart(
 
     # Extract data from source_df if available, otherwise from report
     time_series = report_data.get("time_series", {})
-    thresholds = report_data.get("thresholds", {})
+    thresholds = report_data.get("thresholds") or {}
     metadata = report_data.get("metadata", {})
     
     # Try to get data from source_df first
@@ -97,8 +97,8 @@ def generate_ramp_profile_chart(
         return create_empty_figure("Brak danych mocy", "Profil Ramp Test", output_path, **cfg)
     
     # Get threshold values from thresholds dict (nested structure)
-    vt1_data = thresholds.get("vt1", {})
-    vt2_data = thresholds.get("vt2", {})
+    vt1_data = thresholds.get("vt1") or {}
+    vt2_data = thresholds.get("vt2") or {}
     vt1_watts = vt1_data.get("midpoint_watts", 0) if isinstance(vt1_data, dict) else 0
     vt2_watts = vt2_data.get("midpoint_watts", 0) if isinstance(vt2_data, dict) else 0
     

@@ -67,10 +67,10 @@ def generate_ve_profile_chart(
     if not time_data or not ve_data:
         return create_empty_figure("Brak danych wentylacji", "Dynamika Wentylacji", output_path, **cfg)
     
-    # Get threshold values
-    thresholds = report_data.get("thresholds", {})
-    vt1_data = thresholds.get("vt1", {})
-    vt2_data = thresholds.get("vt2", {})
+    # Get threshold values (vt1/vt2 may be explicitly None when not detected)
+    thresholds = report_data.get("thresholds") or {}
+    vt1_data = thresholds.get("vt1") or {}
+    vt2_data = thresholds.get("vt2") or {}
     
     vt1_watts = vt1_data.get("midpoint_watts", 0)
     vt2_watts = vt2_data.get("midpoint_watts", 0)

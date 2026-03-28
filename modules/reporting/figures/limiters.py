@@ -91,9 +91,9 @@ def generate_radar_chart(
     ve_col = _find_column(df, ['tymeventilation', 've', 'ventilation'])
     vt2_ve = 0
     try:
-        thresholds = report_data.get("thresholds", {})
-        vt2 = thresholds.get("vt2_result", thresholds.get("vt2", {}))
-        vt2_ve = vt2.get("ve", 0)
+        thresholds = report_data.get("thresholds") or {}
+        vt2 = thresholds.get("vt2_result") or thresholds.get("vt2") or {}
+        vt2_ve = vt2.get("ve") or 0
     except (AttributeError, TypeError, KeyError):
         pass
     
@@ -113,7 +113,7 @@ def generate_radar_chart(
         pct_smo2 = 0
         
     # 4. Power (% CP)
-    cp_watts = report_data.get("cp_model", {}).get("cp_watts", 0)
+    cp_watts = (report_data.get("cp_model") or {}).get("cp_watts") or 0
     peak_w_avg = df_peak[pwr_col].mean()
     pct_power = min(120, (peak_w_avg / cp_watts * 100) if cp_watts and cp_watts > 0 else 0)
     

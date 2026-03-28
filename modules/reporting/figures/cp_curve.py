@@ -55,15 +55,15 @@ def generate_cp_curve_chart(
     method_version = cfg.get('method_version', '1.0.0')
 
     # Extract data
-    pdc_data = report_data.get("power_duration_curve", {})
-    cp_model = report_data.get("cp_model", {})
-    metadata = report_data.get("metadata", {})
-    
-    durations = pdc_data.get("durations_sec", [])
-    powers = pdc_data.get("powers_watts", [])
-    
-    cp_watts = cp_model.get("cp_watts", 0)
-    w_prime_j = cp_model.get("w_prime_joules", 0)
+    pdc_data = report_data.get("power_duration_curve") or {}
+    cp_model = report_data.get("cp_model") or {}
+    metadata = report_data.get("metadata") or {}
+
+    durations = pdc_data.get("durations_sec") or []
+    powers = pdc_data.get("powers_watts") or []
+
+    cp_watts = cp_model.get("cp_watts") or 0
+    w_prime_j = cp_model.get("w_prime_joules") or 0
     
     # Handle missing data
     if not durations or not powers:

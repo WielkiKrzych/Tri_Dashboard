@@ -2839,7 +2839,7 @@ def build_page_metabolic_engine(metabolic_data: Dict[str, Any], styles: Dict) ->
     
     vo2max = profile.get("vo2max", 0)
     vlamax = profile.get("vlamax", 0)
-    cp = profile.get("cp_watts", 0)
+    cp = profile.get("cp_watts") or 0
     ratio = profile.get("vo2max_vlamax_ratio", 0)
     phenotype = profile.get("phenotype", "unknown")
     vo2max_source = profile.get("vo2max_source", "unknown")

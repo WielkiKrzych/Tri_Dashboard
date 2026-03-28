@@ -80,7 +80,7 @@ def generate_smo2_power_chart(
 
     # Extract data
     time_series = report_data.get("time_series", {})
-    thresholds = report_data.get("thresholds", {})
+    thresholds = report_data.get("thresholds") or {}
     metadata = report_data.get("metadata", {})
     smo2_context = report_data.get("smo2_context", {})
     

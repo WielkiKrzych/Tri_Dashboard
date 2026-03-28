@@ -321,11 +321,11 @@ def build_canonical_physiology(
     weight_kg = physio.weight_kg.value
 
     # === CP / FTP ===
-    cp = data.get("cp_model", {}).get("cp_watts", 0)
+    cp = data.get("cp_model", {}).get("cp_watts") or 0
     if cp:
         physio.cp_watts = CanonicalMetric(value=cp, source="cp_model", confidence=0.85)
 
-    ftp = data.get("thresholds", {}).get("ftp_watts", 0)
+    ftp = (data.get("thresholds") or {}).get("ftp_watts") or 0
     if ftp:
         physio.ftp_watts = CanonicalMetric(value=ftp, source="thresholds", confidence=0.80)
     elif cp:

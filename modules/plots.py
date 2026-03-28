@@ -18,7 +18,7 @@ CHART_CONFIG = {
     "displaylogo": False,
     "modeBarButtonsToRemove": ["sendDataToCloud", "select2d", "lasso2d"],
     "displayModeBar": "hover",
-    "scrollZoom": True,
+    "scrollZoom": False,
     "toImageButtonOptions": {
         "format": "png",
         "filename": "tri_dashboard_chart",

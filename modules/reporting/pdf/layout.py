@@ -402,7 +402,26 @@ def build_contact_footer(styles: Dict) -> List:
         "wiadomość mailowa lub tekstowa na nr tel.: 453 330 419</font>",
         styles["center"]
     ))
-    
+
+    # Copyright notice
+    elements.append(Spacer(1, 12 * mm))
+    sep_table_cr = Table([[""]], colWidths=[170 * mm])
+    sep_table_cr.setStyle(TableStyle([
+        ('LINEABOVE', (0, 0), (-1, -1), 0.5, HexColor("#DEE2E6")),
+    ]))
+    elements.append(sep_table_cr)
+    elements.append(Spacer(1, 4 * mm))
+    elements.append(Paragraph(
+        "<font size='8' color='#7F8C8D'>"
+        "© Krzysztof Kubicz. Wszelkie prawa zastrzeżone. "
+        "Niniejszy raport jest objęty ochroną prawnoautorską. "
+        "Kopiowanie, rozpowszechnianie, udostępnianie osobom trzecim "
+        "lub wykorzystywanie w celach komercyjnych — w całości lub w części — "
+        "bez pisemnej zgody autora jest zabronione."
+        "</font>",
+        styles["center"]
+    ))
+
     return elements
 
 

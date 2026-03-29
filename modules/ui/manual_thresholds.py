@@ -290,14 +290,19 @@ def render_manual_thresholds_tab(
 
             # Używamy 'power' zamiast 'watts' - tak jest w df_steps z detect_vt_vslope_savgol
             power_col = "power" if "power" in df_s.columns else "watts"
-            ax1.plot(df_s[power_col], df_s["ve_smooth"], "b-", label="VE (L/min)", alpha=0.8)
+            ve_col = next((c for c in ["ve_smooth", "ve", "tymeventilation"] if c in df_s.columns), None)
+            if ve_col is None:
+                st.warning("Brak danych VE w wynikach V-Slope.")
+                return
+            ax1.plot(df_s[power_col], df_s[ve_col], "b-", label="VE (L/min)", alpha=0.8)
             ax1.set_xlabel("Moc [W]")
             ax1.set_ylabel("VE [L/min]", color="#5da5da")
 
             ax2 = ax1.twinx()
-            slope_col = "ve_slope" if "ve_slope" in df_s.columns else "slope"
-            ax2.plot(df_s[power_col], df_s[slope_col], "g--", label="Slope", alpha=0.5)
-            ax2.set_ylabel("Slope (dVE/dP)", color="#60bd68")
+            slope_col = next((c for c in ["ve_slope", "slope"] if c in df_s.columns), None)
+            if slope_col:
+                ax2.plot(df_s[power_col], df_s[slope_col], "g--", label="Slope", alpha=0.5)
+                ax2.set_ylabel("Slope (dVE/dP)", color="#60bd68")
 
             if v1_w:
                 ax1.axvline(

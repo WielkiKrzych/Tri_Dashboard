@@ -597,12 +597,14 @@ def build_ramp_pdf(
                 pass  # Silently skip if watermark fails
         
         # === FOOTER TEXT ===
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
         footer_text = f"Strona {page_num}"
-        
+        copyright_text = "\u00a9 Krzysztof Kubicz. Wszelkie prawa zastrze\u017cone."
+
         canvas.setFont(FONT_FAMILY, 8)
         canvas.setFillColor(COLORS["text_light"])
         canvas.drawCentredString(PAGE_SIZE[0] / 2, 10 * mm, footer_text)
+        canvas.setFont(FONT_FAMILY, 6)
+        canvas.drawCentredString(PAGE_SIZE[0] / 2, 6 * mm, copyright_text)
         
         canvas.restoreState()
     

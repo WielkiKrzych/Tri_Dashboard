@@ -40,7 +40,7 @@ def generate_biomech_chart(
             
             # Calculate Torque
             df['torque'] = df.apply(
-                lambda row: row['power'] / (row['cadence'] * 2 * np.pi / 60) if row['cadence'] > 20 else 0,
+                lambda row: row['power'] / (row['cadence'] * 2 * np.pi / 60) if row['cadence'] >= 60 else 0,
                 axis=1
             )
             df['torque_smooth'] = df['torque'].rolling(window=15, min_periods=1, center=True).mean()
@@ -170,7 +170,7 @@ def generate_torque_smo2_chart(
 
     # Calculate Torque
     df_calc['torque'] = df_calc.apply(
-        lambda row: row['power'] / (row['cadence'] * 2 * np.pi / 60) if row['cadence'] > 30 else 0,
+        lambda row: row['power'] / (row['cadence'] * 2 * np.pi / 60) if row['cadence'] >= 60 else 0,
         axis=1
     )
     

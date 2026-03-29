@@ -404,15 +404,9 @@ def build_contact_footer(styles: Dict) -> List:
     ))
 
     # Copyright notice
-    elements.append(Spacer(1, 12 * mm))
-    sep_table_cr = Table([[""]], colWidths=[170 * mm])
-    sep_table_cr.setStyle(TableStyle([
-        ('LINEABOVE', (0, 0), (-1, -1), 0.5, HexColor("#DEE2E6")),
-    ]))
-    elements.append(sep_table_cr)
-    elements.append(Spacer(1, 4 * mm))
+    elements.append(Spacer(1, 8 * mm))
     elements.append(Paragraph(
-        "<font size='8' color='#7F8C8D'>"
+        "<font size='7' color='#95A5A6'>"
         "© Krzysztof Kubicz. Wszelkie prawa zastrzeżone. "
         "Niniejszy raport jest objęty ochroną prawnoautorską. "
         "Kopiowanie, rozpowszechnianie, udostępnianie osobom trzecim "
@@ -1664,7 +1658,7 @@ def build_page_thresholds(
         ["VT2 (Próg went. 2 / RCP)", format_thresh(vt2_watts, vt2_range), fmt(vt2_hr), fmt(vt2_ve), fmt(vt2_br)],
     ]
     
-    table = Table(data, colWidths=[42 * mm, 42 * mm, 28 * mm, 28 * mm, 28 * mm])
+    table = Table(data, colWidths=[52 * mm, 42 * mm, 24 * mm, 24 * mm, 24 * mm])
     table.setStyle(get_table_style())
     elements.append(table)
     # === EDUCATION BLOCK: VT1/VT2 ===
@@ -3701,6 +3695,7 @@ def build_page_thermal(
     elements.append(Spacer(1, 6 * mm))
 
     # === HR/EF CONNECTION ===
+    elements.append(PageBreak())
     elements.append(Paragraph("<b>POŁĄCZENIE Z DRYFEM HR I EF</b>", styles["heading"]))
     elements.append(Spacer(1, 2 * mm))
     elements.append(Paragraph(
@@ -4059,8 +4054,8 @@ def build_page_biomech(
     if biomech_data and "metrics" in biomech_data:
         metrics = biomech_data["metrics"]
         classification = biomech_data.get("classification", {})
-        
-        elements.append(Spacer(1, 6 * mm))
+
+        elements.append(PageBreak())
         elements.append(Paragraph("KLUCZOWE LICZBY", styles["heading"]))
         elements.append(Spacer(1, 2 * mm))
         
@@ -5086,13 +5081,18 @@ def build_page_altitude(canonical_data: Dict[str, Any], styles: Dict) -> List:
 
     # Get altitude data
     altitude_adj = canonical_data.get("altitude_adjustment", {})
-    vo2max_data = canonical_data.get("vo2max", {})
+    # VO2max is nested inside canonical_physiology or available in summary
+    vo2max_data = (
+        canonical_data.get("canonical_physiology", {}).get("vo2max", {})
+        or canonical_data.get("vo2max", {})
+    )
+    vo2max_summary = canonical_data.get("summary", {}).get("vo2max", 0)
 
     altitude_m = altitude_adj.get("altitude_m", 0)
     is_adjusted = altitude_adj.get("is_adjusted", False)
     reduction_pct = altitude_adj.get("reduction_pct", 0)
     vo2max_adjusted = altitude_adj.get("vo2max_adjusted", 0)
-    vo2max_sea = vo2max_data.get("value", 0)
+    vo2max_sea = vo2max_data.get("value", 0) or vo2max_summary or 0
 
     # === ALTITUDE MODEL TABLE ===
     elements.append(Paragraph("<b>MODEL REDUKCJI VO₂max</b>", styles["subheading"]))

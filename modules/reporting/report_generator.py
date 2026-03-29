@@ -266,6 +266,11 @@ def save_ramp_test_report(
                     power = analysis_df["watts"].values
                     cad_col = "cadence" if "cadence" in analysis_df.columns else "cad"
                     cadence = analysis_df[cad_col].values
+                    # Filter out low-cadence points (post-exhaustion artifacts
+                    # where cadence drops but power lingers, creating unrealistic torque)
+                    valid_cad = cadence >= 60
+                    power = np.where(valid_cad, power, 0)
+                    cadence = np.where(valid_cad, cadence, 90)  # placeholder for masked points
                     angular_vel = 2 * np.pi * cadence / 60
                     angular_vel[angular_vel < 0.1] = 0.1
                     torque = power / angular_vel

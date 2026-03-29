@@ -39,6 +39,23 @@ Tri_Dashboard to platforma analityczna dla **trenerów**, **naukowców sportu** 
 | **AI Coach** | Multi-sensor fusion, limiter diagnosis, rekomendacje |
 | **Reports** | PDF ~36-stronicowy, DOCX, PNG export, SQLite baza danych, CLI generator |
 
+### 🆕 PDF Report Fixes & Data Analysis v3.3 (2026-03-29)
+
+Poprawki jakości raportu PDF oraz dokładności analizy danych.
+
+| Kategoria | Zmiana | Pliki |
+|:----------|:-------|:------|
+| **FIX** | Tabela progów (str. 6): pierwsza kolumna poszerzona z 42→52mm — brak overflow tekstu | `pdf/layout.py` |
+| **FIX** | Tabela wysokościowa (str. 14): VO₂max "---" zastąpione poprawną wartością (naprawa zagnieżdżonej ścieżki danych) | `pdf/layout.py` |
+| **FIX** | Torque Nm (str. 22): filtr kadencji ≥60 rpm wyklucza artefakty post-exhaustion (65→149 Nm → realistyczne 12→35 Nm) | `pdf/layout.py`, `report_generator.py`, `figures/biomech.py` |
+| **FIX** | `PageBreak` przed nagłówkiem "KLUCZOWE LICZBY" — koniec osierocenia nagłówka na dole strony 21 | `pdf/layout.py` |
+| **FIX** | `PageBreak` przed "POŁĄCZENIE Z DRYFEM HR I EF" — koniec osierocenia nagłówka na dole strony 27 | `pdf/layout.py` |
+| **FIX** | Stopka copyright © widoczna na każdej stronie + w sekcji końcowej raportu | `pdf/builder.py`, `pdf/layout.py` |
+| **FIX** | KeyError w zakładce Manual Thresholds: dynamiczne mapowanie kolumn VE/slope dla V-Slope wykresu | `ui/manual_thresholds.py` |
+| **FIX** | CP model fittowany z krzywej MMP gdy brak danych CPET (fallback 3-point power-duration fit) | `calculations/pipeline.py` |
+| **FIX** | VT spike skip: ograniczony do pierwszych 2 etapów zamiast wszystkich — lepsza detekcja VT2 | `calculations/vt_step.py` |
+| **FIX** | Scroll zoom na wykresach Plotly wyłączony globalnie (`scrollZoom: false` w `CHART_CONFIG`) | `plots.py` |
+
 ### 🆕 Chart & Visualization Overhaul v1.0 (2026-03-28)
 
 Complete audit and improvement of all Plotly charts in the Streamlit dashboard.
@@ -299,6 +316,22 @@ Tri_Dashboard/
 ---
 
 ## 📋 Changelog
+
+### 2026-03-29 — PDF Report Fixes & Data Analysis v3.3
+
+**PDF Layout (6 fixes):**
+- Thresholds table column width 42→52mm (text overflow fix)
+- VO2max altitude table: fixed nested data path (`canonical_physiology.vo2max`) — was showing "---"
+- Torque outlier filtering: cadence ≥60rpm guard removes post-exhaustion artifacts (65→149Nm → 12→35Nm)
+- `PageBreak` before "KLUCZOWE LICZBY" heading (page 21 orphan fix)
+- `PageBreak` before "POŁĄCZENIE Z DRYFEM HR I EF" heading (page 27 orphan fix)
+- Copyright © Krzysztof Kubicz footer on every page + end section
+
+**App Fixes (4 fixes):**
+- Manual Thresholds tab: KeyError on V-Slope plot resolved (dynamic column mapping for VE/slope)
+- CP model now fitted from MMP curve when CPET data unavailable (3-point power-duration fallback)
+- VT spike skip logic: limited to first 2 stages only — improves VT2 detection accuracy
+- Scroll zoom on all Plotly charts disabled globally (`scrollZoom: false`)
 
 ### 2026-03-28 — Chart & Visualization Overhaul v1.0
 

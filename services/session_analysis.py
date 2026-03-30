@@ -17,9 +17,6 @@ from functools import lru_cache
 from modules.config import Config
 from modules.calculations.polars_adapter import (
     fast_rolling_mean,
-    fast_rolling_std,
-    fast_ewm_mean,
-    fast_fill_na,
 )
 
 

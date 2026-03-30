@@ -12,7 +12,6 @@ Ten pakiet grupuje funkcje obliczeniowe według odpowiedzialności:
 - kinetics.py: VO2/SmO2 kinetics analysis
 - thresholds.py: VT1/VT2, LT1/LT2 threshold detection
 - data_processing.py: Przetwarzanie danych
-- async_runner.py: Async calculation wrappers
 - polars_adapter.py: Polars/Pandas interoperability
 - repeatability.py: Repeatability and stability analysis
 - quality.py: Data reliability checks
@@ -136,16 +135,6 @@ from .interpretation import (
     generate_training_advice,
 )
 
-# Async runner exports
-from .async_runner import (
-    run_in_thread,
-    run_async,
-    async_wrapper,
-    AsyncCalculationManager,
-    submit_task,
-    get_executor,
-)
-
 # Polars adapter exports
 from .polars_adapter import (
     is_polars_available,
@@ -243,11 +232,6 @@ __all__ = [
     # Data Processing
     'process_data',
     'ensure_pandas',
-    # Async Runner
-    'run_in_thread',
-    'run_async',
-    'async_wrapper',
-    'AsyncCalculationManager',
     # Polars Adapter
     'is_polars_available',
     'to_polars',

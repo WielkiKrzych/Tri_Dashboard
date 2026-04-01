@@ -48,7 +48,7 @@ def render_kpi_tab(df_plot, df_plot_resampled, metrics, rider_weight, decoupling
             yaxis2=dict(title="HR [bpm]", overlaying='y', side='right', showgrid=False),
             yaxis3=dict(title="SmO2 [%]", overlaying='y', side='right', showgrid=False, showticklabels=False, range=[0, 100]),
             legend=dict(orientation="h", y=1.1, x=0))
-        st.plotly_chart(fig_dec, use_container_width=True)
+        st.plotly_chart(fig_dec, width="stretch")
         
         st.info("""
         **💡 Interpretacja: Fizjologia Zmęczenia (Triada: Moc - HR - SmO2)**
@@ -97,7 +97,7 @@ def render_kpi_tab(df_plot, df_plot_resampled, metrics, rider_weight, decoupling
                 fig_s.add_trace(go.Scatter(x=df_plot_resampled['time_min'], y=trend_y, name='Trend', line=dict(color='white', dash='dash', width=1.5), hovertemplate="Trend: %{y:.1f}%<extra></extra>"))
             
             fig_s.update_layout(template="plotly_dark", title="Lokalna Oksydacja (SmO2)", hovermode="x unified", yaxis=dict(title="SmO2 [%]", range=[0, 100]), legend=dict(orientation="h", y=1.1, x=0), margin=dict(l=10, r=10, t=40, b=10), height=400)
-            st.plotly_chart(fig_s, use_container_width=True)
+            st.plotly_chart(fig_s, width="stretch")
             
             st.info("""
             **💡 Hemodynamika Mięśniowa (SmO2) - Lokalny Monitoring:**
@@ -116,7 +116,7 @@ def render_kpi_tab(df_plot, df_plot_resampled, metrics, rider_weight, decoupling
         fig_h = go.Figure()
         fig_h.add_trace(go.Scatter(x=df_plot_resampled['time_min'], y=df_plot_resampled['heartrate_smooth'], name='HR', fill='tozeroy', line=dict(color='#ef553b', width=2), hovertemplate="HR: %{y:.0f} BPM<extra></extra>"))
         fig_h.update_layout(template="plotly_dark", title="Odpowiedź Sercowa (HR)", hovermode="x unified", yaxis=dict(title="HR [bpm]"), margin=dict(l=10, r=10, t=40, b=10), height=400)
-        st.plotly_chart(fig_h, use_container_width=True)
+        st.plotly_chart(fig_h, width="stretch")
         
         st.info("""
         **💡 Reakcja Sercowo-Naczyniowa (HR) - Globalny System:**
@@ -190,7 +190,7 @@ def render_kpi_tab(df_plot, df_plot_resampled, metrics, rider_weight, decoupling
         margin=dict(l=10, r=10, t=40, b=10),
         height=450
     )
-    st.plotly_chart(fig_v, use_container_width=True)
+    st.plotly_chart(fig_v, width="stretch")
     
     st.info("""
     **💡 Interpretacja: Mechanika Oddychania**

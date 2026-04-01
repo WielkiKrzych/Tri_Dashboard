@@ -3,11 +3,24 @@ Database module for storing training sessions.
 SQLite-based persistent storage for historical data.
 """
 
+import logging
 import sqlite3
 from pathlib import Path
 from typing import List, Optional
 from dataclasses import dataclass
 from modules.config import Config
+
+logger = logging.getLogger(__name__)
+
+# Columns that were added after the initial schema — must be migrated on legacy DBs.
+_MIGRATION_COLUMNS: dict[str, str] = {
+    "session_type": "TEXT DEFAULT 'unknown'",
+    "athlete_id": "TEXT DEFAULT 'default'",
+    "test_validity": "TEXT DEFAULT 'valid'",
+    "vo2max_estimated": "REAL",
+    "cp_estimated": "REAL",
+    "smo2_quality_score": "REAL",
+}
 
 
 @dataclass
@@ -37,9 +50,9 @@ class SessionRecord:
     alerts_count: int = 0
     # JSON for additional metrics
     extra_metrics: str = "{}"
-    session_type: str = "unknown"      # ramp, steady, intervals, race, unknown
+    session_type: str = "unknown"  # ramp, steady, intervals, race, unknown
     athlete_id: str = "default"
-    test_validity: str = "valid"       # valid, conditional, invalid
+    test_validity: str = "valid"  # valid, conditional, invalid
     vo2max_estimated: float = 0.0
     cp_estimated: float = 0.0
     smo2_quality_score: float = 0.0
@@ -50,11 +63,11 @@ class SessionStore:
 
     def __init__(self, db_path: Optional[Path] = None):
         self.db_path = db_path or Config.DB_PATH
-        # Ensure directory exists
         if self.db_path and not self.db_path.parent.exists():
             self.db_path.parent.mkdir(parents=True, exist_ok=True)
 
         self._init_db()
+        self._migrate_db()
 
     def _init_db(self) -> None:
         """Initialize database schema if not exists."""
@@ -90,6 +103,15 @@ class SessionStore:
                     UNIQUE(date, filename)
                 )
             """)
+            conn.commit()
+
+    def _migrate_db(self) -> None:
+        with sqlite3.connect(self.db_path) as conn:
+            existing = {row[1] for row in conn.execute("PRAGMA table_info(sessions)").fetchall()}
+            for col_name, col_def in _MIGRATION_COLUMNS.items():
+                if col_name not in existing:
+                    conn.execute(f"ALTER TABLE sessions ADD COLUMN {col_name} {col_def}")
+                    logger.info("Migration: added column %s to sessions", col_name)
             conn.commit()
 
     def add_session(self, record: SessionRecord) -> int:

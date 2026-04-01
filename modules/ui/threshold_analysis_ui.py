@@ -102,7 +102,7 @@ def render_threshold_analysis_tab(
         paper_bgcolor="rgba(0,0,0,0)",
     )
 
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
 
     # Time range selection
     col1, col2, col3 = st.columns([2, 2, 1])
@@ -284,7 +284,7 @@ def render_threshold_analysis_tab(
             }
         )
 
-    st.dataframe(pd.DataFrame(zone_data), use_container_width=True, hide_index=True)
+    st.dataframe(pd.DataFrame(zone_data), width="stretch", hide_index=True)
     _render_zones_bar(zones["power_zones"])
 
 
@@ -320,4 +320,4 @@ def _render_zones_bar(power_zones: dict):
         xaxis=dict(title="Moc (W)", showgrid=False),
         yaxis=dict(showticklabels=False),
     )
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")

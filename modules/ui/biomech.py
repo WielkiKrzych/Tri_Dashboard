@@ -62,7 +62,7 @@ def render_biomech_tab(df_plot, df_plot_resampled):
             height=450
         )
         
-        st.plotly_chart(fig_b, use_container_width=True, config=CHART_CONFIG)
+        st.plotly_chart(fig_b, width="stretch", config=CHART_CONFIG)
         
         st.info("""
         **💡 Kompendium: Moment Obrotowy (Siła) vs Kadencja (Szybkość)**
@@ -154,7 +154,7 @@ def render_biomech_tab(df_plot, df_plot_resampled):
             height=450
         )
         
-        st.plotly_chart(fig_ts, use_container_width=True, config=CHART_CONFIG)
+        st.plotly_chart(fig_ts, width="stretch", config=CHART_CONFIG)
         
         st.info("""
         **💡 Fizjologia Okluzji (Analiza Koszykowa):**
@@ -239,7 +239,7 @@ def _render_occlusion_cadence_analysis(df_plot):
         })
     
     df_table = pd.DataFrame(table_data)
-    st.dataframe(df_table, use_container_width=True, hide_index=True)
+    st.dataframe(df_table, width="stretch", hide_index=True)
     
     # === MAPA RYZYKA (Power × Cadence) ===
     st.markdown("### 🌡️ Mapa Ryzyka Okluzji (Power × Cadence)")
@@ -296,7 +296,7 @@ def _render_occlusion_cadence_analysis(df_plot):
         bgcolor="rgba(0,0,0,0.5)", borderpad=4
     )
     
-    st.plotly_chart(fig_heatmap, use_container_width=True, config=CHART_CONFIG)
+    st.plotly_chart(fig_heatmap, width="stretch", config=CHART_CONFIG)
     
     # === WNIOSKI ===
     st.markdown("### 📋 Wnioski")

@@ -7,10 +7,11 @@ Orchestrates:
   vent_thresholds_charts   — CPET chart panels (VE/VO2, VE/VCO2, RER)
   vent_thresholds_timeline — interactive Plotly timeline with zone backgrounds
 """
+
 import logging
 import streamlit as st
 import pandas as pd
-from modules.calculations.ventilatory import detect_vt_vslope_savgol
+from modules.calculations.vt_cpet import detect_vt_cpet
 from modules.calculations.quality import check_step_test_protocol
 from modules.calculations.pipeline import run_ramp_test_pipeline
 from models.results import ValidityLevel
@@ -109,7 +110,7 @@ def render_vent_thresholds_tab(
     min_power_watts = st.session_state.get("vt_min_power_watts", 0) or None
 
     with st.spinner("Analizowanie progów wentylacyjnych (CPET)..."):
-        cpet_result = detect_vt_vslope_savgol(
+        cpet_result = detect_vt_cpet(
             target_df,
             step_range=None,
             power_column="watts",
@@ -142,7 +143,10 @@ def render_vent_thresholds_tab(
             st.session_state["pending_uploaded_file_name"] = uploaded_file_name
             st.session_state["pending_cp_input"] = cp_input
 
-            if pipeline_result.validity.validity in [ValidityLevel.VALID, ValidityLevel.CONDITIONAL]:
+            if pipeline_result.validity.validity in [
+                ValidityLevel.VALID,
+                ValidityLevel.CONDITIONAL,
+            ]:
                 st.success("✅ Test poprawny - gotowy do wygenerowania raportu")
             else:
                 st.warning("⚠️ Test niepoprawny - raport może być niewiarygodny")

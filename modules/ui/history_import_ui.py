@@ -70,7 +70,7 @@ def render_history_import_tab(cp: float = 280):
     # Import button
     st.divider()
     
-    if st.button("🚀 Importuj wszystkie pliki", type="primary", use_container_width=True):
+    if st.button("🚀 Importuj wszystkie pliki", type="primary", width="stretch"):
         with st.spinner("Importowanie..."):
             progress_bar = st.progress(0)
             status_text = st.empty()

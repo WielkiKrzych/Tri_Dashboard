@@ -254,7 +254,7 @@ def render_threshold_cards(cpet_result: dict, target_df: pd.DataFrame, cp_input:
                         }
                     )
 
-        st.dataframe(pd.DataFrame(zone_data), use_container_width=True, hide_index=True)
+        st.dataframe(pd.DataFrame(zone_data), width="stretch", hide_index=True)
 
         interp = cpet_result.get("no_steady_state_interpretation")
         if interp:

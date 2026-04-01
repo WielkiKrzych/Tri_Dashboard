@@ -191,7 +191,7 @@ def render_limiters_tab(df_plot, cp_input, vt2_vent):
                         legend=dict(orientation="h", y=1.05, x=0),
                     )
 
-                    st.plotly_chart(fig_radar, use_container_width=True, config=CHART_CONFIG)
+                    st.plotly_chart(fig_radar, width="stretch", config=CHART_CONFIG)
                     
                     # Diagnoza — use normalized values for fair comparison
                     limiting_factor = "Serce" if norm_hr >= max(norm_ve, norm_smo2) else ("Płuca" if norm_ve >= norm_smo2 else "Mięśnie")

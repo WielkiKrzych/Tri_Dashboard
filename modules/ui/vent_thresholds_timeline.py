@@ -192,4 +192,4 @@ def render_threshold_timeline(cpet_result: dict, target_df: pd.DataFrame) -> Non
         hovermode="x unified",
     )
 
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")

@@ -53,7 +53,7 @@ def render_drift_maps_tab(df_plot: pd.DataFrame) -> None:
     with col1:
         fig_power_hr = scatter_power_hr(df_plot, title="Power vs HR")
         if fig_power_hr:
-            st.plotly_chart(fig_power_hr, use_container_width=True)
+            st.plotly_chart(fig_power_hr, width="stretch")
         else:
             st.info("Za mało danych do wygenerowania wykresu Power vs HR.")
     
@@ -61,7 +61,7 @@ def render_drift_maps_tab(df_plot: pd.DataFrame) -> None:
         if has_smo2:
             fig_power_smo2 = scatter_power_smo2(df_plot, title="Power vs SmO₂")
             if fig_power_smo2:
-                st.plotly_chart(fig_power_smo2, use_container_width=True)
+                st.plotly_chart(fig_power_smo2, width="stretch")
             else:
                 st.info("Za mało danych SmO₂ do wygenerowania wykresu.")
         else:
@@ -104,7 +104,7 @@ def render_drift_maps_tab(df_plot: pd.DataFrame) -> None:
         )
         
         if fig_drift:
-            st.plotly_chart(fig_drift, use_container_width=True)
+            st.plotly_chart(fig_drift, width="stretch")
             _display_drift_metrics(drift_metrics)
         else:
             st.warning(f"Brak danych w zakresie {power_target}W ±{tolerance}%.")
@@ -140,7 +140,7 @@ def render_drift_maps_tab(df_plot: pd.DataFrame) -> None:
         )
         
         if fig_drift:
-            st.plotly_chart(fig_drift, use_container_width=True)
+            st.plotly_chart(fig_drift, width="stretch")
             _display_drift_metrics(drift_metrics)
         else:
             st.warning("Nie można obliczyć dryfu dla wybranego segmentu.")

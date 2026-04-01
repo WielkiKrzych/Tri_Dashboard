@@ -39,6 +39,11 @@ Tri_Dashboard to platforma analityczna dla **trenerów**, **naukowców sportu** 
 | **AI Coach** | Multi-sensor fusion, limiter diagnosis, rekomendacje |
 | **Reports** | PDF ~36-stronicowy, DOCX, PNG export, SQLite baza danych, CLI generator |
 
+### 🧹 UX/Runtime Improvements (2026-04-01)
+
+- **FIX**: SQLite schema migration — legacy DBs missing `session_type`, `athlete_id`, `test_validity`, `vo2max_estimated`, `cp_estimated`, `smo2_quality_score` columns are auto-migrated on startup (idempotent, no data loss). Fixes auto-save `OperationalError` on stale databases.
+- **FIX**: Streamlit deprecation warnings removed — 84 occurrences of `use_container_width=True` replaced with `width="stretch"` across 34 UI files (`st.plotly_chart`, `st.dataframe`, `st.button`).
+
 ### 🧹 Codebase Cleanup (2026-04-01)
 
 - `modules/ui/sidebar.py` removed (zero imports, dead code)

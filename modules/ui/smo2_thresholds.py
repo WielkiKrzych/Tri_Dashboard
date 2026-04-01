@@ -160,7 +160,7 @@ def render_smo2_thresholds_tab(target_df, training_notes, uploaded_file_name, cp
                 "curvature": "Curv",
             }
 
-            st.dataframe(diag.rename(columns=rename), use_container_width=True, hide_index=True)
+            st.dataframe(diag.rename(columns=rename), width="stretch", hide_index=True)
 
     # =========================================================================
     # STREFY
@@ -177,7 +177,7 @@ def render_smo2_thresholds_tab(target_df, training_notes, uploaded_file_name, cp
             }
             for z in result.zones
         ]
-        st.dataframe(pd.DataFrame(zone_data), use_container_width=True, hide_index=True)
+        st.dataframe(pd.DataFrame(zone_data), width="stretch", hide_index=True)
 
     # =========================================================================
     # ANALIZA
@@ -322,7 +322,7 @@ def render_smo2_thresholds_tab(target_df, training_notes, uploaded_file_name, cp
         hovermode="x unified",
     )
 
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
 
     # =========================================================================
     # VALIDATION SUMMARY

@@ -121,7 +121,7 @@ def render_summary_tab(
         vt2_watts=eff_vt2,
     )
     if fig_training is not None:
-        st.plotly_chart(fig_training, use_container_width=True, config=CHART_CONFIG)
+        st.plotly_chart(fig_training, width="stretch", config=CHART_CONFIG)
 
     # =========================================================================
     # 1a. METRYKI POD WYKRESEM
@@ -179,7 +179,7 @@ def render_summary_tab(
         )
         fig_ve_br.update_yaxes(title_text="VE (L/min)", secondary_y=False)
         fig_ve_br.update_yaxes(title_text="BR (/min)", secondary_y=True)
-        st.plotly_chart(fig_ve_br, use_container_width=True, config=CHART_CONFIG)
+        st.plotly_chart(fig_ve_br, width="stretch", config=CHART_CONFIG)
 
         ve_min = df_plot["tymeventilation"].min()
         ve_max = df_plot["tymeventilation"].max()

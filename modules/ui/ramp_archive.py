@@ -105,7 +105,7 @@ def _render_save_json_section() -> None:
         return
 
     if not st.button(
-        "💾 ZAPISZ RAPORT JSON", type="primary", use_container_width=True
+        "💾 ZAPISZ RAPORT JSON", type="primary", width="stretch"
     ):
         return
 
@@ -215,7 +215,7 @@ def render_ramp_archive():
 
     selection = st.dataframe(
         df[display_cols],
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
         selection_mode="single-row",
         on_select="rerun",

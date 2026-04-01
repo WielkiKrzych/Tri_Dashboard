@@ -20,7 +20,6 @@ from .session_analysis import (
     calculate_extended_metrics,
     apply_smo2_smoothing,
     resample_dataframe,
-    smart_resample,
     optimize_dataframe_dtypes,
 )
 from .data_validation import validate_dataframe
@@ -102,9 +101,6 @@ def process_uploaded_session(
 
     # Resample for performance
     df_plot_resampled = resample_dataframe(df_plot)
-
-    # Apply smart resampling for visualization (keep important variability)
-    df_plot_vis = smart_resample(df_plot_resampled, target_rows=3000)
 
     # Store intermediate values in metrics for later use
     # We use a leading underscore convention for internal values

@@ -1,11 +1,12 @@
 """
 Manual Thresholds tab — step-test VT1/VT2 detection and editable threshold entry.
 """
+
 import streamlit as st
 import plotly.graph_objects as go
 import pandas as pd
 from modules.calculations.thresholds import analyze_step_test
-from modules.calculations.ventilatory import detect_vt_vslope_savgol
+from modules.calculations.vt_cpet import detect_vt_cpet
 from modules.calculations.quality import check_step_test_protocol
 
 
@@ -124,8 +125,10 @@ def render_manual_thresholds_tab(
         matching points in the post-exhaustion decline."""
         if power <= 0:
             return None
-        col = "watts_smooth_5s" if "watts_smooth_5s" in target_df.columns else (
-            "watts" if "watts" in target_df.columns else None
+        col = (
+            "watts_smooth_5s"
+            if "watts_smooth_5s" in target_df.columns
+            else ("watts" if "watts" in target_df.columns else None)
         )
         if col is None:
             return None
@@ -269,7 +272,7 @@ def render_manual_thresholds_tab(
         """)
 
         with st.spinner("Przeliczanie gradientów..."):
-            vslope_res = detect_vt_vslope_savgol(
+            vslope_res = detect_vt_cpet(
                 target_df, result.step_range, "watts", "tymeventilation", "time"
             )
 
@@ -288,9 +291,11 @@ def render_manual_thresholds_tab(
             fig.patch.set_facecolor("#0E1117")
             ax1.set_facecolor("#0E1117")
 
-            # Używamy 'power' zamiast 'watts' - tak jest w df_steps z detect_vt_vslope_savgol
+            # Używamy 'power' zamiast 'watts' - tak jest w df_steps z detect_vt_cpet
             power_col = "power" if "power" in df_s.columns else "watts"
-            ve_col = next((c for c in ["ve_smooth", "ve", "tymeventilation"] if c in df_s.columns), None)
+            ve_col = next(
+                (c for c in ["ve_smooth", "ve", "tymeventilation"] if c in df_s.columns), None
+            )
             if ve_col is None:
                 st.warning("Brak danych VE w wynikach V-Slope.")
                 return
@@ -543,7 +548,7 @@ def render_manual_thresholds_tab(
         hovermode="x unified",
     )
 
-    st.plotly_chart(fig_thresh, use_container_width=True)
+    st.plotly_chart(fig_thresh, width="stretch")
 
     # Sensitivity Analysis
     if sensitivity:
@@ -690,7 +695,7 @@ def render_manual_thresholds_tab(
                 }
             )
 
-        st.dataframe(pd.DataFrame(zone_data), use_container_width=True, hide_index=True)
+        st.dataframe(pd.DataFrame(zone_data), width="stretch", hide_index=True)
         _render_zones_bar(zones["power"])
     else:
         st.info("Ustaw manualnie VT1 i VT2, aby wygenerować strefy treningowe.")
@@ -753,4 +758,4 @@ def _render_zones_bar(power_zones: dict):
         xaxis=dict(title="Moc (W)", showgrid=False),
         yaxis=dict(showticklabels=False),
     )
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")

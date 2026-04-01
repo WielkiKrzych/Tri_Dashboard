@@ -264,7 +264,7 @@ def _render_cp_model_chart(df_plot: pd.DataFrame, cp_input: int, w_prime_input: 
         plot_bgcolor="rgba(0,0,0,0)",
         paper_bgcolor="rgba(0,0,0,0)",
     )
-    st.plotly_chart(fig_model, use_container_width=True, config=CHART_CONFIG)
+    st.plotly_chart(fig_model, width="stretch", config=CHART_CONFIG)
 
 
 def _render_smo2_thb_chart(df_plot: pd.DataFrame):
@@ -297,7 +297,7 @@ def _render_smo2_thb_chart(df_plot: pd.DataFrame):
                 x=time_x,
                 y=thb_col,
                 name="THb (g/dL)",
-                line=dict(color="#9467bd", width=2),
+                line=dict(color=Config.COLOR_THB, width=2),
                 hovertemplate="THb: %{y:.2f} g/dL<extra></extra>",
             ),
             secondary_y=True,
@@ -316,7 +316,7 @@ def _render_smo2_thb_chart(df_plot: pd.DataFrame):
     )
     fig_smo2_thb.update_yaxes(title_text="SmO2 (%)", secondary_y=False)
     fig_smo2_thb.update_yaxes(title_text="THb (g/dL)", secondary_y=True)
-    st.plotly_chart(fig_smo2_thb, use_container_width=True, config=CHART_CONFIG)
+    st.plotly_chart(fig_smo2_thb, width="stretch", config=CHART_CONFIG)
 
     if "smo2" in df_plot.columns:
         smo2_min = df_plot["smo2"].min()

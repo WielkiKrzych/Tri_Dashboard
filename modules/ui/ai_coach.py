@@ -142,7 +142,7 @@ def render_ai_coach_tab(df_plot_resampled, cp_watts: float = 0.0):
                             legend=dict(orientation="h", y=1.1, x=0),
                             height=350
                         )
-                        st.plotly_chart(fig_evo, use_container_width=True)
+                        st.plotly_chart(fig_evo, width="stretch")
                 except Exception as e:
                     st.error(f"Błąd wykresu historii: {e}")
 
@@ -177,7 +177,7 @@ def render_ai_coach_tab(df_plot_resampled, cp_watts: float = 0.0):
                 hovermode="x unified",
                 legend=dict(orientation="h", y=1.1, x=0)
             )
-            st.plotly_chart(fig_ai_comp, use_container_width=True)
+            st.plotly_chart(fig_ai_comp, width="stretch")
             
             diff = df_plot_resampled['heartrate_smooth'] - df_plot_resampled['ai_hr']
             avg_diff = diff.mean()

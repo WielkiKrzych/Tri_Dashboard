@@ -124,7 +124,7 @@ def render_trends_history_tab():
         yaxis_title="Weekly TSS",
         yaxis2_title="Avg NP (W)"
     )
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
     
     # MMP Evolution
     st.subheader("🏆 MMP Evolution")
@@ -148,7 +148,7 @@ def render_trends_history_tab():
                 title="5-min MMP",
                 yaxis_title="Watts"
             )
-            st.plotly_chart(fig_5m, use_container_width=True)
+            st.plotly_chart(fig_5m, width="stretch")
         else:
             st.info("Za mało danych dla 5min MMP")
     
@@ -169,7 +169,7 @@ def render_trends_history_tab():
                 title="20-min MMP (≈FTP)",
                 yaxis_title="Watts"
             )
-            st.plotly_chart(fig_20m, use_container_width=True)
+            st.plotly_chart(fig_20m, width="stretch")
         else:
             st.info("Za mało danych dla 20min MMP")
     
@@ -200,7 +200,7 @@ def render_trends_history_tab():
             height=300,
             yaxis_title="RMSSD (ms)"
         )
-        st.plotly_chart(fig_hrv, use_container_width=True)
+        st.plotly_chart(fig_hrv, width="stretch")
     
     # Summary stats
     st.divider()

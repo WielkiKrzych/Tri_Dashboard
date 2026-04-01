@@ -201,7 +201,7 @@ def render_report_tab(
         legend=dict(orientation="h", y=1.05, x=0),
         hovermode="x unified",
     )
-    st.plotly_chart(fig_exec, use_container_width=True)
+    st.plotly_chart(fig_exec, width="stretch")
 
     st.markdown("---")
     col_dist1, col_dist2 = st.columns(2)
@@ -234,7 +234,7 @@ def render_report_tab(
                 yaxis=dict(showgrid=False),
                 margin=dict(t=20, b=20),
             )
-            st.plotly_chart(fig_hist, use_container_width=True)
+            st.plotly_chart(fig_hist, width="stretch")
 
     with col_dist2:
         st.subheader("Rozkład Tętna")
@@ -267,7 +267,7 @@ def render_report_tab(
                     bargap=0.1,
                     margin=dict(t=20, b=20),
                 )
-                st.plotly_chart(fig_hr, use_container_width=True)
+                st.plotly_chart(fig_hr, width="stretch")
 
     st.markdown("---")
     c_bot1, c_bot2 = st.columns(2)
@@ -355,7 +355,7 @@ def render_report_tab(
             ),
             legend=dict(orientation="h", y=1.1, x=0),
         )
-        st.plotly_chart(fig_dec, use_container_width=True)
+        st.plotly_chart(fig_dec, width="stretch")
 
         st.info("""
         **💡 Interpretacja: Fizjologia Zmęczenia (Triada: Moc - HR - SmO2)**
@@ -434,7 +434,7 @@ def render_report_tab(
                 margin=dict(l=10, r=10, t=40, b=10),
                 height=400,
             )
-            st.plotly_chart(fig_s, use_container_width=True)
+            st.plotly_chart(fig_s, width="stretch")
 
             st.info("""
             **💡 Hemodynamika Mięśniowa (SmO2) - Lokalny Monitoring:**
@@ -469,7 +469,7 @@ def render_report_tab(
             margin=dict(l=10, r=10, t=40, b=10),
             height=400,
         )
-        st.plotly_chart(fig_h, use_container_width=True)
+        st.plotly_chart(fig_h, width="stretch")
 
         st.info("""
         **💡 Reakcja Sercowo-Naczyniowa (HR) - Globalny System:**
@@ -555,7 +555,7 @@ def render_report_tab(
         margin=dict(l=10, r=10, t=40, b=10),
         height=450,
     )
-    st.plotly_chart(fig_v, use_container_width=True)
+    st.plotly_chart(fig_v, width="stretch")
 
     st.info("""
     **💡 Interpretacja: Mechanika Oddychania**

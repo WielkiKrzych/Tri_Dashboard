@@ -153,4 +153,4 @@ def _create_score_gauge(label: str, value: float, color: str):
         margin=dict(t=40, b=0, l=20, r=20)
     )
     
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")

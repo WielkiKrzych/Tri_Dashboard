@@ -155,7 +155,7 @@ def render_training_load_tab():
         yaxis2_title="TSB (Forma)"
     )
     
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
     
     # Training Planner
     st.divider()
@@ -211,6 +211,6 @@ def render_training_load_tab():
             }
             for s in sessions[:20]  # Limit to 20 most recent
         ])
-        st.dataframe(session_df, use_container_width=True, hide_index=True)
+        st.dataframe(session_df, width="stretch", hide_index=True)
     else:
         st.info("Brak zapisanych sesji w wybranym okresie.")

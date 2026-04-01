@@ -70,7 +70,7 @@ def render_report_section() -> None:
     if not can_generate:
         return
 
-    if not st.button("📄 GENERUJ RAPORT", type="primary", use_container_width=True):
+    if not st.button("📄 GENERUJ RAPORT", type="primary", width="stretch"):
         return
 
     st.session_state["report_generation_requested"] = True

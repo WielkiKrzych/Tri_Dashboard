@@ -219,7 +219,7 @@ def render_cpet_charts(cpet_result: dict) -> None:
                     "Metabolizm": "Anaerobowy",
                 },
             ]
-            st.dataframe(pd.DataFrame(zones_data), hide_index=True, use_container_width=True)
+            st.dataframe(pd.DataFrame(zones_data), hide_index=True, width="stretch")
         else:
             st.warning("Brak danych do wygenerowania stref metabolicznych")
 
@@ -231,4 +231,4 @@ def render_cpet_charts(cpet_result: dict) -> None:
                     display_cols.append(col)
 
             available_cols = [c for c in display_cols if c in df_s.columns]
-            st.dataframe(df_s[available_cols].round(2), use_container_width=True)
+            st.dataframe(df_s[available_cols].round(2), width="stretch")

@@ -331,7 +331,7 @@ def render_smo2_manual_thresholds_tab(target_df, training_notes, uploaded_file_n
         hovermode="x unified",
     )
 
-    st.plotly_chart(fig_thresh, use_container_width=True)
+    st.plotly_chart(fig_thresh, width="stretch")
 
     # ===== TEORIA =====
     with st.expander("🩸 TEORIA: Progi SmO2 (LT1 / LT2)", expanded=False):

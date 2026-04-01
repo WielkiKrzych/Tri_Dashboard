@@ -8,6 +8,7 @@ from scipy import stats
 from modules.calculations.kinetics import generate_state_timeline
 from modules.calculations.quality import check_signal_quality
 from modules.plots import CHART_CONFIG
+from modules.config import Config
 
 
 def render_smo2_tab(target_df, training_notes, uploaded_file_name):
@@ -176,7 +177,7 @@ def render_smo2_tab(target_df, training_notes, uploaded_file_name):
                 customdata=target_df["time_str"],
                 mode="lines",
                 name="SmO2 (%)",
-                line=dict(color="#FF4B4B", width=2),
+                line=dict(color=Config.COLOR_SMO2, width=2),
                 hovertemplate="<b>Czas:</b> %{customdata}<br><b>SmO2:</b> %{y:.1f}%<extra></extra>",
             )
         )
@@ -226,7 +227,7 @@ def render_smo2_tab(target_df, training_notes, uploaded_file_name):
         fig_smo2.update_layout(
             title="Dynamika SmO2 vs Moc (Surowe Wartości)",
             xaxis_title="Czas",
-            yaxis=dict(title=dict(text="SmO2 (%)", font=dict(color="#FF4B4B"))),
+            yaxis=dict(title=dict(text="SmO2 (%)", font=dict(color=Config.COLOR_SMO2))),
             yaxis2=dict(
                 title=dict(text="Moc (W)", font=dict(color="#1f77b4")),
                 overlaying="y",
@@ -242,7 +243,7 @@ def render_smo2_tab(target_df, training_notes, uploaded_file_name):
         # Wykres z interaktywnym zaznaczaniem
         selected = st.plotly_chart(
             fig_smo2,
-            use_container_width=True,
+            width="stretch",
             key="smo2_chart",
             on_select="rerun",
             selection_mode="box",
@@ -284,7 +285,7 @@ def render_smo2_tab(target_df, training_notes, uploaded_file_name):
                     customdata=target_df["time_str"],
                     mode="lines",
                     name="THb (g/dL)",
-                    line=dict(color="#9467bd", width=2),  # Purple color
+                    line=dict(color=Config.COLOR_THB, width=2),  # Purple color
                     hovertemplate="<b>Czas:</b> %{customdata}<br><b>THb:</b> %{y:.2f} g/dL<extra></extra>",
                 )
             )
@@ -347,7 +348,7 @@ def render_smo2_tab(target_df, training_notes, uploaded_file_name):
                 hovermode="x unified",
             )
 
-            st.plotly_chart(fig_thb, use_container_width=True, key="thb_chart", config=CHART_CONFIG)
+            st.plotly_chart(fig_thb, width="stretch", key="thb_chart", config=CHART_CONFIG)
 
         # Obsługa zaznaczenia
         if selected and "selection" in selected and "box" in selected["selection"]:
@@ -401,7 +402,7 @@ def render_smo2_tab(target_df, training_notes, uploaded_file_name):
                     height=400,
                     hovermode="closest",
                 )
-                st.plotly_chart(fig_scatter, use_container_width=True, config=CHART_CONFIG)
+                st.plotly_chart(fig_scatter, width="stretch", config=CHART_CONFIG)
 
             # THb Visualization
             if "thb" in interval_data.columns:
@@ -431,7 +432,7 @@ def render_smo2_tab(target_df, training_notes, uploaded_file_name):
                     height=300,
                     hovermode="x unified",
                 )
-                st.plotly_chart(fig_thb, use_container_width=True, config=CHART_CONFIG)
+                st.plotly_chart(fig_thb, width="stretch", config=CHART_CONFIG)
 
     else:
         st.warning("Brak danych w wybranym zakresie.")

@@ -101,7 +101,7 @@ def render_model_tab(df_plot, cp_input, w_prime_input):
                 hovermode="x unified",
                 height=500
             )
-            st.plotly_chart(fig_model, use_container_width=True)
+            st.plotly_chart(fig_model, width="stretch")
             
             # 5. Interpretacja
             st.info(f"""

@@ -76,7 +76,7 @@ def render_community_tab(
                 margin=dict(t=50, b=0)
             )
             
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width="stretch")
             
             st.markdown(f"""
             **{ranking.metric}:** {ranking.value:.2f}

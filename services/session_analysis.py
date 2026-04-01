@@ -78,9 +78,6 @@ def smart_resample(df: pd.DataFrame, target_rows: int = 5000) -> pd.DataFrame:
     if len(numeric_cols) == 0:
         return df.iloc[:: max(1, len(df) // target_rows), :].copy()
 
-    # Calculate coefficient of variation for each column
-    variability = df[numeric_cols].std() / (df[numeric_cols].mean() + 1e-10)
-
     # Determine step based on data size
     step = max(1, len(df) // target_rows)
 

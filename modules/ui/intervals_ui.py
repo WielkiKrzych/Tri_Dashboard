@@ -36,7 +36,7 @@ def render_intervals_tab(df_plot, df_plot_resampled, cp_input, rider_weight, rid
                         "Avg HR": st.column_config.NumberColumn("HR Śr.", format="%d bpm"),
                         "Avg SmO2": st.column_config.NumberColumn("SmO2", format="%.1f %%")
                     },
-                    use_container_width=True,
+                    width="stretch",
                     hide_index=True
                 )
                 
@@ -144,7 +144,7 @@ def render_intervals_tab(df_plot, df_plot_resampled, cp_input, rider_weight, rid
                 height=450
             )
             
-            st.plotly_chart(fig_pp, use_container_width=True)
+            st.plotly_chart(fig_pp, width="stretch")
             
             st.info("""
             **💡 Jak to czytać?**
@@ -297,7 +297,7 @@ def render_intervals_tab(df_plot, df_plot_resampled, cp_input, rider_weight, rid
                 legend=dict(orientation="h", y=1.1, x=0)
             )
             
-            st.plotly_chart(fig_ge, use_container_width=True)
+            st.plotly_chart(fig_ge, width="stretch")
             
             with st.expander("🧠 Jak interpretować GE?", expanded=False):
                 st.markdown("""

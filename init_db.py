@@ -1,19 +1,28 @@
 #!/usr/bin/env python3
 """
+[LEGACY / MANUAL SCRIPT]
+Database Initialization Script.
+
+NOTE: This is a standalone CLI script, NOT a runtime app module.
+It is not imported by the Streamlit application (app.py).
+Run directly: python init_db.py [--reset]
+
 Database Initialization Script.
 
 Usage:
     python init_db.py           # Initialize database if missing
     python init_db.py --reset   # Delete existing database and recreate
 """
+
 import sys
 import argparse
 import logging
 from modules.config import Config
 from modules.db.session_store import SessionStore
 
-logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
+logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
+
 
 def init_db(reset: bool = False):
     db_path = Config.DB_PATH
@@ -30,7 +39,7 @@ def init_db(reset: bool = False):
 
     logger.info("Initializing SessionStore...")
     store = SessionStore()
-    
+
     if db_path.exists():
         tables = store.get_session_count()
         logger.info("Database initialized successfully at %s.", db_path)
@@ -39,9 +48,12 @@ def init_db(reset: bool = False):
         logger.error("Failed to create database file.")
         sys.exit(1)
 
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Initialize Tri_Dashboard Database")
-    parser.add_argument("--reset", action="store_true", help="Delete existing database and recreate")
+    parser.add_argument(
+        "--reset", action="store_true", help="Delete existing database and recreate"
+    )
     args = parser.parse_args()
-    
+
     init_db(args.reset)

@@ -39,6 +39,12 @@ Tri_Dashboard to platforma analityczna dla **trenerów**, **naukowców sportu** 
 | **AI Coach** | Multi-sensor fusion, limiter diagnosis, rekomendacje |
 | **Reports** | PDF ~36-stronicowy, DOCX, PNG export, SQLite baza danych, CLI generator |
 
+### 🧹 Codebase Cleanup (2026-04-01)
+
+- `modules/ui/sidebar.py` removed (zero imports, dead code)
+- `train_history.py`, `init_db.py` labelled as legacy/manual scripts (not runtime app modules)
+- Duplicate `polars_adapter.py` modules and `modules/ui/header.py` investigated — findings documented in [`docs/cleanup-candidates.md`](docs/cleanup-candidates.md)
+
 ### 🆕 PDF Report Fixes & Data Analysis v3.3 (2026-03-29)
 
 Poprawki jakości raportu PDF oraz dokładności analizy danych.

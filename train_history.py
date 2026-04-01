@@ -1,5 +1,12 @@
 #!/usr/bin/env python3
 """
+[LEGACY / MANUAL SCRIPT]
+Batch Training Script for AI Coach.
+
+NOTE: This is a standalone CLI script, NOT a runtime app module.
+It is not imported by the Streamlit application (app.py).
+Run directly: python train_history.py --stats | --train
+
 Batch Training Script for AI Coach.
 
 Przetwarza wszystkie pliki CSV/JSON z folderu treningi_csv i trenuje model PhysioNet
@@ -14,6 +21,7 @@ Integracja:
     - Zapisuje model do: cycling_brain_weights.npz (dla predykcji)
     - Zapisuje metryki do: training_history.db (dla SessionStore)
 """
+
 import os
 import argparse
 import time
@@ -25,10 +33,7 @@ from pathlib import Path
 from datetime import datetime
 
 # Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 # --- KONFIGURACJA ---
@@ -38,6 +43,7 @@ DATA_FOLDER = BASE_DIR / "treningi_csv"
 # Import z istniejących modułów
 try:
     from modules.config import Config
+
     MODEL_FILE = Config.MODEL_FILE
     HISTORY_FILE = Config.HISTORY_FILE
 except ImportError:
@@ -47,6 +53,7 @@ except ImportError:
 # Import bazy danych sesji
 try:
     from modules.db.session_store import SessionStore, SessionRecord
+
     DB_AVAILABLE = True
 except ImportError:
     DB_AVAILABLE = False
@@ -57,6 +64,7 @@ try:
     import mlx.core as mx
     import mlx.nn as nn
     import mlx.optimizers as optim
+
     MLX_AVAILABLE = True
     logger.info("Apple Silicon (MLX) detected. Ready for training.")
 except ImportError:
@@ -65,6 +73,7 @@ except ImportError:
 
 # --- MODEL DEFINITION (musi być identyczny jak w ml_logic.py) ---
 if MLX_AVAILABLE:
+
     class PhysioNet(nn.Module):
         def __init__(self):
             super().__init__()
@@ -80,28 +89,37 @@ if MLX_AVAILABLE:
 
 # --- FUNKCJE POMOCNICZE ---
 
+
 def load_data(filepath: Path) -> pd.DataFrame:
     """Smart Loader: Radzi sobie z zagnieżdżonymi JSONami i CSV."""
     file_ext = filepath.suffix.lower()
     filename = filepath.name
-    
+
     try:
-        if file_ext == '.json':
-            with open(filepath, 'r') as f:
+        if file_ext == ".json":
+            with open(filepath, "r") as f:
                 data = json.load(f)
-            
+
             if isinstance(data, list):
                 df = pd.DataFrame(data)
             elif isinstance(data, dict):
                 # Szukamy klucza z danymi
-                candidates = ['samples', 'data', 'records', 'trackPoints', 'points', 'streams', 'rows']
+                candidates = [
+                    "samples",
+                    "data",
+                    "records",
+                    "trackPoints",
+                    "points",
+                    "streams",
+                    "rows",
+                ]
                 target_list = None
-                
+
                 for key in candidates:
                     if key in data and isinstance(data[key], list):
                         target_list = data[key]
                         break
-                
+
                 if target_list is None:
                     max_len = 0
                     for k, v in data.items():
@@ -109,10 +127,10 @@ def load_data(filepath: Path) -> pd.DataFrame:
                             if len(v) > 0 and isinstance(v[0], dict):
                                 target_list = v
                                 max_len = len(v)
-                
+
                 if target_list is None:
                     try:
-                        df = pd.DataFrame.from_dict(data, orient='columns')
+                        df = pd.DataFrame.from_dict(data, orient="columns")
                     except ValueError:
                         df = pd.json_normalize(data)
                 else:
@@ -124,17 +142,17 @@ def load_data(filepath: Path) -> pd.DataFrame:
             try:
                 df = pd.read_csv(filepath, low_memory=False)
             except (pd.errors.ParserError, UnicodeDecodeError):
-                df = pd.read_csv(filepath, sep=';', low_memory=False)
-        
+                df = pd.read_csv(filepath, sep=";", low_memory=False)
+
         # Czyszczenie
-        if 'df' in locals() and not df.empty:
+        if "df" in locals() and not df.empty:
             df.columns = [str(c).lower().strip() for c in df.columns]
-            df.columns = [c.split('.')[-1] for c in df.columns]
+            df.columns = [c.split(".")[-1] for c in df.columns]
             return df
         else:
             logger.warning("Empty file skipped: %s", filename)
             return pd.DataFrame()
-            
+
     except Exception as e:
         logger.error("Error reading %s: %s", filename, e)
         return pd.DataFrame()
@@ -145,53 +163,59 @@ def process_data(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
         return df
 
-    if 'time' not in df.columns:
-        df['time'] = np.arange(len(df)).astype(float)
-    
-    df = df.sort_values('time').reset_index(drop=True)
-    
+    if "time" not in df.columns:
+        df["time"] = np.arange(len(df)).astype(float)
+
+    df = df.sort_values("time").reset_index(drop=True)
+
     # Konwersja numeryczna
-    cols_to_numeric = ['watts', 'heartrate', 'cadence', 'time']
+    cols_to_numeric = ["watts", "heartrate", "cadence", "time"]
     for c in cols_to_numeric:
         if c in df.columns:
-            df[c] = pd.to_numeric(df[c], errors='coerce')
+            df[c] = pd.to_numeric(df[c], errors="coerce")
 
     # Interpolacja
-    num_cols = df.select_dtypes(include=['float64', 'int64']).columns
+    num_cols = df.select_dtypes(include=["float64", "int64"]).columns
     if len(num_cols) > 0:
-        df[num_cols] = df[num_cols].interpolate(method='linear').ffill().bfill()
+        df[num_cols] = df[num_cols].interpolate(method="linear").ffill().bfill()
 
     # Smoothing (30s)
     window = 30
-    if 'watts' in df.columns:
-        df['watts_smooth'] = df['watts'].rolling(window=window, min_periods=1).mean()
-    if 'heartrate' in df.columns:
-        df['heartrate_smooth'] = df['heartrate'].rolling(window=window, min_periods=1).mean()
-    if 'cadence' in df.columns:
-        df['cadence_smooth'] = df['cadence'].rolling(window=window, min_periods=1).mean()
-    
-    df['time_min'] = df['time'] / 60.0
+    if "watts" in df.columns:
+        df["watts_smooth"] = df["watts"].rolling(window=window, min_periods=1).mean()
+    if "heartrate" in df.columns:
+        df["heartrate_smooth"] = df["heartrate"].rolling(window=window, min_periods=1).mean()
+    if "cadence" in df.columns:
+        df["cadence_smooth"] = df["cadence"].rolling(window=window, min_periods=1).mean()
+
+    df["time_min"] = df["time"] / 60.0
     return df
 
 
-def filter_and_prepare(df: pd.DataFrame, target_watts: int, 
-                       tolerance: int = 15, min_samples: int = 30):
+def filter_and_prepare(
+    df: pd.DataFrame, target_watts: int, tolerance: int = 15, min_samples: int = 30
+):
     """Filtruje dane do strefy mocy i przygotowuje tensory MLX."""
-    if df.empty or 'watts_smooth' not in df.columns:
+    if df.empty or "watts_smooth" not in df.columns:
         return None, None
 
-    mask = (df['watts_smooth'] >= target_watts - tolerance) & \
-           (df['watts_smooth'] <= target_watts + tolerance)
-    
+    mask = (df["watts_smooth"] >= target_watts - tolerance) & (
+        df["watts_smooth"] <= target_watts + tolerance
+    )
+
     if mask.sum() < min_samples:
         return None, None
 
     df_filtered = df[mask].copy()
 
-    w = df_filtered['watts_smooth'].values / 500.0
-    c = df_filtered['cadence_smooth'].values / 120.0 if 'cadence_smooth' in df_filtered else np.zeros_like(w)
-    t = df_filtered['time_min'].values / df['time_min'].max()
-    y_target = df_filtered['heartrate_smooth'].values / 200.0
+    w = df_filtered["watts_smooth"].values / 500.0
+    c = (
+        df_filtered["cadence_smooth"].values / 120.0
+        if "cadence_smooth" in df_filtered
+        else np.zeros_like(w)
+    )
+    t = df_filtered["time_min"].values / df["time_min"].max()
+    y_target = df_filtered["heartrate_smooth"].values / 200.0
 
     X_np = np.column_stack((w, c, t)).astype(np.float32)
     y_np = y_target.astype(np.float32).reshape(-1, 1)
@@ -204,24 +228,25 @@ def update_history(hr_base, hr_thresh, filename: str):
     history = []
     if os.path.exists(HISTORY_FILE):
         try:
-            with open(HISTORY_FILE, 'r') as f:
+            with open(HISTORY_FILE, "r") as f:
                 history = json.load(f)
         except (json.JSONDecodeError, IOError, OSError):
             pass
-    
+
     import re
-    safe_filename = re.sub(r'[^A-Za-z0-9_.\-]', '_', filename)[:128]
+
+    safe_filename = re.sub(r"[^A-Za-z0-9_.\-]", "_", filename)[:128]
 
     entry = {
         "timestamp": time.time(),
         "date": time.strftime("%Y-%m-%d %H:%M"),
         "source_file": safe_filename,
         "hr_base": float(hr_base) if hr_base is not None else None,
-        "hr_thresh": float(hr_thresh) if hr_thresh is not None else None
+        "hr_thresh": float(hr_thresh) if hr_thresh is not None else None,
     }
     history.append(entry)
-    
-    with open(HISTORY_FILE, 'w') as f:
+
+    with open(HISTORY_FILE, "w") as f:
         json.dump(history, f, indent=2)
 
 
@@ -229,33 +254,30 @@ def save_to_session_store(filename: str, df: pd.DataFrame, hr_base, hr_thresh):
     """Zapisuje metryki sesji do bazy danych."""
     if not DB_AVAILABLE:
         return
-    
+
     try:
         store = SessionStore()
-        
+
         # Podstawowe metryki
-        avg_watts = df['watts'].mean() if 'watts' in df.columns else 0
-        avg_hr = df['heartrate'].mean() if 'heartrate' in df.columns else 0
-        max_hr = df['heartrate'].max() if 'heartrate' in df.columns else 0
-        avg_cadence = df['cadence'].mean() if 'cadence' in df.columns else 0
-        duration = int(df['time'].max()) if 'time' in df.columns else 0
-        work_kj = df['watts'].sum() / 1000 if 'watts' in df.columns else 0
-        
+        avg_watts = df["watts"].mean() if "watts" in df.columns else 0
+        avg_hr = df["heartrate"].mean() if "heartrate" in df.columns else 0
+        max_hr = df["heartrate"].max() if "heartrate" in df.columns else 0
+        avg_cadence = df["cadence"].mean() if "cadence" in df.columns else 0
+        duration = int(df["time"].max()) if "time" in df.columns else 0
+        work_kj = df["watts"].sum() / 1000 if "watts" in df.columns else 0
+
         # Extra metrics - AI Coach data
-        extra = {
-            "hr_base": hr_base,
-            "hr_thresh": hr_thresh,
-            "batch_processed": True
-        }
-        
+        extra = {"hr_base": hr_base, "hr_thresh": hr_thresh, "batch_processed": True}
+
         # Wyciągnij datę z nazwy pliku jeśli możliwe
         date_str = datetime.now().strftime("%Y-%m-%d")
         # Próbuj wyciągnąć datę z nazwy pliku (format: *DD.MM.YYYY*)
         import re
-        match = re.search(r'(\d{2})\.(\d{2})\.(\d{4})', filename)
+
+        match = re.search(r"(\d{2})\.(\d{2})\.(\d{4})", filename)
         if match:
             date_str = f"{match.group(3)}-{match.group(2)}-{match.group(1)}"
-        
+
         record = SessionRecord(
             date=date_str,
             filename=filename,
@@ -265,11 +287,11 @@ def save_to_session_store(filename: str, df: pd.DataFrame, hr_base, hr_thresh):
             max_hr=max_hr,
             avg_cadence=avg_cadence,
             work_kj=work_kj,
-            extra_metrics=json.dumps(extra)
+            extra_metrics=json.dumps(extra),
         )
-        
+
         store.add_session(record)
-        
+
     except Exception as e:
         logger.error("Database write error: %s", e)
 
@@ -279,21 +301,21 @@ def get_folder_stats():
     if not DATA_FOLDER.exists():
         logger.error("Folder does not exist: %s", DATA_FOLDER)
         return []
-    
+
     files = list(DATA_FOLDER.glob("*.csv"))
     files += list(DATA_FOLDER.glob("*.txt"))
     files += list(DATA_FOLDER.glob("*.json"))
-    
+
     logger.info("Folder: %s", DATA_FOLDER)
-    logger.info("  CSV files: %d", len(list(DATA_FOLDER.glob('*.csv'))))
-    logger.info("  JSON files: %d", len(list(DATA_FOLDER.glob('*.json'))))
-    logger.info("  TXT files: %d", len(list(DATA_FOLDER.glob('*.txt'))))
+    logger.info("  CSV files: %d", len(list(DATA_FOLDER.glob("*.csv"))))
+    logger.info("  JSON files: %d", len(list(DATA_FOLDER.glob("*.json"))))
+    logger.info("  TXT files: %d", len(list(DATA_FOLDER.glob("*.txt"))))
     logger.info("  Total: %d files", len(files))
-    
+
     if files:
         total_size = sum(f.stat().st_size for f in files)
-        logger.info("  Size: %.1f MB", total_size / (1024*1024))
-    
+        logger.info("  Size: %.1f MB", total_size / (1024 * 1024))
+
     return files
 
 
@@ -302,7 +324,7 @@ def train_loop():
     if not MLX_AVAILABLE:
         logger.error("MLX required for training. Aborting.")
         return
-    
+
     files = get_folder_stats()
     if not files:
         logger.warning("No files found in folder: %s", DATA_FOLDER)
@@ -314,32 +336,32 @@ def train_loop():
     # Model
     model = PhysioNet()
     mx.eval(model.parameters())
-    
+
     def mse_loss(pred, target):
         return mx.mean((pred - target) ** 2)
-    
+
     optimizer = optim.Adam(learning_rate=0.02)
-    
+
     def train_step(model, X, y):
         pred = model(X)
         loss = mse_loss(pred, y)
         return loss
 
     loss_and_grad_fn = nn.value_and_grad(model, train_step)
-    
+
     # Cele treningowe
     targets = {
-        "BASE": 280,    # Baza tlenowa
-        "THRESH": 360   # Próg
+        "BASE": 280,  # Baza tlenowa
+        "THRESH": 360,  # Próg
     }
 
     total_start = time.time()
     processed = 0
-    
+
     for idx, file_path in enumerate(files):
         filename = file_path.name
-        logger.info("[%d/%d] Processing: %s", idx+1, len(files), filename)
-        
+        logger.info("[%d/%d] Processing: %s", idx + 1, len(files), filename)
+
         try:
             df_raw = load_data(file_path)
             if df_raw.empty:
@@ -354,17 +376,17 @@ def train_loop():
 
             for name, watts in targets.items():
                 X_chunk, y_chunk = filter_and_prepare(df, watts, tolerance=15, min_samples=60)
-                
+
                 if X_chunk is not None:
                     # Fine-tuning
                     for _ in range(100):
                         loss, grads = loss_and_grad_fn(model, X_chunk, y_chunk)
                         optimizer.update(model, grads)
                         mx.eval(model.parameters(), optimizer.state)
-                    
+
                     # Predykcja
                     cadence_norm = 90.0 / 120.0
-                    in_tensor = mx.array([[watts/500.0, cadence_norm, 0.5]])
+                    in_tensor = mx.array([[watts / 500.0, cadence_norm, 0.5]])
                     pred_hr = float(model(in_tensor)[0][0]) * 200.0
                     results[name] = pred_hr
                     logger.info("  %s (%dW): %.1f bpm ✓", name, watts, pred_hr)
@@ -374,10 +396,10 @@ def train_loop():
 
             # Zapisz historię
             update_history(results.get("BASE"), results.get("THRESH"), filename)
-            
+
             # Zapisz do bazy danych sesji
             save_to_session_store(filename, df, results.get("BASE"), results.get("THRESH"))
-            
+
             processed += 1
 
         except Exception as e:
@@ -393,9 +415,9 @@ def train_loop():
                 flat_params[f"{layer_name}.{param_name}"] = param_value
         else:
             flat_params[layer_name] = layer_params
-    
+
     mx.savez(MODEL_FILE, **flat_params)
-    
+
     total_time = time.time() - total_start
     logger.info("DONE!")
     logger.info("  Processed: %d/%d files", processed, len(files))
@@ -412,12 +434,12 @@ def main():
 Przykłady:
   python train_history.py --stats   # Tylko statystyki folderu
   python train_history.py --train   # Pełny trening modelu
-        """
+        """,
     )
     parser.add_argument("--stats", action="store_true", help="Wyświetl tylko statystyki folderu")
     parser.add_argument("--train", action="store_true", help="Uruchom pełny trening")
     args = parser.parse_args()
-    
+
     if args.stats:
         get_folder_stats()
     elif args.train:

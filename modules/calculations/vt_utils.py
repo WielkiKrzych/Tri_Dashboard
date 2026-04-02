@@ -5,7 +5,6 @@ Contains low-level slope calculation and peak-based heuristic detection.
 Used internally by vt_step, vt_sliding, and vt_cpet modules.
 """
 
-import numpy as np
 import pandas as pd
 from scipy import stats, signal
 from typing import Optional, List, Tuple

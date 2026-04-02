@@ -50,6 +50,15 @@ def init_db(reset: bool = False):
 
 
 if __name__ == "__main__":
+    import warnings
+
+    warnings.warn(
+        "init_db.py is a legacy manual script. "
+        "The database is auto-initialized on app startup. "
+        "This script may be removed in a future release.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     parser = argparse.ArgumentParser(description="Initialize Tri_Dashboard Database")
     parser.add_argument(
         "--reset", action="store_true", help="Delete existing database and recreate"

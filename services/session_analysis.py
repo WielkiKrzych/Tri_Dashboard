@@ -10,7 +10,7 @@ Handles all session-level metrics calculations including:
 
 import pandas as pd
 import numpy as np
-from typing import Tuple, Dict, Any, Optional
+from typing import Any
 from dataclasses import dataclass
 from functools import lru_cache
 
@@ -136,7 +136,7 @@ def _cached_np_calculation(watts_tuple: tuple, window: int) -> float:
     return float(np.power(np.mean(np.power(rolling, 4)), 0.25))
 
 
-def calculate_header_metrics(df: pd.DataFrame, cp: float) -> Tuple[float, float, float]:
+def calculate_header_metrics(df: pd.DataFrame, cp: float) -> tuple[float, float, float]:
     """Calculate NP, IF, and TSS for the header display.
 
     Centralizes the calculation to avoid duplication.
@@ -170,12 +170,12 @@ def calculate_header_metrics(df: pd.DataFrame, cp: float) -> Tuple[float, float,
 
 def calculate_extended_metrics(
     df: pd.DataFrame,
-    metrics: Dict[str, Any],
+    metrics: dict[str, Any],
     rider_weight: float,
     vt1_watts: float,
     vt2_watts: float,
     ef_factor: float,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Calculate extended metrics for the session.
 
     Aggregates various physiological and performance metrics.
@@ -260,7 +260,7 @@ def _calculate_average_pulse_power(df: pd.DataFrame) -> float:
     return (watts_values[safe_mask] / hr_values[safe_mask]).mean()
 
 
-def calculate_header_metrics_cached(df: pd.DataFrame, cp: float) -> Tuple[float, float, float]:
+def calculate_header_metrics_cached(df: pd.DataFrame, cp: float) -> tuple[float, float, float]:
     """Cached version of header metrics calculation."""
     if "watts" not in df.columns:
         return 0.0, 0.0, 0.0

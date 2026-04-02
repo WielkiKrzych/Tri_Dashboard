@@ -107,9 +107,7 @@ def detect_smo2_breakpoints_double_linear(
     window = min(51, len(df_ramp) // 10 * 2 + 1)
     if window < 5:
         window = 5
-    df_ramp["smo2_smooth"] = savgol_filter(
-        df_ramp[smo2_col], window_length=window, polyorder=3
-    )
+    df_ramp["smo2_smooth"] = savgol_filter(df_ramp[smo2_col], window_length=window, polyorder=3)
 
     x = df_ramp[power_col].values
     y = df_ramp["smo2_smooth"].values
@@ -130,9 +128,7 @@ def detect_smo2_breakpoints_double_linear(
             result.notes.append(f"Forced breakpoint failed: {e}")
 
     if best_bp is None:
-        best_bp, best_slopes, best_rss = _search_breakpoint_2segment(
-            x, y, bp_range
-        )
+        best_bp, best_slopes, best_rss = _search_breakpoint_2segment(x, y, bp_range)
 
     if best_bp is None:
         result.notes.append("Could not find valid breakpoint")
@@ -284,6 +280,7 @@ def detect_exp_dmax(
     smo2_col: str = "smo2",
     power_col: str = "watts",
     min_power: float = 100.0,
+    baseline: Optional[float] = None,
 ) -> ExpDmaxResult:
     """
     Detect SmO2 threshold using Exp-Dmax method.
@@ -314,7 +311,7 @@ def detect_exp_dmax(
 
     # Filter to ramp phase and minimum power
     max_power_idx = df[power_col].idxmax()
-    df_ramp = df.iloc[:max_power_idx + 1].copy()
+    df_ramp = df.iloc[: max_power_idx + 1].copy()
     df_ramp = df_ramp[df_ramp[power_col] >= min_power].copy()
 
     if len(df_ramp) < 30:
@@ -328,6 +325,12 @@ def detect_exp_dmax(
 
     x = df_ramp[power_col].values
     y_raw = df_ramp[smo2_col].values
+
+    # Signal inversion per Sendra-Pérez 2024: invert ΔSmO2 so it
+    # behaves incrementally (like lactate) for proper Exp-Dmax fit
+    if baseline is not None:
+        y_raw = baseline - y_raw
+
     y = savgol_filter(y_raw, window_length=window, polyorder=2)
 
     # Fit exponential curve: y = a * exp(b * x) + c
@@ -361,9 +364,7 @@ def detect_exp_dmax(
 
         for i in range(len(x)):
             # Distance from point to line
-            dist = _point_to_line_distance(
-                x[i], y_exp[i], x_first, y_first, x_last, y_last
-            )
+            dist = _point_to_line_distance(x[i], y_exp[i], x_first, y_first, x_last, y_last)
             if dist > max_dist:
                 max_dist = dist
                 max_dist_idx = i
@@ -379,7 +380,9 @@ def detect_exp_dmax(
         result.r_squared = float(r_squared)
         result.is_valid = True
 
-        result.notes.append(f"Exp-Dmax threshold: {result.breakpoint_power:.0f}W @ {result.breakpoint_smo2:.1f}% SmO2")
+        result.notes.append(
+            f"Exp-Dmax threshold: {result.breakpoint_power:.0f}W @ {result.breakpoint_smo2:.1f}% SmO2"
+        )
         result.notes.append(f"Max distance: {max_dist:.3f}")
         result.notes.append(f"Exp fit R² = {r_squared:.3f}")
         result.notes.append("Method: Exp-Dmax (ICC = 0.79-0.91 for T2)")
@@ -395,6 +398,7 @@ def detect_t2_exp_dmax(
     power: List[float],
     smo2: List[float],
     min_last_segment: int = 3,
+    baseline: Optional[float] = None,
 ) -> Optional[Dict]:
     """
     Detect T2 using Exp-Dmax method.
@@ -428,6 +432,10 @@ def detect_t2_exp_dmax(
     x = np.array(power)
     y = np.array(smo2)
 
+    # Signal inversion per Sendra-Pérez 2024
+    if baseline is not None:
+        y = baseline - y
+
     # Fit exponential curve: y = a * exp(b * x) + c
     try:
         # Initial parameter estimates
@@ -459,9 +467,7 @@ def detect_t2_exp_dmax(
 
         for i in range(len(x)):
             # Distance from point to line
-            dist = _point_to_line_distance(
-                x[i], y_exp[i], x_first, y_first, x_last, y_last
-            )
+            dist = _point_to_line_distance(x[i], y_exp[i], x_first, y_first, x_last, y_last)
             if dist > max_dist:
                 max_dist = dist
                 max_dist_idx = i
@@ -483,7 +489,7 @@ def detect_t2_exp_dmax(
             "distance": float(max_dist),
             "slope_at_t2": float(slope_at_t2),
             "confidence": 0.85,  # Default confidence based on ICC range 0.79-0.91
-            "method": "exp_dmax"
+            "method": "exp_dmax",
         }
 
     except (RuntimeError, ValueError):
@@ -567,9 +573,7 @@ def detect_smo2_breakpoints_segmented(
     window = min(51, len(df_ramp) // 10 * 2 + 1)
     if window < 5:
         window = 5
-    df_ramp["smo2_smooth"] = savgol_filter(
-        df_ramp[smo2_col], window_length=window, polyorder=3
-    )
+    df_ramp["smo2_smooth"] = savgol_filter(df_ramp[smo2_col], window_length=window, polyorder=3)
 
     x = df_ramp[power_col].values
     y = df_ramp["smo2_smooth"].values
@@ -664,7 +668,7 @@ def _fit_piecewise_3segment(
     if np.sum(mask2) > 1:
         slope, intercept, _, _, _ = stats.linregress(x[mask2], y[mask2])
     else:
-        slope, intercept = slopes[0], np.mean(y[mask2]) if np.any(mask2) else y[len(y)//2]
+        slope, intercept = slopes[0], np.mean(y[mask2]) if np.any(mask2) else y[len(y) // 2]
     slopes.append(slope)
     y2_pred = slope * x[mask2] + intercept
 
@@ -799,6 +803,7 @@ def detect_smo2_breakpoints(
     smo2_col: str = "smo2",
     power_col: str = "watts",
     method: str = "2-segment",
+    baseline: Optional[float] = None,
     **kwargs,
 ) -> SmO2Breakpoints:
     """
@@ -818,15 +823,11 @@ def detect_smo2_breakpoints(
         SmO2Breakpoints object with detected breakpoints
     """
     if method == "2-segment":
-        return detect_smo2_breakpoints_double_linear(
-            df, smo2_col, power_col, **kwargs
-        )
+        return detect_smo2_breakpoints_double_linear(df, smo2_col, power_col, **kwargs)
     elif method == "3-segment":
-        return detect_smo2_breakpoints_segmented(
-            df, smo2_col, power_col, **kwargs
-        )
+        return detect_smo2_breakpoints_segmented(df, smo2_col, power_col, **kwargs)
     elif method == "exp-dmax":
-        result = detect_exp_dmax(df, smo2_col, power_col, **kwargs)
+        result = detect_exp_dmax(df, smo2_col, power_col, baseline=baseline, **kwargs)
         # Convert ExpDmaxResult to SmO2Breakpoints
         return SmO2Breakpoints(
             bp1_power=result.breakpoint_power,

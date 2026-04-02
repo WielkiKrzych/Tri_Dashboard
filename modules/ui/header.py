@@ -5,6 +5,8 @@ Extracts sticky header and metric cards from app.py.
 """
 
 import html
+import warnings
+
 import streamlit as st
 import pandas as pd
 from typing import Dict, Any
@@ -28,6 +30,11 @@ def render_sticky_header(
         avg_ve: Average ventilation in L/min
         duration_min: Duration in minutes
     """
+    warnings.warn(
+        "render_sticky_header() is deprecated — use modules.frontend.components.UIComponents instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     st.markdown(
         f"""
     <div class="sticky-metrics">
@@ -73,6 +80,11 @@ def render_metric_cards(np_val: float, tss: float, if_val: float, work_kj: float
         if_val: Intensity Factor
         work_kj: Total work in kJ
     """
+    warnings.warn(
+        "render_metric_cards() is deprecated — use modules.frontend.components.UIComponents instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     m1, m2, m3 = st.columns(3)
     m1.metric("NP (Norm. Power)", f"{np_val:.0f} W", help="Normalized Power (Coggan Formula)")
     m2.metric("TSS", f"{tss:.0f}", help=f"IF: {if_val:.2f}")
@@ -86,6 +98,11 @@ def show_breadcrumb(group: str, section: str = None) -> None:
         group: Current tab group name
         section: Current sub-section name (optional)
     """
+    warnings.warn(
+        "show_breadcrumb() is deprecated — use modules.frontend.components.UIComponents instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     safe_group = html.escape(group)
     if section:
         safe_section = html.escape(section)

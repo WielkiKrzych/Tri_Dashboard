@@ -1,12 +1,14 @@
 """
 Ventilation tab — VE time series, VE/VCO2 slope, and signal-quality checks.
 """
+
 import streamlit as st
 import plotly.graph_objects as go
 import pandas as pd
 from scipy import stats
 from modules.calculations.quality import check_signal_quality
 from .vent_theory import render_vent_theory
+from modules.ui.shared import chart, require_data
 
 
 def render_vent_tab(target_df, training_notes, uploaded_file_name):
@@ -17,8 +19,7 @@ def render_vent_tab(target_df, training_notes, uploaded_file_name):
     )
 
     # 1. Przygotowanie danych (work on copy to avoid mutating caller's DataFrame)
-    if target_df is None or target_df.empty:
-        st.error("Brak danych. Najpierw wgraj plik w sidebar.")
+    if not require_data(target_df):
         return
 
     if "time" not in target_df.columns:
@@ -51,25 +52,9 @@ def render_vent_tab(target_df, training_notes, uploaded_file_name):
     # Check Quality
     qual_res = check_signal_quality(target_df["tymeventilation"], "VE", (0, 300))
     if not qual_res["is_valid"]:
-        st.warning(f"⚠️ **Niska Jakość Sygnału VE (Score: {qual_res['score']})**")
+        st.warning(f"⚠️ **Niska Jakość Sygnału Wentylacji (Score: {qual_res['score']})**")
         for issue in qual_res["issues"]:
             st.caption(f"❌ {issue}")
-
-    # Inicjalizacja session_state
-    if "vent_start_sec" not in st.session_state:
-        st.session_state.vent_start_sec = 600
-    if "vent_end_sec" not in st.session_state:
-        st.session_state.vent_end_sec = 1200
-    # BR chart range
-    if "br_start_sec" not in st.session_state:
-        st.session_state.br_start_sec = 600
-    if "br_end_sec" not in st.session_state:
-        st.session_state.br_end_sec = 1200
-    # Tidal Volume chart range
-    if "tv_start_sec" not in st.session_state:
-        st.session_state.tv_start_sec = 600
-    if "tv_end_sec" not in st.session_state:
-        st.session_state.tv_end_sec = 1200
 
     # ===== NOTATKI VENTILATION =====
     with st.expander("📝 Dodaj Notatkę do tej Analizy", expanded=False):
@@ -94,6 +79,7 @@ def render_vent_tab(target_df, training_notes, uploaded_file_name):
             if note_text:
                 training_notes.add_note(uploaded_file_name, note_time, "ventilation", note_text)
                 import html as _html
+
                 st.success(f"✅ Notatka: {_html.escape(note_text)} @ {note_time:.1f} min")
             else:
                 st.warning("Wpisz tekst notatki!")
@@ -106,6 +92,7 @@ def render_vent_tab(target_df, training_notes, uploaded_file_name):
             col_note, col_del = st.columns([4, 1])
             with col_note:
                 import html as _html
+
                 st.info(f"⏱️ **{note['time_minute']:.1f} min** | {_html.escape(note['text'])}")
             with col_del:
                 if st.button("🗑️", key=f"del_vent_note_{idx}"):

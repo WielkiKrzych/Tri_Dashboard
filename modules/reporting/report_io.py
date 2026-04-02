@@ -4,7 +4,6 @@ Report I/O — JSON serialization, loading, and git tracking check.
 
 import json
 import logging
-import os
 import subprocess
 import numpy as np
 from pathlib import Path

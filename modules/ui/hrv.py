@@ -1,10 +1,10 @@
 """
 HRV Analysis tab — DFA-α1, RMSSD, and readiness scoring.
 """
+
 import streamlit as st
 import plotly.graph_objects as go
 import numpy as np
-import pandas as pd
 from typing import Any, Optional
 from modules.calculations.hrv import calculate_dynamic_dfa_v2
 from modules.plots import CHART_CONFIG
@@ -18,12 +18,6 @@ def render_hrv_tab(df_clean_pl: Any) -> None:
         df_clean_pl: DataFrame with cleaned RR interval data (Polars or Pandas)
     """
     st.header("Analiza Zmienności Rytmu Serca (HRV)")
-
-    # 1. Inicjalizacja "Pamięci" (Session State)
-    if "df_dfa" not in st.session_state:
-        st.session_state.df_dfa = None
-    if "dfa_error" not in st.session_state:
-        st.session_state.dfa_error = None
 
     # 2. Obsługa Przycisku i Stanu
     if st.session_state.df_dfa is None:

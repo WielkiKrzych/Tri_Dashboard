@@ -25,6 +25,7 @@ from dataclasses import dataclass, field
 import logging
 
 from modules.cache_utils import make_cache_key as _cache_key
+from modules.calculations.smo2_breakpoints import detect_exp_dmax, detect_smo2_breakpoints
 
 try:
     from numba import jit
@@ -154,6 +155,23 @@ class SmO2ThresholdResult:
     att_warning: bool = False  # True if ATT > 10mm
     att_unreliable: bool = False  # True if ATT > 15mm
 
+    # Baseline correction (Sendra-Pérez 2024)
+    smo2_baseline: float | None = None
+    dsmo2_t1: float | None = None
+    dsmo2_t2_onset: float | None = None
+
+    # Exp-Dmax T2 (Sendra-Pérez 2024)
+    t2_exp_dmax_watts: float | None = None
+    t2_exp_dmax_smo2: float | None = None
+
+    # BP2 Inflection type (Feldmann 2022)
+    t2_inflection_type: str | None = None  # positive/negative/neutral
+
+    # 4-Knot Segmented Regression (Feldmann 2022) cross-validation
+    seg_bp1_watts: float | None = None
+    seg_bp2_watts: float | None = None
+
+
 # =============================================================================
 # THRESHOLD DETECTION
 # =============================================================================
@@ -172,7 +190,7 @@ def detect_smo2_thresholds_moxy(
     rcp_onset_watts: Optional[int] = None,
     rcp_steady_watts: Optional[int] = None,
     att_mm: Optional[float] = None,  # Adipose tissue thickness in mm
-    smoothing_method: str = "median",  # "median" or "savgol"
+    smoothing_method: str = "median",  # "median", "savgol", or "butterworth" (Sendra-Pérez 2024)
 ) -> SmO2ThresholdResult:
     """
     RAMP TEST SmO₂ THRESHOLD DETECTION (Senior Physiologist + Signal Processing).
@@ -213,9 +231,7 @@ def detect_smo2_thresholds_moxy(
             )
         elif att_mm > 10:
             result.att_warning = True
-            result.analysis_notes.append(
-                f"WARNING: ATT={att_mm}mm > 10mm - reduced signal quality"
-            )
+            result.analysis_notes.append(f"WARNING: ATT={att_mm}mm > 10mm - reduced signal quality")
 
     # Normalize columns
     df = df.copy()
@@ -251,12 +267,44 @@ def detect_smo2_thresholds_moxy(
 
     if smoothing_method == "savgol":
         from scipy.signal import savgol_filter
+
         polyorder = min(3, window - 1)
         df["smo2_smooth"] = savgol_filter(df[smo2_col], window_length=window, polyorder=polyorder)
+    elif smoothing_method == "butterworth":
+        from scipy.signal import butter, filtfilt
+
+        fs = sample_rate
+        cutoff = 0.2  # Hz — Sendra-Pérez et al. 2024
+        nyquist = fs / 2.0
+        if cutoff < nyquist:
+            b, a = butter(N=2, Wn=cutoff / nyquist, btype="low")
+            df["smo2_smooth"] = filtfilt(
+                b,
+                a,
+                df[smo2_col].values,
+                padlen=min(3 * max(len(b), len(a)), len(df) - 1),
+            )
+        else:
+            df["smo2_smooth"] = (
+                df[smo2_col].rolling(window=window, center=True, min_periods=1).median()
+            )
     else:
-        df["smo2_smooth"] = (
-            df[smo2_col].rolling(window=window, center=True, min_periods=1).median()
-        )
+        df["smo2_smooth"] = df[smo2_col].rolling(window=window, center=True, min_periods=1).median()
+
+    smoothed_col = "smo2_smooth"
+
+    # ΔSmO2 Baseline Correction (Sendra-Pérez 2024)
+    baseline_mask = df[time_col] <= step_duration_sec
+    smo2_baseline = (
+        float(df.loc[baseline_mask, smoothed_col].mean())
+        if baseline_mask.sum() > 5
+        else float(df[smoothed_col].iloc[: min(10, len(df))].mean())
+    )
+    df["dsmo2"] = df[smoothed_col] - smo2_baseline
+
+    # First 60s exclusion (Feldmann 2022)
+    analysis_start = 60.0
+    df = df[df[time_col] >= analysis_start].copy().reset_index(drop=True)
 
     if time_col in df.columns:
         df["step"] = (df[time_col] // step_duration_sec).astype(int)
@@ -301,9 +349,7 @@ def detect_smo2_thresholds_moxy(
         if len(last_90) >= 60 and time_col in last_90.columns:
             time_range = last_90[time_col].iloc[-1] - last_90[time_col].iloc[0]
             if time_range > 0:
-                smo2_change = (
-                    last_90["smo2_smooth"].iloc[-1] - last_90["smo2_smooth"].iloc[0]
-                )
+                smo2_change = last_90["smo2_smooth"].iloc[-1] - last_90["smo2_smooth"].iloc[0]
                 trend = smo2_change / (time_range / 60)
 
         hr_slope = None
@@ -373,7 +419,9 @@ def detect_smo2_thresholds_moxy(
         if vt1_watts and not (t1_power_min <= row["power"] <= t1_power_max):
             continue
 
-        trend_ok = row["trend"] < -0.4 and next_row["trend"] < -0.4 and next_next_row["trend"] < -0.4
+        trend_ok = (
+            row["trend"] < -0.4 and next_row["trend"] < -0.4 and next_next_row["trend"] < -0.4
+        )
         cv_ok = row["cv"] < 4.0
         hr_linear = True
         if row["hr_slope"] is not None:
@@ -387,14 +435,10 @@ def detect_smo2_thresholds_moxy(
                 if pct_diff <= 10:
                     t1_is_systemic = True
                     t1_confidence += 30
-                    result.analysis_notes.append(
-                        f"✓ T1 zgodny z VT1 ±{pct_diff:.0f}%"
-                    )
+                    result.analysis_notes.append(f"✓ T1 zgodny z VT1 ±{pct_diff:.0f}%")
                 elif pct_diff <= 15:
                     t1_confidence += 15
-                    result.analysis_notes.append(
-                        f"⚠️ T1 w zakresie VT1 ±{pct_diff:.0f}%"
-                    )
+                    result.analysis_notes.append(f"⚠️ T1 w zakresie VT1 ±{pct_diff:.0f}%")
             else:
                 t1_confidence += 20
 
@@ -416,6 +460,11 @@ def detect_smo2_thresholds_moxy(
         result.t1_trend = round(row["trend"], 2)
         result.t1_sd = round(row["sd"], 2)
         result.t1_step = int(row["step"])
+        result.dsmo2_t1 = (
+            float(df.loc[df["step"] == result.t1_step, "dsmo2"].mean())
+            if result.t1_step is not None
+            else None
+        )
         flag = "🟢 Systemic" if t1_is_systemic else "🟡 Local (orientacyjny)"
         result.analysis_notes.append(
             f"SmO₂ T1: {result.t1_watts}W @ {result.t1_smo2}% "
@@ -464,17 +513,13 @@ def detect_smo2_thresholds_moxy(
     t2_confidence = 0
 
     min_t2_power = (
-        result.t1_watts * 1.20
-        if result.t1_watts
-        else (vt1_watts * 1.20 if vt1_watts else 0)
+        result.t1_watts * 1.20 if result.t1_watts else (vt1_watts * 1.20 if vt1_watts else 0)
     )
     t2_power_min = rcp_onset_watts * 0.85 if rcp_onset_watts else min_t2_power
     t2_power_max = rcp_onset_watts * 1.15 if rcp_onset_watts else max_power
 
     search_start = t1_idx + 1 if t1_idx is not None else 2
-    t1_osc = (
-        step_df.iloc[t1_idx]["osc_amp"] if t1_idx else step_df["osc_amp"].median()
-    )
+    t1_osc = step_df.iloc[t1_idx]["osc_amp"] if t1_idx else step_df["osc_amp"].median()
 
     valid_rows = []
     for i in range(search_start, len(step_df)):
@@ -520,14 +565,10 @@ def detect_smo2_thresholds_moxy(
                 if pct_diff <= 10:
                     t2_onset_is_systemic = True
                     t2_confidence += 30
-                    result.analysis_notes.append(
-                        f"✓ T2_onset zgodny z VT2/RCP ±{pct_diff:.0f}%"
-                    )
+                    result.analysis_notes.append(f"✓ T2_onset zgodny z VT2/RCP ±{pct_diff:.0f}%")
                 elif pct_diff <= 15:
                     t2_confidence += 15
-                    result.analysis_notes.append(
-                        f"⚠️ T2_onset w zakresie VT2/RCP ±{pct_diff:.0f}%"
-                    )
+                    result.analysis_notes.append(f"⚠️ T2_onset w zakresie VT2/RCP ±{pct_diff:.0f}%")
                 else:
                     result.analysis_notes.append(
                         "❌ T2_onset poza VT2/RCP ±15%: Local Perfusion Limitation"
@@ -552,12 +593,80 @@ def detect_smo2_thresholds_moxy(
         result.t2_smo2 = result.t2_onset_smo2
         result.t2_gradient = result.t2_onset_gradient
         result.t2_step = result.t2_onset_step
+        result.dsmo2_t2_onset = (
+            float(df.loc[df["step"] == result.t2_onset_step, "dsmo2"].mean())
+            if result.t2_onset_step is not None
+            else None
+        )
 
         flag = "🟢 Systemic" if t2_onset_is_systemic else "🟡 Local"
         result.analysis_notes.append(
             f"SmO₂ T2_onset: {result.t2_onset_watts}W @ {result.t2_onset_smo2}% "
             f"(slope={row['trend']:.1f}%/min, curv={row['curvature']:.5f}) [{flag}]"
         )
+
+    # ── BP2 Inflection Type (Feldmann 2022) ──────────────────────────
+    t2_inflection_type = None
+    if result.t2_onset_step is not None:
+        post_t2 = step_df[step_df["step"] > result.t2_onset_step]
+        if len(post_t2) > 0 and result.t2_onset_step in step_df["step"].values:
+            t2_smo2 = float(step_df.loc[step_df["step"] == result.t2_onset_step, "smo2"].iloc[0])
+            post_t2_mean = float(post_t2["smo2"].mean())
+            if post_t2_mean > t2_smo2 + 1.0:
+                t2_inflection_type = "positive"
+            elif post_t2_mean < t2_smo2 - 1.0:
+                t2_inflection_type = "negative"
+            else:
+                t2_inflection_type = "neutral"
+            result.analysis_notes.append(
+                f"ℹ BP2 inflection: {t2_inflection_type} "
+                f"(T2={t2_smo2:.1f}% → post={post_t2_mean:.1f}%)"
+            )
+    result.t2_inflection_type = t2_inflection_type
+
+    # ── Exp-Dmax T2 detection with inverted ΔSmO2 (Sendra-Pérez 2024) ──
+    t2_exp_dmax_watts = None
+    t2_exp_dmax_smo2 = None
+    try:
+        exp_result = detect_exp_dmax(
+            df,
+            smo2_col=smoothed_col,
+            power_col=power_col,
+            min_power=max(result.t1_watts * 1.2, 100) if result.t1_watts else 100,
+            baseline=smo2_baseline,
+        )
+        if exp_result.is_valid and exp_result.breakpoint_power is not None:
+            t2_exp_dmax_watts = exp_result.breakpoint_power
+            t2_exp_dmax_smo2 = exp_result.breakpoint_smo2
+            result.analysis_notes.append(
+                f"ℹ Exp-Dmax T2: {t2_exp_dmax_watts:.0f}W (confidence={exp_result.confidence:.2f})"
+            )
+    except Exception as e:
+        result.analysis_notes.append(f"⚠ Exp-Dmax T2 failed: {e}")
+
+    # ── 4-Knot Segmented Regression cross-validation (Feldmann 2022) ──
+    seg_bp1_watts = None
+    seg_bp2_watts = None
+    try:
+        seg_result = detect_smo2_breakpoints(
+            df,
+            smo2_col=smoothed_col,
+            power_col=power_col,
+            method="3-segment",
+        )
+        if seg_result.is_valid:
+            seg_bp1_watts = seg_result.bp1_power
+            seg_bp2_watts = seg_result.bp2_power
+            if seg_bp1_watts is not None:
+                result.analysis_notes.append(
+                    f"ℹ 4-Knot BP1: {seg_bp1_watts:.0f}W (R²={seg_result.r_squared:.3f})"
+                )
+            if seg_bp2_watts is not None:
+                result.analysis_notes.append(
+                    f"ℹ 4-Knot BP2: {seg_bp2_watts:.0f}W (R²={seg_result.r_squared:.3f})"
+                )
+    except Exception as e:
+        result.analysis_notes.append(f"⚠ 4-Knot regression failed: {e}")
 
     # =========================================================================
     # 6. NO T2_STEADY FOR RAMP TESTS
@@ -583,6 +692,40 @@ def detect_smo2_thresholds_moxy(
     if rcp_onset_watts and result.t2_onset_watts:
         result.rcp_onset_correlation_watts = abs(result.t2_onset_watts - rcp_onset_watts)
 
+    if t2_exp_dmax_watts is not None and result.t2_onset_watts is not None:
+        dmax_divergence = (
+            abs(t2_exp_dmax_watts - result.t2_onset_watts) / max(result.t2_onset_watts, 1) * 100
+        )
+        if dmax_divergence <= 10:
+            t2_confidence += 15
+            result.analysis_notes.append(
+                f"✅ Exp-Dmax agrees with step T2 (Δ{dmax_divergence:.1f}%)"
+            )
+        elif dmax_divergence <= 20:
+            result.analysis_notes.append(f"ℹ Exp-Dmax vs step T2: Δ{dmax_divergence:.1f}%")
+        else:
+            result.analysis_notes.append(
+                f"⚠ Exp-Dmax vs step T2 divergent (Δ{dmax_divergence:.1f}%)"
+            )
+
+    if seg_bp1_watts is not None and result.t1_watts is not None:
+        seg_t1_div = abs(seg_bp1_watts - result.t1_watts) / max(result.t1_watts, 1) * 100
+        if seg_t1_div <= 15:
+            t1_confidence += 10
+            result.analysis_notes.append(f"✅ 4-Knot BP1 agrees with step T1 (Δ{seg_t1_div:.1f}%)")
+        else:
+            result.analysis_notes.append(f"ℹ 4-Knot BP1 vs step T1: Δ{seg_t1_div:.1f}%")
+
+    if seg_bp2_watts is not None and result.t2_onset_watts is not None:
+        seg_t2_div = (
+            abs(seg_bp2_watts - result.t2_onset_watts) / max(result.t2_onset_watts, 1) * 100
+        )
+        if seg_t2_div <= 15:
+            t2_confidence += 10
+            result.analysis_notes.append(f"✅ 4-Knot BP2 agrees with step T2 (Δ{seg_t2_div:.1f}%)")
+        else:
+            result.analysis_notes.append(f"ℹ 4-Knot BP2 vs step T2: Δ{seg_t2_div:.1f}%")
+
     total_confidence = t1_confidence + t2_confidence
     if result.t1_watts and result.t2_onset_watts:
         total_confidence += 20
@@ -598,9 +741,7 @@ def detect_smo2_thresholds_moxy(
         )
     elif systemic_count == 1:
         result.physiological_agreement = "moderate"
-        result.analysis_notes.append(
-            f"🟡 Moderate agreement (confidence: {total_confidence}%)"
-        )
+        result.analysis_notes.append(f"🟡 Moderate agreement (confidence: {total_confidence}%)")
     else:
         result.physiological_agreement = "low"
         result.analysis_notes.append(
@@ -664,6 +805,11 @@ def detect_smo2_thresholds_moxy(
 
     result.zones = zones
     result.step_data = step_df.to_dict("records")
+    result.smo2_baseline = smo2_baseline
+    result.t2_exp_dmax_watts = t2_exp_dmax_watts
+    result.t2_exp_dmax_smo2 = t2_exp_dmax_smo2
+    result.seg_bp1_watts = seg_bp1_watts
+    result.seg_bp2_watts = seg_bp2_watts
     result.analysis_notes.append(
         f"Ramp Test Pipeline: T1+T2_onset only, no T2_steady. Confidence: {total_confidence}%."
     )
@@ -672,3 +818,78 @@ def detect_smo2_thresholds_moxy(
         _smo2_thresholds_cache.pop(next(iter(_smo2_thresholds_cache)))
     _smo2_thresholds_cache[cache_key] = result
     return result
+
+
+def check_multi_muscle_mot2_consistency(
+    results: dict[str, "SmO2ThresholdResult"],
+) -> dict:
+    """Check consistency of MOT2 across multiple muscle measurements.
+
+    Sendra-Pérez et al. 2024 showed MOT2 occurs at similar %GXT across
+    different muscles (VL, BF, GM, TA) with ICC=0.64.
+
+    Args:
+        results: dict mapping muscle name to SmO2ThresholdResult
+
+    Returns:
+        dict with:
+            - consistent: bool (True if all T2 values within 20% of mean)
+            - mot2_watts_by_muscle: dict of muscle -> T2 watts
+            - mot2_mean_watts: float or None
+            - mot2_cv_pct: coefficient of variation
+            - icc_estimate: str ("good"/"moderate"/"poor")
+            - notes: list of str
+    """
+    mot2_values = {}
+    for muscle, res in results.items():
+        t2 = res.t2_onset_watts if res.t2_onset_watts else res.t2_exp_dmax_watts
+        if t2 is not None:
+            mot2_values[muscle] = t2
+
+    if len(mot2_values) < 2:
+        return {
+            "consistent": True,
+            "mot2_watts_by_muscle": mot2_values,
+            "mot2_mean_watts": None,
+            "mot2_cv_pct": None,
+            "icc_estimate": "insufficient_data",
+            "notes": ["ℹ Need MOT2 from at least 2 muscles for consistency check"],
+        }
+
+    import numpy as np
+
+    watts_arr = np.array(list(mot2_values.values()))
+    mot2_mean = float(np.mean(watts_arr))
+    mot2_std = float(np.std(watts_arr))
+    mot2_cv = (mot2_std / mot2_mean * 100) if mot2_mean > 0 else 0
+
+    # ICC approximation from CV (Shrout & Fleiss 1979)
+    if mot2_cv <= 5:
+        icc_label = "good"
+    elif mot2_cv <= 10:
+        icc_label = "moderate"
+    else:
+        icc_label = "poor"
+
+    consistent = mot2_cv <= 20  # within 20% CV
+    notes = []
+    for muscle, watts in mot2_values.items():
+        div = abs(watts - mot2_mean) / mot2_mean * 100
+        notes.append(f"  {muscle}: {watts:.0f}W (Δ{div:+.1f}% from mean)")
+
+    notes.append(f"ℹ MOT2 CV={mot2_cv:.1f}%, mean={mot2_mean:.0f}W, ICC≈{icc_label}")
+    if consistent:
+        notes.append(f"✅ Multi-muscle MOT2 consistent (CV={mot2_cv:.1f}% ≤ 20%)")
+    else:
+        notes.append(
+            f"⚠ Multi-muscle MOT2 inconsistent (CV={mot2_cv:.1f}% > 20%) — may indicate local perfusion limitation"
+        )
+
+    return {
+        "consistent": consistent,
+        "mot2_watts_by_muscle": dict(mot2_values),
+        "mot2_mean_watts": round(mot2_mean, 1),
+        "mot2_cv_pct": round(mot2_cv, 1),
+        "icc_estimate": icc_label,
+        "notes": notes,
+    }

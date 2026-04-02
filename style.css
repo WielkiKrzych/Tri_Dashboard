@@ -535,3 +535,96 @@ html {
 [data-testid="stVerticalBlock"] {
     overflow: visible !important;
 }
+
+/* ========================================
+   MOBILE-OPTIMIZED RESPONSIVE IMPROVEMENTS
+   ======================================== */
+
+@media screen and (max-width: 768px) {
+    /* Collapsible tab groups */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 4px;
+        padding-bottom: 6px;
+    }
+
+    .stTabs [data-baseweb="tab"] {
+        flex: 0 0 calc(50% - 16px);
+        min-width: 0;
+        font-size: 0.8rem;
+        padding: 6px 8px;
+        height: 32px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    /* Scrollable KPI metric cards */
+    .metric-row {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        scroll-snap-type: x mandatory;
+        padding-bottom: 5px;
+    }
+
+    .metric-box {
+        min-width: 90px;
+        flex-shrink: 0;
+    }
+
+    /* Charts responsive */
+    .stPlotlyChart {
+        max-width: 100%;
+    }
+
+    /* Hide secondary info on mobile */
+    .breadcrumb-nav {
+        font-size: 0.7rem;
+        padding: 6px 10px;
+        margin-bottom: 10px;
+    }
+
+    /* Smaller section headings */
+    h2 {
+        font-size: 1rem !important;
+        margin-top: 15px;
+    }
+
+    h3 {
+        font-size: 0.9rem !important;
+    }
+
+    /* DataFrame tables compact */
+    .stDataFrame td,
+    [data-testid="stDataFrame"] td {
+        padding: 6px 8px !important;
+        font-size: 0.8rem;
+    }
+    
+    /* Sidebar compact */
+    [data-testid="stSidebar"] label {
+        font-size: 0.85rem;
+    }
+}
+
+@media screen and (max-width: 480px) {
+    /* Stack tabs vertically on very small screens */
+    .stTabs [data-baseweb="tab-list"] {
+        flex-direction: column;
+        gap: 2px;
+    }
+
+    .stTabs [data-baseweb="tab"] {
+        width: 100%;
+        text-align: center;
+    }
+
+    /* Single column layout for metrics */
+    .metric-row {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .metric-box {
+        min-width: 100%;
+    }
+}

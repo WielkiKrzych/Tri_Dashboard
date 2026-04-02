@@ -34,7 +34,7 @@ Tri_Dashboard to platforma analityczna dla **trenerów**, **naukowców sportu** 
 | Moduł | Funkcjonalność |
 |:-------|:---------------|
 | **Power** | PDC, CP/W', NP, IF, TSS, phenotype klasyfikacja |
-| **Physiology** | SmO2 kinetics, HRV (DFA α1), termoregulacja, biomechanika |
+| **Physiology** | SmO2 kinetics (ΔSmO2, Exp-Dmax, 4-knot regression), HRV (DFA α1), termoregulacja, biomechanika |
 | **Thresholds** | 4-point CPET: VT1_onset, VT1_steady, RCP_onset, RCP_steady |
 | **AI Coach** | Multi-sensor fusion, limiter diagnosis, rekomendacje |
 | **Reports** | PDF ~36-stronicowy, DOCX, PNG export, SQLite baza danych, CLI generator |
@@ -327,6 +327,55 @@ Tri_Dashboard/
 ---
 
 ## 📋 Changelog
+
+
+### 2026-04-02 — Evidence-Based SmO2 Threshold Detection Overhaul
+
+**Scientific basis:** Perrey, Ferrari et al. (2024) Sports Medicine systematic review (191 studies), Sendra-Pérez et al. (2023, 2024), Feldmann et al. (2022), Racinais et al. (2014).
+
+**CRITICAL — Threshold Detection Accuracy (3):**
+| Change | Reference | Description |
+|:-------|:----------|:------------|
+| ΔSmO2 baseline correction | Sendra-Pérez 2024 | Normalizes SmO2 relative to warm-up baseline, eliminates inter-individual differences |
+| Signal inversion for Exp-Dmax | Sendra-Pérez 2024 | Inverted ΔSmO2 behaves like lactate (increasing) — correct Exp-Dmax application |
+| First 60s exclusion | Feldmann 2022 | Abrupt test starts cause NIRS artifacts; excluded from breakpoint analysis |
+
+**HIGH — Analysis Quality (3):**
+| Change | Reference | Description |
+|:-------|:----------|:------------|
+| SmO2min → VO2peak estimation | Feldmann 2022 (R²=0.85) | Non-invasive fitness proxy: VO2max ≈ 88.2 − 0.62 × SmO2min |
+| BP2 inflection type detection | Feldmann 2022 | Classifies T2 as positive (plateau) or negative (further desaturation) |
+| 4-knot segmented regression | Feldmann 2022 | Cross-validation of T1/T2 via 3-segment piecewise regression |
+
+**MEDIUM — New Capabilities (2):**
+| Change | Reference | Description |
+|:-------|:----------|:------------|
+| Butterworth low-pass filter | Sendra-Pérez 2024 | 3rd smoothing option (median / Savgol / Butterworth 0.2 Hz) |
+| Multi-muscle MOT2 consistency | Sendra-Pérez 2024 | Utility for comparing MOT2 across multiple muscle sensors (ICC≈0.64) |
+
+### 2026-04-02 — Architecture Improvements & Codebase Cleanup
+
+**Architecture (5 improvements):**
+| Change | Files | Description |
+|:-------|:------|:------------|
+| Config grouped dataclasses | `config.py` | 7 frozen dataclasses replace flat namespace, 47 passthrough attributes preserved |
+| BaseStore unified DB | `db/base.py`, 3 stores | New BaseStore ABC, ~100 lines boilerplate removed |
+| State key registry | `frontend/state.py` | 34 keys in `_defaults` dict, 11 guard clauses removed |
+| UI shared components | `ui/shared.py` | chart(), metric(), require_data(), dataframe(), alert() — 8+2 replacements |
+| Typed SessionPipeline | `services/session_pipeline.py` | Typed dataclasses for analysis pipeline (purely additive) |
+
+**Codebase Cleanup:**
+- 14 orphaned files deleted (removed tabs, dead plugins, legacy scripts)
+- 11 unused imports removed from 10 files
+- 19 dead functions removed from 9 files
+- `style-light.css` deleted (dark-mode only)
+- Tests updated for removed references
+
+**UI Changes:**
+- Dark mode forced (theme toggle removed)
+- 6 tabs removed: Longitudinal Trends, Niezawodność, Benchmarking, Porównanie Sesji, Multi-Sport
+- Athlete profile selector removed from sidebar
+- App title changed to "Tri Dashboard"
 
 ### 2026-03-29 — PDF Report Fixes & Data Analysis v3.3
 

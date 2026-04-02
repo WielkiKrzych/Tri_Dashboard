@@ -1,4 +1,13 @@
 """Database module initialization."""
-from .session_store import SessionStore, SessionRecord
 
-__all__ = ['SessionStore', 'SessionRecord']
+from .base import BaseStore
+from .session_store import SessionStore, SessionRecord
+from .athlete_profiles import AthleteProfile, AthleteProfileStore
+
+__all__ = [
+    "BaseStore",
+    "SessionStore",
+    "SessionRecord",
+    "AthleteProfile",
+    "AthleteProfileStore",
+]

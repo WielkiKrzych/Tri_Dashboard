@@ -3,7 +3,6 @@ Summary Calculations — pure math helpers, no Streamlit dependency.
 """
 
 import pandas as pd
-import numpy as np
 from scipy import stats
 from typing import Tuple
 

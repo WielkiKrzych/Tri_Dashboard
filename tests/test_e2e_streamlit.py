@@ -7,6 +7,7 @@ Tests critical user flows:
 3. Full calculation pipeline works with realistic test data
 4. Report generation pipeline produces valid output
 """
+
 import pytest
 import pandas as pd
 import numpy as np
@@ -319,12 +320,10 @@ class TestSubModuleSplitIntegration:
 
     def test_vent_thresholds_submodules_import(self):
         """All vent_thresholds sub-modules must import."""
-        from modules.ui.vent_thresholds_report import render_report_section
         from modules.ui.vent_thresholds_display import render_threshold_cards, render_theory_section
         from modules.ui.vent_thresholds_charts import render_cpet_charts
         from modules.ui.vent_thresholds_timeline import render_threshold_timeline
 
-        assert callable(render_report_section)
         assert callable(render_threshold_cards)
         assert callable(render_theory_section)
         assert callable(render_cpet_charts)

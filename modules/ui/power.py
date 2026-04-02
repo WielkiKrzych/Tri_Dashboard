@@ -1,6 +1,7 @@
 """
 Power Analysis tab — power distribution, MMP curve, and zone breakdown.
 """
+
 import streamlit as st
 import plotly.graph_objects as go
 import plotly.express as px
@@ -9,6 +10,7 @@ import numpy as np
 from typing import Dict, Any, Optional
 from modules.config import Config
 from modules.plots import apply_chart_style, CHART_CONFIG, CHART_HEIGHT_SMALL
+from modules.ui.shared import chart, metric
 from modules.ui.utils import hash_dataframe as _hash_dataframe, hash_params as _hash_params
 from modules.calculations import (
     calculate_power_duration_curve,
@@ -28,7 +30,9 @@ from modules.calculations import (
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
-def _build_power_w_chart(df_resampled: pd.DataFrame, cp_input: int, w_prime_input: int) -> go.Figure:
+def _build_power_w_chart(
+    df_resampled: pd.DataFrame, cp_input: int, w_prime_input: int
+) -> go.Figure:
     """Build power and W' balance chart (cached)."""
     fig = go.Figure()
     fig.add_trace(
@@ -73,7 +77,7 @@ def _build_zones_chart(df_plot: pd.DataFrame, cp_input: int) -> Optional[go.Figu
     """Build power zones chart (cached)."""
     if "watts" not in df_plot.columns:
         return None
-    
+
     bins = [
         0,
         0.55 * cp_input,
@@ -123,11 +127,11 @@ def _build_fri_gauge(fri: float) -> go.Figure:
                 },
                 "bar": {"color": "#FFD700"},
                 "steps": [
-                    {"range": [0, 0.60],   "color": "#6b0000"},
+                    {"range": [0, 0.60], "color": "#6b0000"},
                     {"range": [0.60, 0.75], "color": "#FF4500"},
                     {"range": [0.75, 0.85], "color": "#FFA500"},
                     {"range": [0.85, 0.92], "color": "#32CD32"},
-                    {"range": [0.92, 1.0],  "color": "#00CED1"},
+                    {"range": [0.92, 1.0], "color": "#00CED1"},
                 ],
                 "threshold": {
                     "line": {"color": "white", "width": 2},
@@ -145,12 +149,14 @@ def _build_fri_gauge(fri: float) -> go.Figure:
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
-def _calculate_power_metrics(df_plot: pd.DataFrame, cp_input: int, w_prime_input: int, rider_weight: float) -> Dict[str, Any]:
+def _calculate_power_metrics(
+    df_plot: pd.DataFrame, cp_input: int, w_prime_input: int, rider_weight: float
+) -> Dict[str, Any]:
     """Calculate all power-related metrics (cached)."""
     pdc = {}
     if "watts" in df_plot.columns:
         pdc = calculate_power_duration_curve(df_plot)
-    
+
     return {
         "pdc": pdc,
         "mmp_5s": pdc.get(5),
@@ -194,7 +200,7 @@ def render_power_tab(
     st.subheader("Wykres Mocy i W'")
     # Use cached chart building
     fig_pw = _build_power_w_chart(df_plot_resampled, cp_input, w_prime_input)
-    st.plotly_chart(fig_pw, width="stretch", config=CHART_CONFIG)
+    chart(fig_pw)
 
     st.info("""
     **💡 Interpretacja: Energia Beztlenowa (W' Balance)**
@@ -218,7 +224,7 @@ def render_power_tab(
     st.subheader("Czas w Strefach Mocy (Time in Zones)")
     fig_z = _build_zones_chart(df_plot, cp_input)
     if fig_z is not None:
-        st.plotly_chart(fig_z, width="stretch", config=CHART_CONFIG)
+        chart(fig_z)
 
         st.info("""
         **💡 Interpretacja Treningowa:**
@@ -417,7 +423,7 @@ def render_power_tab(
 
         # FRI gauge - use cached version
         fig_fri = _build_fri_gauge(fri)
-        st.plotly_chart(fig_fri, width="stretch", config=CHART_CONFIG)
+        chart(fig_fri)
     else:
         st.warning("Potrzeba danych ≥5 minut i ≥20 minut dla obliczenia FRI.")
 

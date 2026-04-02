@@ -13,6 +13,7 @@ from typing import Optional
 from modules.config import Config
 from modules.plots import CHART_CONFIG, CHART_HEIGHT_MAIN, CHART_HEIGHT_SUB
 from .summary_calculations import _estimate_cp_wprime
+from modules.ui.shared import chart, metric
 
 
 def _get_smooth(df: pd.DataFrame, col: str) -> Optional[pd.Series]:
@@ -64,26 +65,30 @@ def _build_training_timeline_chart(
                 line=dict(color=Config.COLOR_POWER, width=1),
                 hovertemplate="Moc: %{y:.0f} W<extra></extra>",
             ),
-            row=1, col=1, secondary_y=False,
+            row=1,
+            col=1,
+            secondary_y=False,
         )
 
     # ── Training zone bands in background (row 1) ───────────────────────────
     if cp_input and cp_input > 0:
         zone_bands = [
-            (0,            cp_input * 0.55, "rgba(140,140,140,0.06)", "Z1"),
-            (cp_input * 0.55, cp_input * 0.75, "rgba(50,205,50,0.06)",  "Z2"),
-            (cp_input * 0.75, cp_input * 0.90, "rgba(255,215,0,0.06)",  "Z3"),
-            (cp_input * 0.90, cp_input * 1.05, "rgba(255,140,0,0.07)",  "Z4"),
-            (cp_input * 1.05, cp_input * 1.20, "rgba(255,69,0,0.07)",   "Z5"),
-            (cp_input * 1.20, cp_input * 2.00, "rgba(139,0,0,0.07)",    "Z6"),
+            (0, cp_input * 0.55, "rgba(140,140,140,0.06)", "Z1"),
+            (cp_input * 0.55, cp_input * 0.75, "rgba(50,205,50,0.06)", "Z2"),
+            (cp_input * 0.75, cp_input * 0.90, "rgba(255,215,0,0.06)", "Z3"),
+            (cp_input * 0.90, cp_input * 1.05, "rgba(255,140,0,0.07)", "Z4"),
+            (cp_input * 1.05, cp_input * 1.20, "rgba(255,69,0,0.07)", "Z5"),
+            (cp_input * 1.20, cp_input * 2.00, "rgba(139,0,0,0.07)", "Z6"),
         ]
         for y0, y1, color, label in zone_bands:
             fig.add_hrect(
-                y0=y0, y1=y1,
+                y0=y0,
+                y1=y1,
                 fillcolor=color,
                 line_width=0,
                 layer="below",
-                row=1, col=1,
+                row=1,
+                col=1,
                 annotation_text=label,
                 annotation_font_size=9,
                 annotation_font_color="rgba(200,200,200,0.5)",
@@ -94,29 +99,38 @@ def _build_training_timeline_chart(
     if cp_input and cp_input > 0:
         fig.add_hline(
             y=cp_input,
-            line_dash="dash", line_color="#ef553b", opacity=0.6,
+            line_dash="dash",
+            line_color="#ef553b",
+            opacity=0.6,
             annotation_text=f"CP {cp_input}W",
             annotation_font_size=9,
             annotation_position="right",
-            row=1, col=1,
+            row=1,
+            col=1,
         )
     if vt2_watts and vt2_watts > 0:
         fig.add_hline(
             y=vt2_watts,
-            line_dash="dot", line_color="#ffa15a", opacity=0.6,
+            line_dash="dot",
+            line_color="#ffa15a",
+            opacity=0.6,
             annotation_text=f"VT2 {vt2_watts}W",
             annotation_font_size=9,
             annotation_position="right",
-            row=1, col=1,
+            row=1,
+            col=1,
         )
     if vt1_watts and vt1_watts > 0:
         fig.add_hline(
             y=vt1_watts,
-            line_dash="dot", line_color="#00cc96", opacity=0.6,
+            line_dash="dot",
+            line_color="#00cc96",
+            opacity=0.6,
             annotation_text=f"VT1 {vt1_watts}W",
             annotation_font_size=9,
             annotation_position="right",
-            row=1, col=1,
+            row=1,
+            col=1,
         )
 
     # ── Row 1: HR (secondary Y) ──────────────────────────────────────────────
@@ -130,7 +144,9 @@ def _build_training_timeline_chart(
                 line=dict(color=Config.COLOR_HR, width=2),
                 hovertemplate="HR: %{y:.0f} bpm<extra></extra>",
             ),
-            row=1, col=1, secondary_y=True,
+            row=1,
+            col=1,
+            secondary_y=True,
         )
 
     # ── Row 2: SmO2 (primary Y) ──────────────────────────────────────────────
@@ -144,7 +160,9 @@ def _build_training_timeline_chart(
                 line=dict(color=Config.COLOR_SMO2, width=2, dash="dot"),
                 hovertemplate="SmO2: %{y:.1f}%<extra></extra>",
             ),
-            row=2, col=1, secondary_y=False,
+            row=2,
+            col=1,
+            secondary_y=False,
         )
 
     # ── Row 2: VE (secondary Y) ──────────────────────────────────────────────
@@ -158,7 +176,9 @@ def _build_training_timeline_chart(
                 line=dict(color=Config.COLOR_VE, width=2, dash="dash"),
                 hovertemplate="VE: %{y:.1f} L/min<extra></extra>",
             ),
-            row=2, col=1, secondary_y=True,
+            row=2,
+            col=1,
+            secondary_y=True,
         )
 
     # ── Layout ───────────────────────────────────────────────────────────────
@@ -174,13 +194,28 @@ def _build_training_timeline_chart(
     )
 
     # Axes labels
-    fig.update_yaxes(title_text="Moc [W]",  row=1, col=1, secondary_y=False, showgrid=True, gridcolor="rgba(255,255,255,0.05)")
-    fig.update_yaxes(title_text="HR [bpm]", row=1, col=1, secondary_y=True,  showgrid=False)
-    fig.update_yaxes(title_text="SmO2 [%]", row=2, col=1, secondary_y=False, showgrid=True, gridcolor="rgba(255,255,255,0.05)")
+    fig.update_yaxes(
+        title_text="Moc [W]",
+        row=1,
+        col=1,
+        secondary_y=False,
+        showgrid=True,
+        gridcolor="rgba(255,255,255,0.05)",
+    )
+    fig.update_yaxes(title_text="HR [bpm]", row=1, col=1, secondary_y=True, showgrid=False)
+    fig.update_yaxes(
+        title_text="SmO2 [%]",
+        row=2,
+        col=1,
+        secondary_y=False,
+        showgrid=True,
+        gridcolor="rgba(255,255,255,0.05)",
+    )
     fig.update_yaxes(title_text="VE [L/min]", row=2, col=1, secondary_y=True, showgrid=False)
     fig.update_xaxes(
         title_text="Czas [min]",
-        row=2, col=1,
+        row=2,
+        col=1,
         rangeslider=dict(visible=True, thickness=0.04, bgcolor="#1c2128"),
     )
     fig.update_xaxes(showgrid=False, row=1, col=1)
@@ -264,7 +299,7 @@ def _render_cp_model_chart(df_plot: pd.DataFrame, cp_input: int, w_prime_input: 
         plot_bgcolor="rgba(0,0,0,0)",
         paper_bgcolor="rgba(0,0,0,0)",
     )
-    st.plotly_chart(fig_model, width="stretch", config=CHART_CONFIG)
+    chart(fig_model)
 
 
 def _render_smo2_thb_chart(df_plot: pd.DataFrame):
@@ -316,7 +351,7 @@ def _render_smo2_thb_chart(df_plot: pd.DataFrame):
     )
     fig_smo2_thb.update_yaxes(title_text="SmO2 (%)", secondary_y=False)
     fig_smo2_thb.update_yaxes(title_text="THb (g/dL)", secondary_y=True)
-    st.plotly_chart(fig_smo2_thb, width="stretch", config=CHART_CONFIG)
+    chart(fig_smo2_thb)
 
     if "smo2" in df_plot.columns:
         smo2_min = df_plot["smo2"].min()

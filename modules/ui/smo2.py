@@ -1,6 +1,7 @@
 """
 SmO2 tab — muscle-oxygenation time series, kinetics, and state timeline.
 """
+
 import streamlit as st
 import plotly.graph_objects as go
 import pandas as pd
@@ -9,6 +10,7 @@ from modules.calculations.kinetics import generate_state_timeline
 from modules.calculations.quality import check_signal_quality
 from modules.plots import CHART_CONFIG
 from modules.config import Config
+from modules.ui.shared import chart, metric
 
 
 def render_smo2_tab(target_df, training_notes, uploaded_file_name):
@@ -41,12 +43,6 @@ def render_smo2_tab(target_df, training_notes, uploaded_file_name):
         st.warning(f"⚠️ **Niska Jakość Sygnału SmO2 (Score: {qual_res['score']})**")
         for issue in qual_res["issues"]:
             st.caption(f"❌ {issue}")
-
-    # Inicjalizacja session_state
-    if "smo2_start_sec" not in st.session_state:
-        st.session_state.smo2_start_sec = 600
-    if "smo2_end_sec" not in st.session_state:
-        st.session_state.smo2_end_sec = 1200
 
     # ===== NOTATKI SmO2 =====
     with st.expander("📝 Dodaj Notatkę do tej Analizy", expanded=False):
@@ -82,6 +78,7 @@ def render_smo2_tab(target_df, training_notes, uploaded_file_name):
             col_note, col_del = st.columns([4, 1])
             with col_note:
                 import html as _html
+
                 st.info(f"⏱️ **{note['time_minute']:.1f} min** | {_html.escape(note['text'])}")
             with col_del:
                 if st.button("🗑️", key=f"del_smo2_note_{idx}"):
@@ -348,7 +345,7 @@ def render_smo2_tab(target_df, training_notes, uploaded_file_name):
                 hovermode="x unified",
             )
 
-            st.plotly_chart(fig_thb, width="stretch", key="thb_chart", config=CHART_CONFIG)
+            chart(fig_thb, key="thb_chart")
 
         # Obsługa zaznaczenia
         if selected and "selection" in selected and "box" in selected["selection"]:
@@ -402,7 +399,7 @@ def render_smo2_tab(target_df, training_notes, uploaded_file_name):
                     height=400,
                     hovermode="closest",
                 )
-                st.plotly_chart(fig_scatter, width="stretch", config=CHART_CONFIG)
+                chart(fig_scatter)
 
             # THb Visualization
             if "thb" in interval_data.columns:
@@ -432,7 +429,7 @@ def render_smo2_tab(target_df, training_notes, uploaded_file_name):
                     height=300,
                     hovermode="x unified",
                 )
-                st.plotly_chart(fig_thb, width="stretch", config=CHART_CONFIG)
+                chart(fig_thb)
 
     else:
         st.warning("Brak danych w wybranym zakresie.")

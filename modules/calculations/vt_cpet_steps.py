@@ -3,7 +3,6 @@ CPET Step Aggregation — builds steady-state step data from raw time-series.
 """
 
 from typing import Optional
-import numpy as np
 import pandas as pd
 
 from modules.config import Config

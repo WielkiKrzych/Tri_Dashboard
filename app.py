@@ -8,10 +8,6 @@ from typing import Optional, Tuple, Any
 
 from io import BytesIO
 import os
-import re
-import logging
-import hashlib
-from typing import Optional, Tuple, Any
 
 import pandas as pd
 
@@ -69,7 +65,7 @@ def compute_file_hash(file) -> str:
     file.seek(0)  # Reset position
     content_hash = hashlib.md5()
     # Hash content in chunks for memory efficiency
-    for chunk in iter(lambda: file.read(8192), b''):
+    for chunk in iter(lambda: file.read(8192), b""):
         content_hash.update(chunk)
     file.seek(0)  # Reset for subsequent reads
     return content_hash.hexdigest()[:16]
@@ -125,9 +121,6 @@ def render_session_badge(session_type, ramp_classification) -> None:
         safe_type = html.escape(str(session_type))
         msg = f"Typ sesji: <b>{safe_type}</b>"
 
-        bg_color = "rgba(149, 165, 166, 0.2)"
-        msg = f"Typ sesji: <b>{session_type}</b>"
-
     st.markdown(
         f"""
         <div style="background: linear-gradient(90deg, {bg_color}, transparent); 
@@ -175,6 +168,7 @@ class TabRegistry:
         "drift_maps": ("modules.ui.drift_maps_ui", "render_drift_maps_tab"),
         "tte": ("modules.ui.tte_ui", "render_tte_tab"),
         "ramp_archive": ("modules.ui.ramp_archive", "render_ramp_archive"),
+        "training_plan": ("modules.ui.training_plan_ui", "render_training_plan_tab"),
     }
 
     @classmethod
@@ -204,10 +198,19 @@ def render_tab_content(tab_name, *args, **kwargs):
 
 # --- INIT ---
 ThemeManager.set_page_config()
-ThemeManager.load_css()
+# Load dark theme CSS
+ThemeManager.load_css(theme="dark")
 
 state = StateManager()
 state.init_session_state()
+
+from modules.db.athlete_profiles import AthleteProfileStore
+
+_profile_store = AthleteProfileStore()
+if st.session_state["selected_athlete_id"] == "default":
+    _first_profile = _profile_store.get_or_create_default()
+    st.session_state["selected_athlete_id"] = _first_profile.id
+    state.load_profile_into_state(_first_profile.id)
 
 # Safety Check: Git Tracking of sensitive data (reports & raw CSVs)
 check_git_tracking("reports/ramp_tests")
@@ -268,6 +271,30 @@ if uploaded_file is not None:
 
             state.set_data_loaded()
 
+            # Compute intelligent alerts
+            try:
+                from modules.calculations.alert_engine import analyze_session_alerts
+
+                store = get_session_store()
+                history_records = store.get_sessions(days=90)
+                session_history_list = [
+                    {
+                        "date": r.date,
+                        "avg_rmssd": r.avg_rmssd,
+                        "session_type": r.session_type,
+                        "tss": r.tss,
+                    }
+                    for r in history_records
+                ]
+                alert_report = analyze_session_alerts(
+                    df_plot, metrics, session_history=session_history_list
+                )
+            except Exception as e:
+                logger.warning("Alert engine failed: %s", e)
+                from modules.calculations.alert_engine import AlertReport
+
+                alert_report = AlertReport()
+
             # AI Section (Optional/Non-critical)
             if MLX_AVAILABLE and os.path.exists(MODEL_FILE):
                 try:
@@ -292,6 +319,7 @@ if uploaded_file is not None:
         session_data = prepare_session_record(
             safe_filename, df_plot, metrics, np_header, if_header, tss_header
         )
+        session_data["athlete_id"] = st.session_state.get("selected_athlete_id", "default")
         get_session_store().add_session(SessionRecord(**session_data))
     except Exception as e:
         logger.warning(f"Auto-save failed: {e}")
@@ -309,6 +337,20 @@ if uploaded_file is not None:
 
     if session_type:
         render_session_badge(session_type, ramp_classification)
+
+    if alert_report.has_critical or alert_report.warning_count > 0:
+        badge_parts = []
+        if alert_report.has_critical:
+            badge_parts.append(f"\U0001f6a8 {alert_report.critical_count} krytycznych")
+        if alert_report.warning_count > 0:
+            badge_parts.append(f"\u26a0\ufe0f {alert_report.warning_count} ostrze\u017ce\u0144")
+        badge_text = " | ".join(badge_parts)
+        st.markdown(
+            f'<div style="background: rgba(231, 76, 60, 0.15); padding: 8px 15px; '
+            f'border-radius: 8px; margin-bottom: 8px; display: inline-block;">'
+            f'<span style="font-size: 1.0em;">{badge_text}</span></div>',
+            unsafe_allow_html=True,
+        )
 
     # Layout Tabs
     tab_overview, tab_performance, tab_intelligence, tab_physiology = st.tabs(
@@ -391,14 +433,25 @@ if uploaded_file is not None:
             render_tab_content("tte", df_plot, cp_input, filename)
 
     with tab_intelligence:
-        UIComponents.show_breadcrumb("🧠 Intelligence")
-        t1, t2, t3 = st.tabs(["🍎 Nutrition", "🚧 Limiters", "🤖 AI Coach"])
+        UIComponents.show_breadcrumb("\U0001f9e0 Intelligence")
+        t1, t2, t3, t4 = st.tabs(
+            [
+                "\U0001f34e Nutrition",
+                "\U0001f6a7 Limiters",
+                "\U0001f916 AI Coach",
+                "\U0001f514 Alerty",
+            ]
+        )
         with t1:
             render_tab_content("nutrition", df_plot, cp_input, vt1_watts, vt2_watts)
         with t2:
             render_tab_content("limiters", df_plot, cp_input, vt2_vent)
         with t3:
             render_tab_content("ai_coach", df_plot_resampled, cp_watts=cp_input)
+        with t4:
+            from modules.ui.alerts import render_alerts_tab
+
+            render_alerts_tab(alert_report)
 
     with tab_physiology:
         UIComponents.show_breadcrumb("🫀 Physiology")
@@ -474,6 +527,50 @@ if uploaded_file is not None:
         st.sidebar.error(f"Błąd eksportu PNG: {e}")
         logger.warning(f"PNG export failed: {e}")
 
+    st.sidebar.markdown("---")
+    with st.sidebar.expander("📤 Export do platform", expanded=False):
+        try:
+            from modules.export.zone_exporter import export_hr_zones_csv, export_power_zones_csv
+            from modules.export.tcx_generator import generate_tcx_bytes
+            from modules.export.workout_exporter import export_trainingpeaks_csv
+
+            export_name = safe_filename.replace(".csv", "").replace(".fit", "")[:50]
+
+            st.download_button(
+                "📁 TCX (Strava/Garmin)",
+                data=generate_tcx_bytes(df_plot, metrics, cp_input),
+                file_name=f"{export_name}.tcx",
+                mime="application/vnd.garmin.tcx+xml",
+                use_container_width=True,
+            )
+            st.download_button(
+                "💪 Power Zones CSV",
+                data=export_power_zones_csv(cp_input, rider_weight),
+                file_name=f"{export_name}_power_zones.csv",
+                mime="text/csv",
+                use_container_width=True,
+            )
+            st.download_button(
+                "❤️ HR Zones CSV",
+                data=export_hr_zones_csv(max_hr),
+                file_name=f"{export_name}_hr_zones.csv",
+                mime="text/csv",
+                use_container_width=True,
+            )
+            st.download_button(
+                "📊 TrainingPeaks CSV",
+                data=export_trainingpeaks_csv(
+                    metrics, df_plot, cp_input, rider_weight, filename=export_name
+                ),
+                file_name=f"{export_name}_tp.csv",
+                mime="text/csv",
+                use_container_width=True,
+            )
+        except Exception as e:
+            st.caption(f"Export niedostępny: {e}")
+            logger.warning(f"Platform export failed: {e}")
+
 
 else:
     st.sidebar.info("Wgraj plik.")
+    render_tab_content("training_plan")

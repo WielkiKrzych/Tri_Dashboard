@@ -450,4 +450,12 @@ Przykłady:
 
 
 if __name__ == "__main__":
+    import warnings
+
+    warnings.warn(
+        "train_history.py is a legacy manual script. "
+        "It is not maintained and may be removed in a future release.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     main()

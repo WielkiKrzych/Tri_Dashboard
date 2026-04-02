@@ -11,7 +11,7 @@ import logging
 
 import pandas as pd
 from datetime import date
-from typing import Dict, Any, Optional, Tuple
+from typing import Any
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 logger = logging.getLogger(__name__)
@@ -45,7 +45,7 @@ def process_uploaded_session(
     vt1_watts: float,
     vt2_watts: float,
     parallel: bool = True,
-) -> Tuple[Optional[pd.DataFrame], Optional[pd.DataFrame], Optional[Dict[str, Any]], Optional[str]]:
+) -> tuple[pd.DataFrame | None, pd.DataFrame | None, dict[str, Any] | None, str | None]:
     """Process an uploaded session file through the full analysis pipeline.
 
     Orchestrates:
@@ -115,7 +115,7 @@ def _calculate_parallel(
     df_clean_pl: pd.DataFrame,
     cp_input: float,
     w_prime_input: float,
-) -> Tuple[Dict[str, Any], pd.DataFrame, float]:
+) -> tuple[dict[str, Any], pd.DataFrame, float]:
     """Execute independent calculations in parallel.
 
     Args:
@@ -163,11 +163,11 @@ def _calculate_parallel(
 def prepare_session_record(
     filename: str,
     df_plot: pd.DataFrame,
-    metrics: Dict[str, Any],
+    metrics: dict[str, Any],
     np_header: float,
     if_header: float,
     tss_header: float,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Prepare session data for database storage."""
     return {
         "date": date.today().isoformat(),
@@ -185,7 +185,7 @@ def prepare_session_record(
     }
 
 
-def prepare_sticky_header_data(df_plot: pd.DataFrame, metrics: Dict[str, Any]) -> Dict[str, Any]:
+def prepare_sticky_header_data(df_plot: pd.DataFrame, metrics: dict[str, Any]) -> dict[str, Any]:
     """Prepare data for the sticky header display."""
     return {
         "avg_power": metrics.get("avg_watts", 0),

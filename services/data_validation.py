@@ -5,11 +5,11 @@ Handles DataFrame validation logic for uploaded training files.
 """
 
 import pandas as pd
-from typing import List, Tuple
+
 from modules.config import Config
 
 
-def validate_dataframe(df: pd.DataFrame) -> Tuple[bool, str]:
+def validate_dataframe(df: pd.DataFrame) -> tuple[bool, str]:
     """Validate that DataFrame has minimum required structure and valid data.
 
     Checks for:
@@ -25,7 +25,7 @@ def validate_dataframe(df: pd.DataFrame) -> Tuple[bool, str]:
     Returns:
         Tuple of (is_valid, error_message)
     """
-    warnings: List[str] = []
+    warnings: list[str] = []
 
     # 1. Basic Structure
     if df is None or df.empty:

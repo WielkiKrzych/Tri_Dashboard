@@ -4,7 +4,6 @@ Summary Thresholds — VT/LT/TDI threshold renderers for the Summary tab.
 
 import streamlit as st
 import plotly.graph_objects as go
-import pandas as pd
 
 from .summary_calculations import _get_vent_metrics_for_power
 

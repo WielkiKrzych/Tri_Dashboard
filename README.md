@@ -39,245 +39,6 @@ Tri_Dashboard to platforma analityczna dla **trenerów**, **naukowców sportu** 
 | **AI Coach** | Multi-sensor fusion, limiter diagnosis, rekomendacje |
 | **Reports** | PDF ~36-stronicowy, DOCX, PNG export, SQLite baza danych, CLI generator |
 
-### 🧹 UX/Runtime Improvements (2026-04-01)
-
-- **FIX**: SQLite schema migration — legacy DBs missing `session_type`, `athlete_id`, `test_validity`, `vo2max_estimated`, `cp_estimated`, `smo2_quality_score` columns are auto-migrated on startup (idempotent, no data loss). Fixes auto-save `OperationalError` on stale databases.
-- **FIX**: Streamlit deprecation warnings removed — 84 occurrences of `use_container_width=True` replaced with `width="stretch"` across 34 UI files (`st.plotly_chart`, `st.dataframe`, `st.button`).
-
-### 🧹 Codebase Cleanup (2026-04-01)
-
-- `modules/ui/sidebar.py` removed (zero imports, dead code)
-- `train_history.py`, `init_db.py` labelled as legacy/manual scripts (not runtime app modules)
-- Duplicate `polars_adapter.py` modules and `modules/ui/header.py` investigated — findings documented in [`docs/cleanup-candidates.md`](docs/cleanup-candidates.md)
-
-### 🆕 PDF Report Fixes & Data Analysis v3.3 (2026-03-29)
-
-Poprawki jakości raportu PDF oraz dokładności analizy danych.
-
-| Kategoria | Zmiana | Pliki |
-|:----------|:-------|:------|
-| **FIX** | Tabela progów (str. 6): pierwsza kolumna poszerzona z 42→52mm — brak overflow tekstu | `pdf/layout.py` |
-| **FIX** | Tabela wysokościowa (str. 14): VO₂max "---" zastąpione poprawną wartością (naprawa zagnieżdżonej ścieżki danych) | `pdf/layout.py` |
-| **FIX** | Torque Nm (str. 22): filtr kadencji ≥60 rpm wyklucza artefakty post-exhaustion (65→149 Nm → realistyczne 12→35 Nm) | `pdf/layout.py`, `report_generator.py`, `figures/biomech.py` |
-| **FIX** | `PageBreak` przed nagłówkiem "KLUCZOWE LICZBY" — koniec osierocenia nagłówka na dole strony 21 | `pdf/layout.py` |
-| **FIX** | `PageBreak` przed "POŁĄCZENIE Z DRYFEM HR I EF" — koniec osierocenia nagłówka na dole strony 27 | `pdf/layout.py` |
-| **FIX** | Stopka copyright © widoczna na każdej stronie + w sekcji końcowej raportu | `pdf/builder.py`, `pdf/layout.py` |
-| **FIX** | KeyError w zakładce Manual Thresholds: dynamiczne mapowanie kolumn VE/slope dla V-Slope wykresu | `ui/manual_thresholds.py` |
-| **FIX** | CP model fittowany z krzywej MMP gdy brak danych CPET (fallback 3-point power-duration fit) | `calculations/pipeline.py` |
-| **FIX** | VT spike skip: ograniczony do pierwszych 2 etapów zamiast wszystkich — lepsza detekcja VT2 | `calculations/vt_step.py` |
-| **FIX** | Scroll zoom na wykresach Plotly wyłączony globalnie (`scrollZoom: false` w `CHART_CONFIG`) | `plots.py` |
-
-### 🆕 Chart & Visualization Overhaul v1.0 (2026-03-28)
-
-Complete audit and improvement of all Plotly charts in the Streamlit dashboard.
-
-| Category | Change | Files |
-|:---------|:-------|:------|
-| **BREAKING** | Main timeline split into 2 stacked subplots: Power+HR (top) / SmO2+VE (bottom) — eliminates 4 overlapping right-hand axes | `summary_charts.py` |
-| **NEW** | Training zone bands Z1–Z6 rendered as `add_hrect()` background on power panel | `summary_charts.py` |
-| **NEW** | CP / VT1 / VT2 threshold `hline` annotations on power panel | `summary_charts.py` |
-| **NEW** | Range slider (`rangeslider`) on x-axis for session navigation | `summary_charts.py` |
-| **NEW** | Radar chart: elite reference ring + `tickvals`/`ticksuffix` on radial axis | `limiters.py` |
-| **FIX** | SmO2 color unified — `Config.COLOR_SMO2` used everywhere (was hardcoded `#2ca02c` in 3 places) | `summary_charts.py` |
-| **FIX** | FRI gauge: axis range extended from `[0.6, 1.0]` to `[0, 1.0]` + critical zone `<0.60` added | `power.py` |
-| **FIX** | W' Balance hovertemplate now shows `%{y:.0f} J (%{customdata:.0f}% zasobu)` | `power.py` |
-| **FIX** | Legend position changed to `y=1.03, yanchor="bottom"` — no more clipping by Streamlit container | `summary_charts.py` |
-| **FIX** | Eliminated double rolling-mean via `_get_smooth()` helper (was applying `.rolling(5)` on pre-smoothed data) | `summary_charts.py` |
-| **GLOBAL** | `CHART_CONFIG` (no Plotly logo, hover modebar, scroll zoom, retina PNG export) applied to all `st.plotly_chart()` calls | `plots.py` + 7 UI files |
-| **GLOBAL** | `CHART_HEIGHT_MAIN/SUB/SMALL/HEATMAP/RADAR` constants replace scattered hardcoded px values | `plots.py` |
-
-### 🆕 PDF Report v3.2 — New Sections & Microcycle Periodization (2026-03-26)
-
-4 new PDF report pages, expanded training recommendations, CLI PDF generator.
-
-| Category | Change | Reference |
-|:---------|:-------|:----------|
-| **NEW** | HRV/DFA Alpha-1 page: zone classification, RMSSD/SDNN, autonomic fitness | Mateo-March 2024, Iannetta 2024 |
-| **NEW** | Skin Temperature Gradient page: core-skin ΔT for thermoregulatory efficiency | Périard 2021, Racinais 2019 |
-| **NEW** | Altitude Adjustment page: VO₂max sea-level equivalent table | Wehrlin & Hallen 2006 |
-| **NEW** | Microcycle Periodization page: weekly schedule from training block with TSS | Auto-generated |
-| **NEW** | CLI PDF generator: `scripts/generate_pdf_from_csv.py` for headless PDF generation | — |
-| **IMPROVED** | 5 diverse training recommendations per classification in all 6 calc modules | biomech, cardiac_drift, cardio, smo2, thermo, vent |
-
-### 🆕 PDF Report Quality Audit v3.1 (2026-03-25)
-
-Comprehensive PDF report audit from exercise physiology professor & triathlon coach perspective.
-**8 critical fixes, 6 new analysis sections, 16+ cited publications.**
-
-| Category | Change | Reference |
-|:---------|:-------|:----------|
-| **FIX** | Deduplicated cardiac drift blocks (verdict vs simulation) | — |
-| **FIX** | Reconciled contradictory limiter diagnoses across pages | Multi-method hierarchy |
-| **FIX** | Fixed SmO₂ drift -26% mislabeled as "STABILNY" | Threshold recalibration |
-| **FIX** | Fixed Cardiac Drift value not propagating to verdict page | Key mapping fix |
-| **FIX** | Added confidence score visual flagging (<50% = warning) | — |
-| **FIX** | Unified hydration recommendations (500-750ml/h) | — |
-| **FIX** | Unified version strings (RAMP_METHOD_VERSION) | version.py SSoT |
-| **FIX** | Clarified Upper Aerobic zone as separate model from Z3/Z4 | — |
-| **NEW** | Tidal Volume decomposition (VE = TV × RR) with breathing strategy | — |
-| **NEW** | Ventilatory Reserve (Breathing Reserve %) | MVV estimation |
-| **NEW** | W' Reconstitution table (30s→20min recovery) | Caen et al. 2021 |
-| **NEW** | HR Recovery Kinetics classification | Buchheit 2014 |
-| **NEW** | Cadence context in occlusion analysis | Hammer et al. 2021 |
-| **NEW** | 5 diverse training sessions per metabolic block (was 3) | — |
-
-### 🆕 Evidence-Based Physiology Overhaul v3.0 (2026-03-21)
-
-Complete audit based on **42 peer-reviewed publications (2021-2026)**.
-All formulas, models, and algorithms updated to latest available evidence.
-
-**CRITICAL — New Models (5):**
-| Fix | Reference | Opis |
-|:----|:----------|:-----|
-| VO2max: Jurov 2023 sex-specific | Life (MDPI) 13(1):160 | Replaces Sitko 2021. M: `0.10×PO - 0.60×BW + 64.21`, F: `0.13×PO - 0.83×BW + 64.02`. Bias 0.19% vs ACSM 12% |
-| VLaMax: Wackerhage 2025 disclaimer | Sports Med 55:1853-1866 | No validated glycolytic equivalent to VO2max. PCr correction by phenotype |
-| W' Balance: Caen 2021 bi-exponential | EJAP (Welburn 2025 validation) | Two-phase tau (fast PCr + slow metabolic). Sport-specific: cycling/running/swimming |
-| VT confidence intervals | Gronwald 2024 meta-analysis | VT1/VT2 displayed as ranges (±5-20W) based on detection confidence |
-| VT vs LT terminology | Cerezuela-Espejo 2023 | VT1 ≠ LT1 — different mechanisms, clear disclaimers added |
-
-**HIGH — Updated Models (12):**
-| Fix | Reference | Opis |
-|:----|:----------|:-----|
-| DFA Alpha-1 window 600s | Iannetta 2024, ICC 0.76-0.86 | Was 300s. Extreme values logged instead of clipped |
-| PSI → aPSI adaptive | Buller 2023, Physiol Meas | Acclimatization correction for 10+ days heat exposure |
-| RER validation for VT1 | Cerezuela-Espejo 2023 | RER > 1.0 at VT1 = hyperventilation artifact flag |
-| VO2max zone floor 110% CP | Garcia-Tabar 2024 | Was 105%. True VO2max work = 110-120% CP |
-| Cardiac drift analysis | Sperlich 2025, Papini 2024 | HR:Power decoupling (EF 1st vs 2nd half) |
-| SmO2 T1 cross-validation | Yogev 2023, Sendra-Perez 2023 | Flag if SmO2 T1 diverges from VT1 by >15% |
-| Altitude VO2max correction | Wehrlin & Hallen 2006, Pühringer 2022 | 6.3%/1000m linear reduction above 500m |
-| Strict data validation | — | No silent type coercion, EU locale (comma decimals), 10% NaN rejection |
-| Cross-signal validation | — | Power/HR envelope checks (450W @ 90bpm = sensor fault) |
-| Temporal bounds validation | — | Sample rate, gap detection (>60s), merged file detection |
-| DB schema: athlete_id | — | Multi-athlete support, session_type, test_validity fields |
-| Composite recovery score | Guimaraes Couto 2025 | 40% W' + 30% SmO2 + 30% cardiac drift (was W'-only) |
-
-**MEDIUM — New Features (4):**
-| Fix | Reference | Opis |
-|:----|:----------|:-----|
-| Pacing analysis | Guimaraes Couto 2025/2026, Konings 2025 | Positive/negative/even split detection with coaching causes |
-| SmO2 context interpretation | Perrey 2024, 191 studies SR | Different SmO2 meaning for sprint vs threshold vs Z2 |
-| Contextual limiter recs | Garcia-Tabar 2024 | Z2 volume-aware, EIB screening, mechanical occlusion check |
-| Phenotype disclaimer | INSCYD n~2000, Garcia-Tabar 2024 | Marked as provisional, 40× metabolic response heterogeneity noted |
-
-### 🆕 Exercise Physiology & Code Quality Review (2026-03-17)
-
-Previous audit with 9 physiological + 4 code quality fixes.
-See commit `6e1f4d8` for details.
-
-### 🆕 Security & Code Quality Audit (2026-03-16)
-
-**CRITICAL Fixes (5):**
-| Fix | Opis |
-|:----|:-----|
-| Missing `logger` in session_orchestrator | `NameError` crash on any parallel calculation failure |
-| Dead duplicate code in `_calculate_parallel` | Unreachable `try/except` blocks from bad merge |
-| Wrong `np.interp` argument order in pipeline | Produced garbage LT1/LT2 HR values |
-| Orphaned code in `cache_utils.py` | Triple-duplicated imports + dead `_hash_arg` body |
-| Duplicate `subprocess.run` in `report_io` | Git tracking check ran twice, exceptions silenced |
-
-**HIGH Fixes (10):**
-| Fix | Opis |
-|:----|:-----|
-| XSS: duplicate `show_breadcrumb` | Unsafe version shadowed safe `html.escape()` version |
-| Information disclosure via `st.error()` | Raw exceptions exposed filesystem paths in UI |
-| DataFrame mutation in `vent.py` | Missing `.copy()` caused cross-tab side effects |
-| `vt_cpet_ve_only` immutability | Now returns new dict/DataFrame instead of mutating |
-| `session_analysis` immutability | Removed `inplace` param, `calculate_extended_metrics` returns new dict |
-| `ramp_archive.py` mutation | Added `.copy()` before DataFrame modifications |
-| `training_load.py` mutation | Added `.copy()` to prevent caller side effects |
-| Dead code in `app.py` | Removed unreachable hash fallback after `return` |
-| Redundant imports in `pdf/layout.py` | Removed 11 function-level `HexColor` re-imports |
-| Silent exception swallowing | Added logging to `report_io`, `vent_thresholds_display` |
-
-**MEDIUM Fixes (7):**
-| Fix | Opis |
-|:----|:-----|
-| User note XSS | `html.escape()` for note text in `smo2.py`, `vent.py` |
-| Plotly hover injection | `html.escape()` for filenames in `ai_coach.py` |
-| Filename sanitization | `train_history.py` now sanitizes batch filenames |
-| CSS path traversal | `config.py` validates CSS path stays in project dir |
-| Relative `.git` path | `report_io.py` uses absolute path via `Path(__file__)` |
-| Magic number extraction | `OCCLUSION_TORQUE_CRITICAL_NM = 70` constant |
-| Requirements lock warning | Added comment about missing pinned versions |
-
-### 🆕 Ramp Report Review (2026-02-28)
-
-**CRITICAL Fixes:**
-| Fix | Opis |
-|:----|:-----|
-| SmO2 Drift `abs()` | 3-level thresholds (STABILNY/OSTRZEŻENIE/RYZYKO) |
-| Exp-Dmax for T2 | ICC=0.79-0.91 reliability |
-| CP vs VT2 validation | Warning when CP > VT2 by >2% |
-| HR consistency | Linear interpolation for VT/SmO2 alignment |
-
-**HIGH Fixes:**
-| Fix | Opis |
-|:----|:-----|
-| VO2max CI | ±ml/kg/min + absolute value (L/min) |
-| VLaMax disclaimer | ±25-30% error range (estimated, updated 2026-03-17) |
-| Thermal integration | Combined cardiac drift interpretation |
-
-### 🆕 SmO2 Threshold Analysis v2.1 (2026-02-28)
-
-| Kategoria | Ulepszenie | Opis |
-|:----------|:-----------|:-----|
-| **Algorytm** | Double-linear regression | 2-segment piecewise regression |
-| **Algorytm** | Exp-Dmax for T2 | ICC=0.79-0.91 dla T2 detection |
-| **Walidacja** | MOT1 reliability | 3 consecutive steps, ICC=0.53 warning |
-| **Preprocessing** | Savitzky-Golay filter | Opcjonalny S-G filter |
-| **Preprocessing** | Adaptive window | Smoothing oparte na sampling rate |
-| **Preprocessing** | Adaptive curvature | Percentyle zamiast hardcoded |
-| **Walidacja** | ATT validation | >10mm warn, >15mm UNRELIABLE |
-| **Model** | Feldmann 4-phase | Phase 1→2 transition detection |
-| **Scoring** | Confidence rescaled | Cap 0.6→0.8 z bonusami |
-
-### 🆕 VT Detection Protocol v2.0 (2026-02-27)
-
-| Kategoria | Ulepszenie | Opis |
-|:----------|:-----------|:-----|
-| **Walidacja** | RER validation | Kary confidence, odrzucenie gdy >1.25 |
-| **Walidacja** | VT2 vs Pmax check | UNRELIABLE gdy VT2 > 95% Pmax |
-| **Walidacja** | VE bounds check | Fizjologiczne limity 5-250 L/min |
-| **Algorytm** | Pmax-relative fallback | VT1 ≈ 60% Pmax, VT2 ≈ 80% Pmax |
-| **Algorytm** | Adaptive slope ratio | Próg dla sportowców z płynnym przejściem |
-| **Preprocessing** | IQR artifact filtering | Detekcja artefaktów w VE-only mode |
-| **Statystyka** | Unbiased variance | `ddof=1` + minimum n≥4 |
-
-### Supported Data Formats
-- **Import**: FIT, TCX, CSV (Garmin, TrainingPeaks, Intervals.icu)
-- **NIRS**: TrainRed, Moxy (auto-detekcja)
-
----
-
-## 🛠️ Tech Stack
-
-| Warstwa | Technologia |
-|:--------|:------------|
-| UI | Streamlit |
-| Data | Polars + Pandas |
-| Analysis | SciPy, NumPy, Statsmodels |
-| HRV | NeuroKit2 |
-| Acceleration | Numba JIT, MLX (Apple Silicon) |
-| Reports | ReportLab, python-docx |
-| Viz | Matplotlib, Plotly |
-| Storage | SQLite |
-
----
-
-## 📥 Installation
-
-```bash
-# Clone
-git clone https://github.com/WielkiKrzych/Tri_Dashboard.git
-cd Tri_Dashboard
-
-# Install
-pip install -r requirements.txt
-
-# Run
-streamlit run app.py
-```
-
 ---
 
 ## 📂 Project Structure
@@ -377,6 +138,17 @@ Tri_Dashboard/
 - Athlete profile selector removed from sidebar
 - App title changed to "Tri Dashboard"
 
+### 2026-04-01 — UX Fixes, Tech Debt Cleanup & Dead Code Removal
+
+**UX/Runtime (2 fixes):**
+- SQLite schema migration — legacy DBs auto-migrated on startup (idempotent, no data loss)
+- Streamlit deprecation warnings removed — 84 occurrences of `use_container_width=True` replaced with `width="stretch"`
+
+**Dead Code Removal:**
+- `modules/ui/sidebar.py` removed (zero imports)
+- ~880 lines of dead code removed across 21 files (unused functions, orphaned imports, dead plugins)
+- `modules/ui/registry.py` and `modules/ui/vent_thresholds_report.py` deleted
+
 ### 2026-03-29 — PDF Report Fixes & Data Analysis v3.3
 
 **PDF Layout (6 fixes):**
@@ -406,6 +178,78 @@ Tri_Dashboard/
 - `CHART_CONFIG` (logo off, hover modebar, scroll zoom, retina export) applied to all 20+ chart calls
 - `CHART_HEIGHT_*` constants replace hardcoded px values in 7 files
 - `_get_smooth()` helper eliminates double rolling-mean on pre-smoothed columns
+
+### 2026-03-26 — PDF Report v3.2: New Sections & Microcycle Periodization
+
+4 new PDF report pages, expanded training recommendations, CLI PDF generator.
+
+| Category | Change | Reference |
+|:---------|:-------|:----------|
+| **NEW** | HRV/DFA Alpha-1 page: zone classification, RMSSD/SDNN | Mateo-March 2024, Iannetta 2024 |
+| **NEW** | Skin Temperature Gradient page: core-skin ΔT | Périard 2021, Racinais 2019 |
+| **NEW** | Altitude Adjustment page: VO₂max sea-level equivalent | Wehrlin & Hallen 2006 |
+| **NEW** | Microcycle Periodization page: weekly schedule with TSS | Auto-generated |
+| **NEW** | CLI PDF generator: headless PDF generation | — |
+| **IMPROVED** | 5 diverse training recommendations per classification | 6 calc modules |
+
+### 2026-03-25 — PDF Report Quality Audit v3.1
+
+Comprehensive audit from exercise physiology professor perspective.
+**8 critical fixes, 6 new analysis sections, 16+ cited publications.**
+
+| Category | Change | Reference |
+|:---------|:-------|:----------|
+| **FIX** | Deduplicated cardiac drift blocks | — |
+| **FIX** | Reconciled contradictory limiter diagnoses | Multi-method hierarchy |
+| **FIX** | SmO₂ drift -26% mislabeled as "STABILNY" | Threshold recalibration |
+| **FIX** | Cardiac Drift value not propagating to verdict page | Key mapping fix |
+| **FIX** | Confidence score visual flagging (<50% = warning) | — |
+| **FIX** | Unified hydration recommendations (500-750ml/h) | — |
+| **FIX** | Unified version strings (RAMP_METHOD_VERSION) | version.py SSoT |
+| **FIX** | Clarified Upper Aerobic zone as separate model | — |
+| **NEW** | Tidal Volume decomposition (VE = TV × RR) | — |
+| **NEW** | Ventilatory Reserve (Breathing Reserve %) | MVV estimation |
+| **NEW** | W' Reconstitution table (30s→20min recovery) | Caen et al. 2021 |
+| **NEW** | HR Recovery Kinetics classification | Buchheit 2014 |
+| **NEW** | Cadence context in occlusion analysis | Hammer et al. 2021 |
+| **NEW** | 5 diverse training sessions per metabolic block | — |
+
+### 2026-03-21 — Evidence-Based Physiology Overhaul v3.0
+
+Complete audit based on **42 peer-reviewed publications (2021-2026)**.
+
+**CRITICAL — New Models (5):**
+| Change | Reference | Description |
+|:-------|:----------|:------------|
+| VO2max: Jurov 2023 sex-specific | Life (MDPI) 13(1):160 | M: `0.10×PO - 0.60×BW + 64.21`, F: `0.13×PO - 0.83×BW + 64.02` |
+| VLaMax: Wackerhage 2025 disclaimer | Sports Med 55:1853-1866 | No validated glycolytic equivalent to VO2max |
+| W' Balance: Caen 2021 bi-exponential | EJAP | Two-phase tau (fast PCr + slow metabolic) |
+| VT confidence intervals | Gronwald 2024 meta-analysis | VT1/VT2 as ranges (±5-20W) |
+| VT vs LT terminology | Cerezuela-Espejo 2023 | VT1 ≠ LT1 — different mechanisms |
+
+**HIGH — Updated Models (12):** DFA α1 window 600s, PSI → aPSI adaptive, RER validation, VO2max zone floor 110% CP, cardiac drift analysis, SmO2 T1 cross-validation, altitude VO2max correction, strict data validation, cross-signal validation, temporal bounds, DB athlete_id, composite recovery score
+
+**MEDIUM — New Features (4):** Pacing analysis, SmO2 context interpretation, contextual limiter recommendations, phenotype disclaimer
+
+### 2026-03-17 — Exercise Physiology Audit
+
+9 physiological fixes + 4 code quality fixes. See commit `6e1f4d8` for details.
+
+### 2026-03-16 — Security & Code Quality Audit
+
+**5 critical, 10 high, 7 medium issues.**
+
+**CRITICAL (5):** Missing logger crash fix, dead duplicate code removal, wrong `np.interp` argument order, orphaned code in cache_utils, duplicate subprocess.run
+
+**HIGH (10):** XSS fixes, information disclosure prevention, DataFrame mutation fixes (6 files), dead code removal, redundant imports, silent exception logging
+
+**MEDIUM (7):** User note XSS, Plotly hover injection, filename sanitization, CSS path traversal, relative .git path, magic number extraction, requirements lock warning
+
+### 2026-03-01 — PDF Polish & VO2max/VLaMax Fixes
+
+- PNG export available immediately after CSV upload
+- Professional PDF report polish for commercial quality
+- VO2max and VLaMax calculations corrected per exercise physiology
 
 ### 2026-02-28 - Ramp Report Review Fixes
 

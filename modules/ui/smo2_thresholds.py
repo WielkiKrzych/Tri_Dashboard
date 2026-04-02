@@ -1,6 +1,7 @@
 """
 SmO2 Thresholds tab — Moxy ramp-test pipeline: T1 / T2_onset detection and zones.
 """
+
 import streamlit as st
 import plotly.graph_objects as go
 import pandas as pd
@@ -353,3 +354,155 @@ def render_smo2_thresholds_tab(target_df, training_notes, uploaded_file_name, cp
             st.write(f"T1 vs VT1: ±{result.vt1_correlation_watts}W")
         if result.rcp_onset_correlation_watts is not None:
             st.write(f"T2 vs VT2: ±{result.rcp_onset_correlation_watts}W")
+
+    # =========================================================================
+    # BASELINE CORRECTION (ΔSmO2)
+    # =========================================================================
+
+    if getattr(result, "smo2_baseline", None) is not None:
+        with st.expander("🧪 Baseline Correction (ΔSmO₂)", expanded=False):
+            c1, c2, c3 = st.columns(3)
+            with c1:
+                st.metric("Baseline SmO₂", f"{result.smo2_baseline:.1f}%")
+            with c2:
+                val = result.dsmo2_t1
+                st.metric("ΔSmO₂ @ T1", f"{val:.1f}%" if val is not None else "—")
+            with c3:
+                val = result.dsmo2_t2_onset
+                st.metric("ΔSmO₂ @ T2", f"{val:.1f}%" if val is not None else "—")
+            st.caption(
+                "Baseline-corrected ΔSmO₂ per Sendra-Pérez et al. (2024). Normalizes SmO₂ relative to warm-up baseline."
+            )
+
+    # =========================================================================
+    # ALTERNATIVE DETECTION METHODS
+    # =========================================================================
+
+    has_exp_dmax = getattr(result, "t2_exp_dmax_watts", None) is not None
+    has_seg = (
+        getattr(result, "seg_bp1_watts", None) is not None
+        or getattr(result, "seg_bp2_watts", None) is not None
+    )
+    has_inflection = getattr(result, "t2_inflection_type", None) is not None
+
+    if has_exp_dmax or has_seg or has_inflection:
+        with st.expander("📐 Alternative Detection Methods", expanded=False):
+            # --- Exp-Dmax T2 ---
+            if has_exp_dmax:
+                st.markdown("**a) Exp-Dmax T2**")
+                c1, c2 = st.columns(2)
+                with c1:
+                    st.metric("Exp-Dmax T2 (W)", f"{result.t2_exp_dmax_watts:.0f}")
+                with c2:
+                    val = result.t2_exp_dmax_smo2
+                    st.metric("Exp-Dmax T2 SmO₂", f"{val:.1f}%" if val is not None else "—")
+
+                if result.t2_onset_watts and result.t2_exp_dmax_watts:
+                    step_t2 = result.t2_onset_watts
+                    exp_t2 = result.t2_exp_dmax_watts
+                    if step_t2 > 0:
+                        div = abs(exp_t2 - step_t2) / step_t2 * 100
+                        if div <= 10:
+                            st.success(f"✅ Exp-Dmax vs step-based: {div:.1f}% divergence")
+                        elif div <= 20:
+                            st.warning(f"⚠️ Exp-Dmax vs step-based: {div:.1f}% divergence")
+                        else:
+                            st.error(f"❌ Exp-Dmax vs step-based: {div:.1f}% divergence")
+
+                st.markdown("---")
+
+            # --- 4-Knot Segmented Regression ---
+            if has_seg:
+                st.markdown("**b) 4-Knot Segmented Regression**")
+                c1, c2 = st.columns(2)
+                with c1:
+                    val = result.seg_bp1_watts
+                    st.metric("Seg BP1 (W)", f"{val:.0f}" if val is not None else "—")
+                with c2:
+                    val = result.seg_bp2_watts
+                    st.metric("Seg BP2 (W)", f"{val:.0f}" if val is not None else "—")
+
+                if result.seg_bp1_watts is not None and result.t1_watts and result.t1_watts > 0:
+                    div = abs(result.seg_bp1_watts - result.t1_watts) / result.t1_watts * 100
+                    st.write(f"BP1 vs step T1: {div:.1f}% divergence")
+                if (
+                    result.seg_bp2_watts is not None
+                    and result.t2_onset_watts
+                    and result.t2_onset_watts > 0
+                ):
+                    div = (
+                        abs(result.seg_bp2_watts - result.t2_onset_watts)
+                        / result.t2_onset_watts
+                        * 100
+                    )
+                    st.write(f"BP2 vs step T2: {div:.1f}% divergence")
+
+                st.markdown("---")
+
+            # --- BP2 Inflection Type ---
+            if has_inflection:
+                st.markdown("**c) BP2 Inflection Type**")
+                inf_type = result.t2_inflection_type
+                labels = {
+                    "positive": (
+                        "📈 Positive (Plateau)",
+                        "Approaching SmO₂ floor — desaturation capacity exhausted",
+                    ),
+                    "negative": (
+                        "📉 Negative (Further Drop)",
+                        "Continued O₂ extraction capacity below BP2",
+                    ),
+                    "neutral": ("➡️ Neutral (Flat)", "No clear trend change at BP2"),
+                }
+                label, desc = labels.get(inf_type, (inf_type, ""))
+                st.markdown(f"**{label}**")
+                st.caption(desc)
+
+    # =========================================================================
+    # METHOD COMPARISON TABLE
+    # =========================================================================
+
+    comp_rows = []
+    comp_rows.append(
+        {
+            "Method": "Step-based",
+            "T1 (W)": f"{result.t1_watts:.0f}" if result.t1_watts else "—",
+            "T2 (W)": f"{result.t2_onset_watts:.0f}" if result.t2_onset_watts else "—",
+        }
+    )
+
+    if getattr(result, "t2_exp_dmax_watts", None) is not None:
+        comp_rows.append(
+            {
+                "Method": "Exp-Dmax",
+                "T1 (W)": "—",
+                "T2 (W)": f"{result.t2_exp_dmax_watts:.0f}",
+            }
+        )
+
+    if (
+        getattr(result, "seg_bp1_watts", None) is not None
+        or getattr(result, "seg_bp2_watts", None) is not None
+    ):
+        comp_rows.append(
+            {
+                "Method": "4-Knot Regression",
+                "T1 (W)": f"{result.seg_bp1_watts:.0f}" if result.seg_bp1_watts else "—",
+                "T2 (W)": f"{result.seg_bp2_watts:.0f}" if result.seg_bp2_watts else "—",
+            }
+        )
+
+    cpet_t1 = vt1_watts
+    cpet_t2 = rcp_onset
+    if cpet_t1 or cpet_t2:
+        comp_rows.append(
+            {
+                "Method": "CPET (Ventilatory)",
+                "T1 (W)": f"{cpet_t1:.0f}" if cpet_t1 else "—",
+                "T2 (W)": f"{cpet_t2:.0f}" if cpet_t2 else "—",
+            }
+        )
+
+    if len(comp_rows) > 1:
+        with st.expander("📊 Method Comparison", expanded=False):
+            st.dataframe(pd.DataFrame(comp_rows), width="stretch", hide_index=True)

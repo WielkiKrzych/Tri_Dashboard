@@ -233,6 +233,8 @@ vt2_vent = max(0, params.get("vt2_vent", 0))
 w_prime_input = max(0, params.get("w_prime", 20000))
 rider_age = max(1, min(120, params.get("rider_age", 30)))
 is_male = params.get("is_male", True)
+max_hr = int(208 - 0.7 * rider_age) if rider_age else 185
+hr_rest = max(0, params.get("hr_rest", 60))
 
 layout.render_header()
 
@@ -448,13 +450,13 @@ if uploaded_file is not None:
             render_tab_content(
                 "training_dist", df_plot, df_plot_resampled, metrics,
                 rider_weight, cp_input, w_prime_input,
-                hr_max, hr_rest,
+                max_hr, hr_rest,
             )
         with t12:
             render_tab_content(
                 "heat_strain", df_plot, df_plot_resampled, metrics,
                 rider_weight, cp_input, w_prime_input,
-                hr_max, hr_rest, rider_age, is_male,
+                max_hr, hr_rest, rider_age, is_male,
             )
         with t13:
             render_tab_content(

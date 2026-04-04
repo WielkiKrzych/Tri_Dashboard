@@ -9,7 +9,6 @@ import plotly.graph_objects as go
 import pandas as pd
 from typing import Dict, Any, Optional
 
-from modules.plots import CHART_CONFIG
 from modules.ui.shared import chart, metric, require_data
 from modules.calculations.race_predictor import (
     predict_race_power,

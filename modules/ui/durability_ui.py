@@ -92,7 +92,7 @@ def render_durability_tab(
                     y=durability_seasons['durability_index'],
                     mode='lines+markers',
                     name='Indeks Wytrzymałości',
-                    line=dict(color=Config.COLOR_DURABILITY, width=2),
+                    line=dict(color='#FF9800', width=2),
                     marker=dict(size=6),
                     hovertemplate='Czas: %{x:.1f} min<br>Wytrzymałość: %{y:.1f}%<extra></extra>'
                 ))

@@ -168,7 +168,6 @@ class TabRegistry:
         "drift_maps": ("modules.ui.drift_maps_ui", "render_drift_maps_tab"),
         "tte": ("modules.ui.tte_ui", "render_tte_tab"),
         "ramp_archive": ("modules.ui.ramp_archive", "render_ramp_archive"),
-        "training_plan": ("modules.ui.training_plan_ui", "render_training_plan_tab"),
     }
 
     @classmethod
@@ -573,4 +572,3 @@ if uploaded_file is not None:
 
 else:
     st.sidebar.info("Wgraj plik.")
-    render_tab_content("training_plan")

@@ -378,17 +378,120 @@ klasyfikował zmęczenie na podstawie trendów podobnych do PP.
 
             st.plotly_chart(fig_ge, width="stretch")
 
-            with st.expander("🧠 Jak interpretować GE?", expanded=False):
+            with st.expander(
+                "📖 Jak interpretować Gross Efficiency? — Teoria i Fizjologia", expanded=False
+            ):
                 st.markdown("""
-                **Fizjologia GE:**
-                * **< 18%:** Niska wydajność. Dużo energii tracisz na ciepło i nieskoordynowane ruchy (kołysanie biodrami). Częste u początkujących.
-                * **19-21%:** Standard amatorski. Dobrze wytrenowany kolarz klubowy.
-                * **22-24%:** Poziom ELITE / PRO. Twoje mięśnie to maszyny.
-                * **> 25%:** Podejrzane (chyba że jesteś zwycięzcą Tour de France). Często wynika z błędów pomiaru (np. miernik mocy zawyża, tętno zaniżone, jazda w dół).
+### 🔬 Czym jest Gross Efficiency?
 
-                **Dlaczego GE spada w czasie?**
-                Gdy się męczysz, rekrutujesz włókna mięśniowe typu II (szybkokurczliwe), które są mniej wydajne tlenowo. Dodatkowo rośnie temperatura ciała (Core Temp), co kosztuje energię. Spadek GE pod koniec długiego treningu to doskonały wskaźnik zmęczenia metabolicznego.
-                """)
+**Gross Efficiency (GE)** to stosunek mocy mechanicznej (watów na pedałach) do całkowitej mocy 
+metabolicznej (energii z utleniania) — wyrażony w procentach. Mierzy, **ile procent energii z 
+jedzenia i tlenu zamieniasz na użyteczną pracę**, a ile tracisz na ciepło.
+
+Wzór: **GE (%) = (Moc Mechaniczna / Moc Metaboliczna) × 100**
+
+Moc metaboliczną estymujemy z tętna za pomocą wzoru Keytela (Keytel et al., 1972), 
+który jest standardem w monitorowaniu wydatku energetycznego w warunkach polowych.
+
+> ⚠️ **Uwaga:** Estymacja GE z HR ma ograniczenia. Wzór Keytela najlepiej działa 
+> przy HR > 110 bpm i mocy > 100 W. Poniżej tych wartości wyniki są zawyżone.
+
+---
+
+### 📊 Tabela interpretacji GE
+
+| Zakres GE | Poziom | Co oznacza |
+|---|---|---|
+| **< 17%** | 🔴 Niska wydajność | Typowe dla początkujących. Dużo energii traconej na koordynację, napięcie izometryczne i produkcję ciepła. |
+| **17–19%** | 🟡 Poniżej średniej | Osoby rekreacyjnie aktywne. Rozwijalna technika pedałowania może podnieść GE o 2-3%. |
+| **19–21%** | ✅ Standard amatorski | Dobrze wytrenowany kolarz klubowy. Solidna baza tlenowa. |
+| **21–23%** | 🟢 Dobry poziom | Zaawansowany amator / zawodnik regionalny. Wysoki udział włókien typu I. |
+| **23–25%** | 🔵 ELITE / PRO | Kolarze zawodowi. Wedle badań Joyner & Coyle (2008), topowi endurance athletes osiągają GE ~23-25%. |
+| **> 25%** | ⚠️ Podejrzane | Prawdopodobnie błąd pomiaru: HR lag (tętno nie nadąża za mocą), jazda w dół, lub miernik mocy zawyża. Teoretyczny limit GE to ~27% (Mogensen et al., 2006). |
+
+---
+
+### 🧠 Czynniki determinujące GE
+
+**1. Typ włókien mięśniowych**
+GE jest silnie skorelowane z procentowym udziałem włókien typu I (wolnokurczliwych). 
+Coyle et al. (1992) wykazali, że kolarze z >55% włókien I mieli GE ~23%, 
+podczas gdy osoby z <45% — zaledwie ~19%. Włókna typu I zużywają mniej ATP 
+na jednostkę siły (niższy ATPCOST) i mają wyższą efektywność mitochondrialną 
+(Mogensen et al., 2006; Zoladz et al., 2025).
+
+**2. Kadens (Częstotliwość pedałowania)**
+Kamba et al. (2023) wykazali, że GE zmienia się z kadensem — **optymalny kadens dla GE 
+wynosi zazwyczaj 70–90 rpm** przy umiarkowanej intensywności. Zbyt wysoki kadens (>100 rpm) 
+zwiększa koszt energetyczny rekrutacji mięśni, Przekrocznie niski (<60 rpm) wymaga większej siły 
+na pedał, co rekrutuje więcej włókien II (mniej wydajnych).
+
+**3. Trening i adaptacja**
+Wieloletni trening endurance zwiększa GE przez:
+- Hipertrofię włókien typu I i zwiększenie ich udziału
+- Wzrost gęstości mitochondrialnej (lepsze wykorzystanie O₂)
+- Poprawę koordynacji nerwowo-mięśniowej (mniej „przecieków" motorycznych)
+- Zmniejszenie niepotrzebnego napięcia izometrycznego (np. kołysanie biodrami)
+Zoladz et al. (2012) wykazali, że trening endurance zmniejsza nieliniowość relacji V̇O₂–moc.
+
+**4. Masa mięśniowa**
+Zoladz et al. (2025, *Scientific Reports*) wykazali paradoksalnie, że **większa masa mięśni nóg 
+obniża GE** podczas jazdy o umiarkowanej intensywności. Powód: większa masa = wyższy 
+„internal work" (koszt utrzymania i ruchu samej masy mięśniowej). To częściowo tłumaczy, 
+dlaczego lekko zbudowani kolarze mogą mieć lepsze GE niż silnie umięśnieni.
+
+---
+
+### 📉 Dlaczego GE spada w czasie?
+
+Spadek GE w trakcie długotrwałego wysiłku to jeden z najdokładniejszych wskaźników **zmęczenia 
+metabolicznego**. Mechanizmy:
+
+**1. Rekrutacja włókien typu II**
+Gdy włókna I są wyczerpane (deplekcja glikogenu), organizm rekrutuje włókna II 
+(szybkokurczliwe), które zużywają ~2x więcej ATP na jednostkę mocy → GE spada 
+(Zoladz et al., 2008; Cannon et al., 2014).
+
+**2. Deplekcja glikogenu**
+Gejl et al. (2024, *Eur J Appl Physiol*) wykazali w badaniu na elitarnych kolarzach, 
+że mimo wysokiego spożycia węglowodanów (~90g/h), kumulacyjna oksydacja CHO wyniosła ~630g 
+podczas 4h jazdy — z czego ~270g pochodziło z glikogenu mięśniowego i wątrobowego. 
+Gdy glikogen maleje, organizm przełącza się na tłuszcze (niższa wydajność tlenowa/ATP) → GE spada.
+
+**3. Termoregulacja**
+Wzrost temperatury rdzeniowej >38.5°C wymaga przesunięcia krwi do skóry w celu chłodzenia. 
+To „okrada" mięśnie z O₂ i zwiększa koszt sercowo-naczyniowy, który nie przekłada się na moc 
+mechaniczną → GE spada (tzw. cardiovascular strain).
+
+**4. Zmęczenie nerwowo-mięśniowe**
+Prolongowany wysiłek upośledza wzorzec rekrutacji jednostek motorycznych — mniej 
+ekonomiczna sekwencja aktywacji mięśni, więcej „przecieków" siły, gorsza koordynacja 
+mięśni agonistów/antagonistów (Fares et al., 2025).
+
+---
+
+### 📈 GE jako wskaźnik adaptacji do treningu
+
+- **Wzrost GE w kolejnych tygodniach** = jedna z najważniejszych adaptacji do treningu endurance. 
+  Zwiększenie GE z 20% na 22% oznacza, że przy tej samej mocy metabolicznej generujesz **10% więcej watów**.
+- **Porównuj GE w podobnych treningach** (ta sama intensywność, podobny kadens). 
+  GE jest czułe na kadens — porównywanie GE przy 70 rpm z GE przy 100 rpm jest mylące.
+- **GE w Z2/Z3 jest najbardziej miarodajne.** Przy mocy >FTP, anaerobic contribution zniekształca wynik.
+- **Najlepszy trend:** GE stabilne lub rosnące w Z2 przy rosnącej mocy = adaptacja.
+
+---
+
+**Bibliografia:**
+- Zoladz et al. (2025). Higher legs muscle mass reduces gross mechanical efficiency. *Scientific Reports*, 15, 16469.
+- Zoladz et al. (2012). Endurance training decreases the non-linearity in the VO₂-power output relationship. *Exp Physiol*, 97(3), 386–399.
+- Gejl et al. (2024). Substrate utilization and durability during prolonged intermittent exercise in elite road cyclists. *Eur J Appl Physiol*, 124, 1801–1815.
+- Kamba et al. (2023). Effect of Gear Ratio and Cadence on Gross Efficiency. *Sports*, 11, 5.
+- Carlsson et al. (2020). Gross and delta efficiencies during uphill running and cycling among elite triathletes. *Eur J Appl Physiol*, 120, 1749–1761.
+- Coyle et al. (1992). Cycling efficiency is related to the percentage of type I muscle fibers. *Med Sci Sports Exerc*, 24(7), 782–788.
+- Joyner & Coyle (2008). Endurance exercise performance: the physiology of champions. *J Physiol*, 586(1), 35–44.
+- Mogensen et al. (2006). Cycling efficiency is related to low UCP3 content and to type I fibres. *J Physiol*, 571(3), 669–681.
+- Fares et al. (2025). Cycling exercise efficiency and economy: Exploring the role of phase angle. *J Elec Bioimpedance*, 16(1), 129–134.
+""")
         else:
             st.warning(
                 "Brak wystarczających danych do obliczenia GE (zbyt krótkie odcinki stabilnej jazdy)."

@@ -9,7 +9,7 @@ import pandas as pd
 import numpy as np
 from typing import Dict, Any, Optional
 from modules.config import Config
-from modules.plots import apply_chart_style, CHART_CONFIG, CHART_HEIGHT_LARGE
+from modules.plots import apply_chart_style, CHART_CONFIG, CHART_HEIGHT_MAIN
 from modules.ui.shared import chart, metric, require_data, alert
 from modules.ui.utils import hash_dataframe as _hash_dataframe, hash_params as _hash_params
 from modules.calculations import (

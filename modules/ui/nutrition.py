@@ -268,7 +268,7 @@ def _render_glycogen_model_section(df_plot, cp_input):
     
     c1, c2, c3 = st.columns(3)
     power_sim = c1.number_input("Moc [W]", min_value=100, max_value=1000, value=300, step=10)
-    cp_sim = c2.number_input("CP [W]", min_value=150, max_value=500, value=min(cp_input, 500.0) if cp_input > 0 else 280, step=10)
+    cp_sim = c2.number_input("CP [W]", min_value=150, max_value=500, value=min(int(cp_input), 500) if cp_input > 0 else 280, step=10)
     core_temp = c3.number_input("Temperatura rdzenia [°C]", min_value=36.0, max_value=41.0, value=37.5, step=0.1)
     
     c4, c5, c6 = st.columns(3)

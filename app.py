@@ -487,7 +487,7 @@ if uploaded_file is not None:
 
     with tab_physiology:
         UIComponents.show_breadcrumb("🫀 Physiology")
-        t1, t2, t3, t4, t5, t6, t7, t8, t9 = st.tabs(
+        t1, t2, t3, t4, t5, t6, t7, t8, t9, t10 = st.tabs(
             [
                 "💓 HRV",
                 "🩸 SmO2",
@@ -505,7 +505,6 @@ if uploaded_file is not None:
             render_tab_content("hrv", df_clean_pl)
         with t2:
             render_tab_content("smo2", df_plot, training_notes, safe_filename)
-        max_hr = int(208 - 0.7 * rider_age) if rider_age else 185
         with t3:
             render_tab_content("vent", df_plot, training_notes, safe_filename)
         with t4:
@@ -533,6 +532,11 @@ if uploaded_file is not None:
             )
         with t9:
             render_tab_content("ramp_archive")
+        with t10:
+            render_tab_content(
+                "wprime_recon", df_plot, df_plot_resampled, metrics,
+                rider_weight, cp_input, w_prime_input,
+            )
 
     # PNG Export
     st.sidebar.markdown("---")

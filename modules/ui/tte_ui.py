@@ -6,14 +6,13 @@ Displays TTE analysis for the current session and historical trends.
 import streamlit as st
 import plotly.graph_objects as go
 import pandas as pd
-from datetime import datetime
 
+from modules.plots import CHART_CONFIG
 from modules.tte import (
     compute_tte_result,
     format_tte,
     export_tte_json,
     TTEResult,
-    save_tte_to_db,
 )
 
 
@@ -60,13 +59,6 @@ def render_tte_tab(df_plot: pd.DataFrame, ftp: float, uploaded_file_name: str = 
             help="Dopuszczalne odchylenie od docelowej mocy"
         )
     
-    # New: Manual history acceptance toggle
-    accept_to_history = st.toggle(
-        "⭐ Zalicz trening do historii TTE", 
-        value=False,
-        help="Włącz, aby trwale dodać wynik TTE z tej sesji do Twojej bazy treningów (training_history.db)."
-    )
-    
     # Compute TTE for current session
     power_series = df_plot['watts']
     result = compute_tte_result(
@@ -75,28 +67,6 @@ def render_tte_tab(df_plot: pd.DataFrame, ftp: float, uploaded_file_name: str = 
         ftp=ftp,
         tol_pct=tol_pct
     )
-    
-    # Update historical data if accepted
-    if accept_to_history:
-        # Extract date from first valid timestamp if possible
-        session_date = datetime.now().strftime("%Y-%m-%d")
-        if 'timestamp' in df_plot.columns and not df_plot['timestamp'].empty:
-            try:
-                ts = pd.to_datetime(df_plot['timestamp'].iloc[0])
-                session_date = ts.strftime("%Y-%m-%d")
-            except (ValueError, TypeError, IndexError):
-                pass
-        
-        success = save_tte_to_db(
-            filename=uploaded_file_name,
-            session_date=session_date,
-            target_pct=target_pct,
-            tte_seconds=result.tte_seconds
-        )
-        if success:
-            st.toast(f"Wynik TTE ({target_pct}%) zapisany w bazie!", icon="✅")
-        else:
-            st.warning("Nie znaleziono treningu w bazie. Upewnij się, że został zaimportowany.")
     
     # Display results
     st.subheader("📊 Wyniki Sesji")
@@ -150,35 +120,80 @@ def render_tte_tab(df_plot: pd.DataFrame, ftp: float, uploaded_file_name: str = 
         )
     
     # Theory section
-    with st.expander("📚 Teoria TTE", expanded=False):
+    with st.expander("📖 Time-to-Exhaustion (TTE) — Teoria i Fizjologia", expanded=False):
         st.markdown("""
-        ### Czym jest Time-to-Exhaustion?
-        
-        **TTE** (Time-to-Exhaustion) to maksymalny czas, przez który sportowiec
-        może utrzymać określoną intensywność wysiłku przed wyczerpaniem.
-        
-        #### Dlaczego to ważne?
-        
-        * **Planowanie wyścigów**: Wiedząc, jak długo możesz utrzymać 100% FTP,
-          możesz lepiej planować tempo na trasie.
-        * **Monitorowanie postępów**: Wzrost TTE przy tym samym % FTP oznacza
-          poprawę wytrzymałości.
-        * **Indywidualizacja treningu**: TTE pomaga dobrać długość interwałów.
-        
-        #### Typowe wartości TTE przy 100% FTP:
-        
-        | Poziom | TTE |
-        |--------|-----|
-        | Początkujący | 20-40 min |
-        | Amator | 40-60 min |
-        | Zaawansowany | 60-75 min |
-        | Elita | 75+ min |
-        
-        #### Jak poprawić TTE?
-        
-        1. **Trening progowy (SST/Tempo)**: 2-3 sesje tygodniowo
-        2. **Długie jazdy Z2**: Buduj bazę aerobową
-        3. **Poprawa ekonomii**: Praca nad kadencją i techniką
+### Definicja: Time-to-Exhaustion
+
+**TTE** (Time-to-Exhaustion) to maksymalny czas, przez który sportowiec może utrzymać zadaną intensywność wysiłku przed wyczerpaniem. W kontekście kolarstwa, TTE przy 100% FTP mierzy **wytrzymałość progową** — jak długo potrafisz pracować na granicy metabolizmu tlenowego i beztlenowego (Wilber et al., 2022).
+
+---
+
+### Tabela Interpretacji TTE przy 100% FTP
+
+| Poziom | TTE | Interpretacja |
+|---|---|---|
+| **Początkujący** | 20-40 min | Słaba wytrzymałość progowa. Dominacja metabolizmu beztlenowego, szybka akumulacja metabolitów |
+| **Amator** | 40-60 min | Typowy zakres dla rekreatyjnych kolarzy. Baza aerobowa w budowie |
+| **Zaawansowany** | 60-75 min | Dobra wytrzymałość progowa. Efektywny klirens mleczanu, wysoka ekonomia |
+| **Elitarny** | 75+ min | Wysoka tolerancja na intensywność progową. Typowe dla zawodników krajowych/elitarnych |
+| **Światowy** | 90+ min | Ekstremalna wytrzymałość. TTE >90 min przy 100% FTP to poziom WorldTour |
+
+---
+
+### 4 Mechanizmy Fizjologiczne Ograniczające TTE
+
+**1. Wyczerpanie W' (Work Capacity above CP)**
+TTE jest bezpośrednio powiązany z modelem CP/W'. Każdy wysiłek powyżej CP zużywa W' — skończoną pojemność pracy beztlenowej. Gdy W' się wyczerpie, organizm nie jest w stanie utrzymać zadanej mocy. Klimstra (2024) pokazał że W' jest kluczowym predyktorem TTE przy intensywnościach >CP.
+
+**2. Akumulacja Metabolitów i Zakwaszenie**
+Powyżej progu, produkcja H⁺ przekracza zdolność buforową mięśnia. Spadek pH hamuje enzymy glikolityczne (PFK) i interferuje z wiązaniem Ca²⁺ w sarkomerze → spadek siły skurczu. Lipková et al. (2022) wykazali że TTE koreluje z progiem mleczanowym (LT2) — im wyżej LT2 względem FTP, tym dłuższe TTE.
+
+**3. Zaburzenie Homeostazy Tlenowej**
+Goulding & Marwood (2023) pokazali że powyżej CP organizm nie utrzymuje homeostazy metabolicznej — VO2 rośnie do VO2max (VO2 slow component), a SmO2 spada do minimum. Punkt, w którym VO2 osiąga VO2max, wyznacza fizjologiczny limit TTE.
+
+**4. Zmęczenie Centralne (CNS Fatigue)**
+Przedłużony wysiłek na wysokim procencie FTP powoduje spadek rekrutacji jednostek motorycznych z powodu zmian w neurotransmisji (serotonina, dopamina, amoniak). Mózg "odcina" mięśnie aby chronić organizm przed uszkodzeniem.
+
+---
+
+### TTE a Critical Power vs FTP
+
+**FTP** (Functional Threshold Power) to estymacja mocy przy LT2 — zwykle ~95-100% CP. **CP** (Critical Power) to fizjologiczny próg homeostazy. TTE jest bardziej precyzyjny gdy odniesiony do CP niż FTP, ponieważ:
+- CP ma silniejszą podstawę fizjologiczną (Goulding & Marwood, 2023)
+- FTP jest estymacją subiektywną (test 20-minutowy × 0.95)
+- TTE @ 100% CP ≈ 20-30 min, podczas gdy TTE @ 100% FTP ≈ 40-75 min
+
+---
+
+### Wpływ Treningu na TTE
+
+Badania pokazują że TTE można poprawić o 15-30% w ciągu 8-12 tygodni:
+
+| Typ Treningu | Mechanizm | Efekt na TTE |
+|---|---|---|
+| **Interwały VO2max** (4-8 × 3-5min @ 110-120% FTP) | Zwiększenie VO2max, poprawa kinetyki VO2 | +10-20% |
+| **Tempo/SST** (2 × 20min @ 88-94% FTP) | Podniesienie progu mleczanowego, poprawa ekonomii | +15-25% |
+| **Jazda Z2** (3-5h @ 60-75% FTP) | Kapilaryzacja, mitochondria, oksydacja tłuszczów | +5-15% |
+| **Interwały powyżej CP** (5 × 3min @ 120% FTP) | Zwiększenie W', poprawa tolerancji na metabolity | +10-20% |
+
+---
+
+### TTE w Praktyce Wyścigowej
+
+- **Jazda indywidualna na czas:** TTE @ 105-110% FTP determinuje czy utrzymasz tempo do mety
+- **Podjazdy:** TTE @ 110-130% FTP decyduje czy "odjedziesz" czy "odpadniesz"
+- **Ataki:** Po każdym ataku powyżej CP, TTE mówi ile masz "paliwa" w baku W'
+- **Wyścigi kryterialne:** Wielokrotne wyczerpania i częściowe regeneracje W' — kluczowa jest szybkość rekonstytucji (Chorley et al., 2022)
+
+---
+
+### Bibliografia
+
+- Wilber et al. (2022). Time to exhaustion at estimated functional threshold power in road cyclists of different performance levels. *Journal of Science and Medicine in Sport*, 25(9), 740-745.
+- Goulding & Marwood (2023). Interaction of factors determining critical power. *Sports Medicine*, 53, 595–613.
+- Klimstra (2024). Estimate anaerobic work capacity and critical power with constant-power all-out test. *J. Funct. Morphol. Kinesiol.*, 9(4), 202.
+- Lipková et al. (2022). Determination of critical power using different possible approaches among endurance athletes: A review. *Int. J. Environ. Res. Public Health*, 19, 7589.
+- Chorley et al. (2022). Bi-exponential modelling of W′ reconstitution kinetics in trained cyclists. *European Journal of Applied Physiology*, 122, 677–689.
         """)
 
 
@@ -226,4 +241,4 @@ def _render_power_distribution_chart(df_plot: pd.DataFrame, result: TTEResult) -
         legend=dict(orientation="h", y=1.1, x=0)
     )
     
-    st.plotly_chart(fig, width="stretch")
+    st.plotly_chart(fig, width="stretch", config=CHART_CONFIG)

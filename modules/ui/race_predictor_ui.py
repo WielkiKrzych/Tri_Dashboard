@@ -75,6 +75,11 @@ def render_race_predictor_tab(
     # --- Prediction mode ---
     mode = st.radio("Tryb prognozy", ["Czas → Moc", "Moc → Czas"], horizontal=True)
 
+    # Initialize variables for both modes
+    duration_min = 60
+    target_power = cp_input
+    pred = None
+
     if mode == "Czas → Moc":
         duration_min = st.slider("Czas trwania (min)", 5, 480, 60, step=5)
 

@@ -5,6 +5,7 @@ import streamlit as st
 import plotly.graph_objects as go
 import plotly.express as px
 import pandas as pd
+from modules.plots import CHART_CONFIG
 
 
 def render_hemo_tab(target_df):
@@ -102,7 +103,7 @@ def render_hemo_tab(target_df):
             font=dict(color="#ffa15a"),
         )
 
-        st.plotly_chart(fig_hemo, width="stretch")
+        st.plotly_chart(fig_hemo, width="stretch", config=CHART_CONFIG)
 
         # 3. Wykres Liniowy w czasie (Dual Axis)
         st.subheader("Trendy w Czasie (Szukanie Rozjazdu)")
@@ -174,27 +175,73 @@ def render_hemo_tab(target_df):
             ),
             height=450,
         )
-        st.plotly_chart(fig_trend, width="stretch")
+        st.plotly_chart(fig_trend, width="stretch", config=CHART_CONFIG)
 
         # 4. Teoria dla Fizjologii
-        st.info("""
-        **💡 Interpretacja Hemodynamiczna (THb + SmO2):**
-        
-        THb (Total Hemoglobin) to wskaźnik objętości krwi ("tHb = pompa paliwowa"). SmO2 to wskaźnik zużycia ("SmO2 = bak").
-        
-        * **Scenariusz 1: Dobra praca (Wazodylatacja)**
-            * **SmO2 SPADA 📉 | THb ROŚNIE 📈**
-            * *Co to znaczy:* Mięsień pracuje mocno, metabolizm zużywa tlen, ale układ krążenia reaguje prawidłowo, rozszerzając naczynia i pompując więcej krwi. To zdrowy limit metaboliczny.
-        
-        * **Scenariusz 2: Okluzja / Limit Mechaniczny (UWAGA!)**
-            * **SmO2 SPADA 📉 | THb SPADA 📉 (lub płaskie)**
-            * *Co to znaczy:* "Wyżymanie gąbki". Napięcie mięśnia jest tak duże (lub kadencja za niska), że ciśnienie wewnątrzmięśniowe blokuje dopływ świeżej krwi.
-            * *Działanie:* Zwiększ kadencję, sprawdź siodełko (czy nie uciska tętnic), popraw fit.
-        
-        * **Scenariusz 3: Venous Pooling (Zastój)**
-            * **SmO2 ROŚNIE 📈 | THb ROŚNIE 📈**
-            * *Kiedy:* Często podczas nagłego zatrzymania po wysiłku. Krew napływa, ale pompa mięśniowa nie odprowadza jej z powrotem.
-        """)
+        with st.expander("📖 Hemodynamika (THb + SmO2) — Teoria i Fizjologia", expanded=False):
+            st.markdown("""
+### Definicja: THb i SmO2 w Kontekście Hemodynamicznym
+
+**THb (Total Hemoglobin)** to suma hemoglobiny utlenowanej i odtlenowanej w polu pomiaru NIRS. Odzwierciedla **objętość krwi** w mikrokrążeniu mięśniowym — "pojemność baku paliwowego" (Dennis et al., 2021).
+
+**SmO2 (Muscle Oxygen Saturation)** to procent utlenowanej hemoglobiny względem całkowitej. Odzwierciedla **balans między dostawą a zużyciem O₂** — "wskaźnik spalania paliwa" (Cherouveim et al., 2023).
+
+Razem tworzą **mapę hemodynamiczną** — relację między pompą (THb) a metabolizmem (SmO2).
+
+---
+
+### Mapa Ćwiartek: 4 Scenariusze Hemodynamiczne
+
+| SmO2 ↓ / THb → | **THb ROŚNIE 📈** | **THb SPADA 📉** |
+|---|---|---|
+| **SmO2 SPADA 📉** | **ĆWIARTKA 1: Wazodylatacja** ✅<br>Zdrowa odpowiedź — mięsień zużywa O₂, naczynia się rozszerzają, napływa więcej krwi | **ĆWIARTKA 2: Okluzja** 🔴<br>Ciśnienie wewnątrzmięśniowe > ciśnienie perfuzji. Krew nie dopływa. "Wyżymanie gąbki" |
+| **SmO2 ROŚNIE 📈** | **ĆWIARTKA 3: Venous Pooling** ⚠️<br>Krew napływa, ale nie jest odprowadzana. Zastój żylny — typowe po nagłym zatrzymaniu | **ĆWIARTKA 4: Regeneracja** ✅<br>Krew odpływa z metabolitami, świeża krew dostarcza O₂. Typowe w fazie recovery |
+
+---
+
+### Mechanizmy Fizjologiczne
+
+**1. Wazodylatacja Ćwiczeniowa (ĆWIARTKA 1)**
+Podczas wysiłku, metabolity (CO₂, H⁺, adenozyna, NO) powodują rozszerzenie naczyń — THb rośnie. Jednocześnie rosnące zapotrzebowanie na O₂ obniża SmO2. To **zdrowa odpowiedź** — układ krążenia nadąża za metabolizmem. Cherouveim et al. (2023) pokazali że restrykcja przepływu krwi (thigh cuffs 120 mmHg) obniża VO₂max o 17% i moc szczytową o 28% — dowód na krytyczną rolę perfuzji.
+
+**2. Okluzja Mechaniczna (ĆWIARTKA 2)**
+Gdy ciśnienie wewnątrzmięśniowe (IMP) przekracza ciśnienie perfuzji włosowatej (~25-35 mmHg), przepływ krwi zostaje zablokowany. THb spada (krew jest "wyciskana" z naczyń), a SmO2 gwałtownie leci w dół (brak nowej dostawy O₂). Dennis et al. (2021) wykazali że NIRS jest walidowanym narzędziem do pomiaru przepływu krwi w mięśniach — spadek THb koreluje z redukcją perfuzji.
+
+**3. Venous Pooling (ĆWIARTKA 3)**
+Po nagłym zatrzymaniu wysiłku, pompa mięśniowa (skurcze mięśni nóg pompujące krew żylną) przestaje działać. Krew napływa tętniczo (THb rośnie) ale nie jest efektywnie odprowadzana żylnie. SmO2 rośnie (brak zużycia), ale krew "stoi" — może to prowadzić do zawrotów głowy i omdleń.
+
+**4. Regeneracja Aktywna (ĆWIARTKA 4)**
+Podczas lekkiego pedałowania recovery, pompa mięśniowa działa — krew jest efektywnie pompowana przez mięsień. THb spada (krew "przepływa" a nie "stoi"), SmO2 rośnie (dostawa > zużycie). To optymalny stan regeneracji.
+
+---
+
+### Hemo-Scatter: Jak Czytać Wykres Punktowy?
+
+Wykres SmO2 vs THb z kolorowaniem według mocy pokazuje **całą historię hemodynamiczną** treningu:
+- **Punkty czerwone (wysoka moc)** w lewym dolnym rogu = okluzja przy dużym wysiłku
+- **Punkty zielone (niska moc)** w prawym górnym rogu = regeneracja z pełną perfuzją
+- **Gradient kolorów** pokazuje płynne przejście między stanami metabolicznymi
+
+**Oś X odwrócona** (SmO2 od prawej do lewej) — konwencja fizjologiczna: desaturacja = ruch w prawo = "gorzej".
+
+---
+
+### Trendy w Czasie: Czego Szukać?
+
+- **Rozjazd SmO2 i THb:** Jeśli SmO2 spada a THb pozostaje płaskie — sygnał ostrzegawczy. Układ krążenia nie reaguje wazodylatacją na rosnące zapotrzebowanie.
+- **Nagłe skoki THb:** Mogą wskazywać na zmianę pozycji, uderzenie w siodełko, lub artefakt ruchu.
+- **Powolna reoksygenacja po wysiłku:** Jeśli SmO2 wolno wraca do baseline po interwale — może wskazywać na zmęczenie mitochondrialne lub ograniczoną perfuzję.
+
+---
+
+### Bibliografia
+
+- Cherouveim et al. (2023). The effect of skeletal muscle oxygenation on hemodynamics, cerebral oxygenation and activation, and exercise performance during incremental exercise to exhaustion in male cyclists. *Biology*, 12(7), 981.
+- Dennis et al. (2021). Measurement of muscle blood flow and O₂ uptake via near-infrared spectroscopy using a novel occlusion protocol. *Scientific Reports*, 11, 918.
+- Cross et al. (2021). Muscle oximetry in sports science: An updated systematic review. *Sports Medicine*.
+- Kilgas et al. (2022). Physiological responses to acute cycling with blood flow restriction. *Frontiers in Physiology*, 13, 800155.
+- Arnold et al. (2024). Muscle reoxygenation is slower after higher cycling intensity. *Frontiers in Physiology*, 15, 1449384.
+            """)
 
     else:
         st.warning(

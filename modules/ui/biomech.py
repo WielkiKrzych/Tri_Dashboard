@@ -156,16 +156,62 @@ def render_biomech_tab(df_plot, df_plot_resampled):
         
         st.plotly_chart(fig_ts, width="stretch", config=CHART_CONFIG)
         
-        st.info("""
-        **💡 Fizjologia Okluzji (Analiza Koszykowa):**
-        
-        **Mechanizm Okluzji:** Kiedy mocno napinasz mięsień (wysoki moment), ciśnienie wewnątrzmięśniowe przewyższa ciśnienie w naczyniach włosowatych. Krew przestaje płynąć, tlen nie dociera, a metabolity (kwas mlekowy) nie są usuwane. To "duszenie" mięśnia od środka.
-        
-        **Punkt Krytyczny:** Szukaj momentu (na osi X), gdzie czerwona linia gwałtownie opada w dół. To Twój limit siłowy. Powyżej tej wartości generujesz waty 'na kredyt' beztlenowy.
-        
-        **Praktyczny Wniosek (Scenario):** * Masz do wygenerowania 300W. Możesz to zrobić siłowo (70 RPM, wysoki moment) lub kadencyjnie (90 RPM, niższy moment).
-        * Spójrz na wykres: Jeśli przy momencie odpowiadającym 70 RPM Twoje SmO2 spada do 30%, a przy momencie dla 90 RPM wynosi 50% -> **Wybierz wyższą kadencję!** Oszczędzasz nogi (glikogen) kosztem nieco wyższego tętna.
-        """)
+        with st.expander("📖 Moment vs Oksydacja (SmO2) — Teoria i Fizjologia", expanded=False):
+            st.markdown("""
+### Definicja: SmO2 a Moment Obrotowy
+
+**SmO2** (muscle oxygen saturation) mierzony przez NIRS na vastus lateralis odzwierciedla balans między dostawą a zużyciem O₂ w mikrokrażeniu mięśniowym (Yogev et al., 2023).
+
+**Mechanizm:** wzrost momentu obrotowego → wzrost siły skurczu → wzrost ciśnienia wewnątrzmięśniowego (intramuscular pressure, IMP) → kompresja naczyń włosowatych → redukcja przepływu krwi → spadek SmO2.
+
+Jak zauważyli Kilgas et al. (2022): *"blood flow would increase only if the intramuscular pressure generated during the muscle contraction exceeds the cuff pressure"* — analogicznie, wysoki moment działa jak **wewnętrzna mankieta BFR**, ograniczając perfuzję od środka.
+
+---
+
+### Tabela Interpretacji Trendu SmO2
+
+| Trend SmO2 | Zakres | Interpretacja |
+|---|---|---|
+| **Stabilne** | ±5% | Równowaga O₂ delivery/consumption — praca tlenowa |
+| **Spadek łagodny** | -5 do -15% | Wzrost ekstrakcji O₂, typowy powyżej VT1 (Feldmann et al., 2022) |
+| **Spadek umiarkowany** | -15 do -25% | Znacząca deoksygenacja — zbliżenie do progu krytycznego (Iskra & Paravlić, 2025) |
+| **Spadek gwałtowny** | >25% | Prawie całkowita okluzja włośniczkowa — praca beztlenowa |
+
+---
+
+### 4 Mechanizmy Fizjologiczne
+
+**1. Intramuscular Pressure (IMP)**
+Podczas skurczu izometrycznego i koncentrycznego, IMP może przekroczyć 200-300 mmHg w vastus lateralis (Kilgas et al., 2022), znacznie przewyższając ciśnienie skurczowe (~120 mmHg) → mechaniczna okluzja naczyń.
+
+**2. 4-Fazowy Model Deoksygenacji (Feldmann, 2022)**
+(I) stabilna bazowa → (II) pierwszy breakpoint BP1 ≈ VT1 → (III) strome spadki → (IV) plateau/minimum. Każda faza odpowiada innemu reżimowi metabolicznemu.
+
+**3. Wpływ Kadencji na IMP**
+Wyższa kadencja = krótszy czas skurczu = niższe szczytowe IMP = lepsza perfuzja między pedałowaniami. Kilgas et al. (2022) pokazał że BFR 80% AOP powoduje ~40% spadek torque — analogicznie wysoki moment powoduje autookluzję.
+
+**4. Reoksygenacja po Wysiłku**
+Arnold et al. (2024) pokazał że half-recovery time (HRT) SmO2 zależy od intensywności: 8s (50% Wpeak) → 12s (75%) → 17s (100%). Wolniejsza reoksygenacja = większy deficyt O₂.
+
+---
+
+### Wskazówki Praktyczne
+
+- Szukaj **"punktu załamania"** na wykresie — moment, od którego SmO2 zaczyna gwałtownie spadać
+- Porównaj ten punkt z kadencją: ten sam watt przy niższej kadencji = wyższy moment = niższe SmO2
+- **Zalecenie:** utrzymuj kadencję powyżej progu krytycznego (patrz sekcja Analiza Ryzyka Okluzji poniżej)
+
+---
+
+### Bibliografia
+
+- Yogev et al. (2023). The effect of severe intensity bouts on muscle oxygen saturation responses in trained cyclists. *Frontiers in Sports and Active Living*, 5, 1086227.
+- Feldmann et al. (2022). Muscle oxygen saturation breakpoints reflect ventilatory thresholds in both cycling and running. *Journal of Human Kinetics*, 83, 87–97.
+- Iskra & Paravlić (2025). Assessing the feasibility of NIRS for evaluating physiological exercise thresholds. *Scientific Reports*, 15, 14920.
+- Kilgas et al. (2022). Physiological responses to acute cycling with blood flow restriction. *Frontiers in Physiology*, 13, 800155.
+- Arnold et al. (2024). Muscle reoxygenation is slower after higher cycling intensity. *Frontiers in Physiology*, 15, 1449384.
+- Sendra-Pérez et al. (2024). Profiles of muscle-specific oxygenation responses and thresholds during graded cycling incremental test. *European Journal of Applied Physiology*.
+            """)
 
     # =========================================================================
     # NOWA SEKCJA: ANALIZA RYZYKA OKLUZJI (KADENCJA MINIMALNA)
@@ -341,35 +387,70 @@ def _render_occlusion_cadence_analysis(df_plot):
         """)
     
     # Teoria
-    with st.expander("📖 Wzory i metodologia", expanded=False):
+    with st.expander("📖 Mapa Ryzyka Okluzji — Teoria i Fizjologia", expanded=False):
         st.markdown("""
-        ### Relacja Moment-Moc-Kadencja
-        
-        ```
-        Torque [Nm] = Power [W] / (2π × Cadence [RPS])
-        
-        gdzie RPS = RPM / 60
-        ```
-        
-        Przekształcając:
-        ```
-        Cadence_min [RPM] = Power [W] / (2π × Torque_threshold [Nm]) × 60
-        ```
-        
-        ---
-        
-        ### Progi Okluzji SmO2
-        
-        | Próg | Znaczenie |
-        |------|-----------|
-        | **-10% SmO2** | Początek ograniczonej perfuzji |
-        | **-20% SmO2** | Krytyczna hipoksja mięśniowa |
-        
-        ---
-        
-        ### Interpretacja Mapy Ryzyka
-        
-        - **🟢 Zielona strefa:** Bezpieczna kombinacja power × cadence
-        - **🟠 Pomarańczowa strefa:** Umiarkowane ryzyko okluzji
-        - **🔴 Czerwona strefa:** Krytyczne ryzyko okluzji — unikaj!
+### Relacja Moment-Moc-Kadencja
+
+```
+Torque [Nm] = Power [W] / (2π × Cadence [RPS])
+
+gdzie RPS = RPM / 60
+```
+
+Przekształcając:
+```
+Cadence_min [RPM] = Power [W] / (2π × Torque_threshold [Nm]) × 60
+```
+
+Ta relacja jest fundamentem strategii kadencyjnej — przy danej mocy, jedyną drogą do obniżenia momentu (i IMP) jest zwiększenie kadencji.
+
+---
+
+### Fizjologia Okluzji
+
+Podczas cyklu pedałowania, **faza Propulsive (push-down)** generuje skurcz koncentryczny z ciśnieniem wewnątrzmięśniowym (IMP) dochodzącym do 200+ mmHg (Kilgas et al., 2022).
+
+**Faza Recovery** pozwala na reperfuzję — czas trwania tej fazy zależy od kadencji:
+- Wyższa kadencja = krótszy czas pod IMP > ciśnieniem tętniczym = lepsza okluzyjna "szczelina" na przepływ krwi
+- Niższa kadencja = dłuższa kompresja naczyń = większa akumulacja metabolitów
+
+NIRS (Moxy Monitor) mierzy SmO2 na głębokość ~12.5mm w vastus lateralis — odzwierciedla mikrokrążenie w głównym mięśniu napędowym (Arnold et al., 2024).
+
+---
+
+### Progi Okluzji SmO2
+
+| Próg SmO2 | Zmiana vs Baseline | Interpretacja Fizjologiczna |
+|---|---|---|
+| **Baseline** | 0% (ok. 60-70%) | Pełna perfuzja, praca tlenowa poniżej VT1 |
+| **-10% (SmO2)** | Spadek ~10 pkt | Początek znaczącej deoksygenacji — odpowiada okolicom VT1 (Feldmann et al., 2022). Wzrost ekstrakcji O₂, perfuzja nadal wystarczająca |
+| **-20% (SmO2)** | Spadek ~20 pkt | Krytyczna hipoksja — zbliżenie do VT2/RCP (Iskra & Paravlić, 2025). Balans O₂ delivery/consumption silnie zaburzony |
+| **>25% spadek** | >25 pkt poniżej baseline | Prawie całkowita okluzja — praca czysto beztlenowa. Reoksygenacja po wysiłku bardzo wolna (HRT >17s wg Arnold et al., 2024) |
+
+---
+
+### Interpretacja Mapy Ryzyka
+
+- 🟢 **Zielona strefa (niskie ryzyko):** Kadencja powyżej wartości bezpiecznej dla danej strefy mocy. Pełna reperfuzja między skurczami. Można utrzymać długo.
+- 🟠 **Pomarańczowa strefa (umiarkowane ryzyko):** Kadencja w okolicach progu -10% SmO2. Ograniczona perfuzja, kumulacja metabolitów. Można utrzymać przez kilka minut — typowe dla interwałów VO2max.
+- 🔴 **Czerwona strefa (krytyczne ryzyko):** Kadencja poniżej progu krytycznego (-20% SmO2). Częściowa/całkowita okluzja naczyń. Gwałtowna kumulacja H⁺, Pi, spadek siły. Typowe dla sprintów i ataków — krótkotrwałe zjawisko.
+
+---
+
+### Kluczowe Badania
+
+- **Kilgas et al. (2022)** pokazał że BFR 60% AOP vs 80% AOP daje dramatycznie różne odpowiedzi neuromuskularne (18% vs 40% spadek torque) — analogicznie, różnica kadencji może przesunąć Cię ze strefy zielonej do czerwonej.
+- **Yogev et al. (2023)** udowodnił dobrą repeatability SmO2 między sesjami (ICC > 0.75) przy intensywności severe — mapa ryzyka jest stabilna między treningami.
+- **Sendra-Pérez et al. (2024)** pokazał różnice w profilach deoksygenacji między mięśniami — vastus lateralis vs rectus femoris mają różne progi. Warto pamiętać że nasza mapa dotyczy VL.
+
+---
+
+### Bibliografia
+
+- Yogev et al. (2023). *Frontiers in Sports and Active Living*, 5, 1086227.
+- Feldmann et al. (2022). *Journal of Human Kinetics*, 83, 87–97.
+- Iskra & Paravlić (2025). *Scientific Reports*, 15, 14920.
+- Kilgas et al. (2022). *Frontiers in Physiology*, 13, 800155.
+- Arnold et al. (2024). *Frontiers in Physiology*, 15, 1449384.
+- Sendra-Pérez et al. (2024). *European Journal of Applied Physiology*.
         """)

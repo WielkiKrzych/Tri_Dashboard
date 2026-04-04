@@ -141,6 +141,40 @@ from .polars_adapter import (
 )
 
 # Eksport wszystkich symboli dla import *
+# --- NEW FEATURE EXPORTS ---
+from .training_distribution import (
+    calculate_training_distribution,
+    get_zone_color_mapping,
+)
+
+from .heat_strain import (
+    calculate_heat_strain_index_enhanced,
+    calculate_heat_strain_summary,
+    generate_heat_strain_recommendations,
+    get_heat_strain_color_mapping,
+)
+
+from .race_predictor import (
+    predict_race_power,
+    predict_race_duration,
+    generate_race_predictions_table,
+    get_pacing_recommendations,
+    RacePrediction,
+)
+
+from .w_prime_reconstitution import (
+    compute_w_prime_reconstitution_map,
+    build_reconstitution_table,
+    get_reconstitution_interpretation,
+    ReconstitutionEvent,
+    ReconstitutionSummary,
+)
+
+from .durability import (
+    calculate_durability_by_season,
+    get_durability_recommendations,
+)
+
 __all__ = [
     # W' Balance
     "calculate_w_prime_balance",
@@ -225,4 +259,27 @@ __all__ = [
     "to_polars",
     "to_pandas",
     "fast_rolling_mean",
+    # Training Distribution (NEW)
+    "calculate_training_distribution",
+    "get_zone_color_mapping",
+    # Heat Strain Enhanced (NEW)
+    "calculate_heat_strain_index_enhanced",
+    "calculate_heat_strain_summary",
+    "generate_heat_strain_recommendations",
+    "get_heat_strain_color_mapping",
+    # Race Predictor (NEW)
+    "predict_race_power",
+    "predict_race_duration",
+    "generate_race_predictions_table",
+    "get_pacing_recommendations",
+    "RacePrediction",
+    # W' Reconstitution Map (NEW)
+    "compute_w_prime_reconstitution_map",
+    "build_reconstitution_table",
+    "get_reconstitution_interpretation",
+    "ReconstitutionEvent",
+    "ReconstitutionSummary",
+    # Durability Extended (NEW)
+    "calculate_durability_by_season",
+    "get_durability_recommendations",
 ]

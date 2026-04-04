@@ -38,6 +38,11 @@ Tri_Dashboard to platforma analityczna dla **trenerów**, **naukowców sportu** 
 | **Thresholds** | 4-point CPET: VT1_onset, VT1_steady, RCP_onset, RCP_steady |
 | **AI Coach** | Multi-sensor fusion, limiter diagnosis, rekomendacje |
 | **Reports** | PDF ~36-stronicowy, DOCX, PNG export, SQLite baza danych, CLI generator |
+| **🆕 Wytrzymałość** | Durability Index, sezonowa analiza zmęczenia, rekomendacje treningowe |
+| **🆕 Rozkład Treningu** | Time-in-Zone (power/HR/SmO2), balance score, rozkład intensywności |
+| **🆕 Heat Strain** | PSI/HSI z korektami środowiskowymi, ocena ryzyka, strategie chłodzenia |
+| **🆕 Race Predictor** | Prognoza mocy na zawody (CP/W'), korekty wiatr/temperatura/trasa, pacing |
+| **🆕 W' Rekonstytucja** | Mapa wyczerpania/odnowy W', detekcja cykli, tempo regeneracji |
 
 ---
 
@@ -58,8 +63,18 @@ Tri_Dashboard/
 │   │   ├── smo2_analysis.py         # Feldmann 4-phase + advanced metrics
 │   │   ├── metabolic_engine.py      # VO2max CI, VLaMax estimation
 │   │   ├── pipeline.py              # Relative SmO2 thresholds + HR consistency
+│   │   ├── durability.py            # Durability Index + seasonal analysis
+│   │   ├── training_distribution.py # Time-in-Zone (power/HR/SmO2)
+│   │   ├── heat_strain.py           # Enhanced PSI with environmental corrections
+│   │   ├── race_predictor.py        # Race-day power prediction (CP/W' model)
+│   │   ├── w_prime_reconstitution.py # W' depletion/reconstitution cycle analysis
 │   │   └── common.py                # VT2 vs Pmax validation
 │   ├── ui/                # Streamlit tabs & components
+│   │   ├── durability_ui.py         # 🆕 Durability tab
+│   │   ├── training_distribution_ui.py # 🆕 Training distribution tab
+│   │   ├── heat_strain_ui.py        # 🆕 Heat strain index tab
+│   │   ├── race_predictor_ui.py     # 🆕 Race predictor tab
+│   │   └── w_prime_reconstitution_ui.py # 🆕 W' reconstitution map tab
 │   ├── reporting/         # PDF/DOCX generators
 │   │   ├── pdf/layout.py           # KPI dashboard, limiter classification
 │   │   ├── pdf/builder.py          # CP vs VT2 validation
@@ -89,6 +104,27 @@ Tri_Dashboard/
 
 ## 📋 Changelog
 
+
+### 2026-04-04 — 5 New Performance Tabs: Durability, TSD, Heat Strain, Race Predictor, W' Reconstitution
+
+**5 new evidence-based tabs added to the Performance and Physiology sections.** Each tab features interactive charts, training recommendations, and comprehensive theory sections citing 8-10 post-2020 peer-reviewed publications.
+
+**New Tabs (5):**
+
+| Tab | Section | Files | Key Features |
+|:----|:--------|:------|:-------------|
+| **🛡️ Wytrzymałość** | ⚡ Performance | `durability.py`, `durability_ui.py` | Durability Index (first/second half power ratio), seasonal analysis (sliding windows), training recommendations based on DI thresholds |
+| **📊 Rozkład Treningu** | ⚡ Performance | `training_distribution.py`, `training_distribution_ui.py` | Time-in-Zone for power/HR/SmO2, intensity distribution (easy/moderate/hard %), zone balance score, multi-modality pie charts |
+| **🌡️ Heat Strain** | ⚡ Performance | `heat_strain.py`, `heat_strain_ui.py` | Enhanced PSI with environmental corrections (wind, temp, elevation), risk categorization, heat dissipation modeling, cooling strategy recommendations |
+| **🏁 Race Predictor** | ⚡ Performance | `race_predictor.py`, `race_predictor_ui.py` | CP/W' race prediction with environmental adjustments, Time→Power and Power→Time modes, predictions table for 12 common distances, pacing strategies |
+| **🔋 W' Rekonstytucja** | 🫀 Physiology | `w_prime_reconstitution.py`, `w_prime_reconstitution_ui.py` | W' balance timeline, depletion cycle detection, recovery rate analysis, bi-exponential model (Caen 2021), cycle map visualization |
+
+**Code Quality:**
+- All charts use `CHART_CONFIG` via `chart()` shared helper
+- All calculations exported through `modules/calculations/__init__.py`
+- TabRegistry pattern (OCP) — lazy-loaded, no app.py import bloat
+- Smoke tests pass for all 5 new modules
+- 40+ post-2020 peer-reviewed references across theory sections
 
 ### 2026-04-04 — Evidence-Based Theory Expansion Across Performance Tabs
 

@@ -168,6 +168,11 @@ class TabRegistry:
         "drift_maps": ("modules.ui.drift_maps_ui", "render_drift_maps_tab"),
         "tte": ("modules.ui.tte_ui", "render_tte_tab"),
         "ramp_archive": ("modules.ui.ramp_archive", "render_ramp_archive"),
+        "durability": ("modules.ui.durability_ui", "render_durability_tab"),
+        "training_dist": ("modules.ui.training_distribution_ui", "render_training_distribution_tab"),
+        "heat_strain": ("modules.ui.heat_strain_ui", "render_heat_strain_tab"),
+        "race_predictor": ("modules.ui.race_predictor_ui", "render_race_predictor_tab"),
+        "wprime_recon": ("modules.ui.w_prime_reconstitution_ui", "render_w_prime_reconstitution_tab"),
     }
 
     @classmethod
@@ -391,7 +396,7 @@ if uploaded_file is not None:
 
     with tab_performance:
         UIComponents.show_breadcrumb("⚡ Performance")
-        t1, t3, t4, t5, t6, t7, t8, t9 = st.tabs(
+        t1, t3, t4, t5, t6, t7, t8, t9, t10, t11, t12, t13 = st.tabs(
             [
                 "🔋 Power",
                 "⏱️ Intervals",
@@ -401,6 +406,10 @@ if uploaded_file is not None:
                 "🧬 Hematology",
                 "📈 Drift Maps",
                 "⏳ TTE",
+                "🛡️ Wytrzymałość",
+                "📊 Rozkład Treningu",
+                "🌡️ Heat Strain",
+                "🏁 Race Predictor",
             ]
         )
         with t1:
@@ -430,6 +439,28 @@ if uploaded_file is not None:
         filename = safe_filename if uploaded_file else "manual_upload"
         with t9:
             render_tab_content("tte", df_plot, cp_input, filename)
+        with t10:
+            render_tab_content(
+                "durability", df_plot, df_resampled, metrics,
+                rider_weight, cp_input, w_prime_input,
+            )
+        with t11:
+            render_tab_content(
+                "training_dist", df_plot, df_resampled, metrics,
+                rider_weight, cp_input, w_prime_input,
+                hr_max, hr_rest,
+            )
+        with t12:
+            render_tab_content(
+                "heat_strain", df_plot, df_resampled, metrics,
+                rider_weight, cp_input, w_prime_input,
+                hr_max, hr_rest, rider_age, is_male,
+            )
+        with t13:
+            render_tab_content(
+                "race_predictor", df_plot, df_resampled, metrics,
+                rider_weight, cp_input, w_prime_input,
+            )
 
     with tab_intelligence:
         UIComponents.show_breadcrumb("\U0001f9e0 Intelligence")
@@ -465,6 +496,7 @@ if uploaded_file is not None:
                 "🎯 SmO2 - Progi",
                 "🛠️ SmO2 - Progi Manuals",
                 "🗄️ Ramp Archive",
+                "🔋 W' Rekonstytucja",
             ]
         )
         with t1:

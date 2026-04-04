@@ -90,6 +90,40 @@ Tri_Dashboard/
 ## 📋 Changelog
 
 
+### 2026-04-04 — Evidence-Based Theory Expansion Across Performance Tabs
+
+**Complete audit and expansion of all Performance tab theory sections with post-2020 peer-reviewed literature.** Every tab now features comprehensive `📖 Teoria i Fizjologia` expanders with definition, interpretation tables, physiological mechanisms, practical tips, and bibliography.
+
+**Code Removal (2 items):**
+| Change | File | Description |
+|:-------|:-----|:------------|
+| Remove Planer Treningowy | `modules/training_plan/`, `app.py` | Deleted 5 files + UI module — unused feature removed completely |
+| Remove auto interval detection | `modules/ui/intervals_ui.py` | Removed automatic interval detection UI and logic |
+| Remove TTE history toggle | `modules/ui/tte_ui.py` | Removed "Zalicz trening do historii TTE" toggle and save logic |
+
+**Theory Expansions (7 tabs):**
+
+| Tab | File | Content | References |
+|:----|:-----|:--------|:-----------|
+| **Intervals: Pulse Power** | `modules/ui/intervals_ui.py` | PP = SV × a-vO₂ diff × GE, 4-level CV drift table, fatigue detection research | Nuuttila 2024, Barsumyan 2025 |
+| **Intervals: Gross Efficiency** | `modules/ui/intervals_ui.py` | GE definition + Keytel formula, 6-level table, 4 determinant factors, fatigue mechanisms | Kamba 2023, Gejl 2024, Fares 2025 |
+| **Biomech: Moment vs Oxidation** | `modules/ui/biomech.py` | IMP mechanism, 4-phase deoxygenation, cadence effect on IMP, reoxygenation kinetics | Yogev 2023, Feldmann 2022, Kilgas 2022 |
+| **Biomech: Occlusion Risk Map** | `modules/ui/biomech.py` | 4-level SmO2 threshold table, risk zone interpretation, BFR torque research | Arnold 2024, Sendra-Pérez 2024 |
+| **Model: CP/W'** | `modules/ui/model.py` | CP physiological meaning, 9-level interpretation, bi-exponential W' reconstitution | Goulding & Marwood 2023, Chorley 2022 |
+| **Hematology: THb + SmO2** | `modules/ui/hemo.py` | 4-quadrant hemodynamic map, vasodilation/occlusion/pooling/recovery mechanisms | Cherouveim 2023, Dennis 2021 |
+| **Drift Maps** | `modules/ui/drift_maps_ui.py` | CV drift definition, 4-level HR drift table, 4 physiological mechanisms | Souissi 2021, Barsumyan 2025 |
+| **TTE** | `modules/ui/tte_ui.py` | 5-level TTE table, 4 limiting mechanisms, training impact table, race applications | Wilber 2022, Klimstra 2024 |
+
+**Chart Interactivity (5 tabs):**
+| Tab | Fix |
+|:----|:----|
+| **Model** | Added `config=CHART_CONFIG`, enhanced hovertemplate to show power + time |
+| **Hematology** | Added `config=CHART_CONFIG` to both Hemo-Scatter and Trend charts |
+| **Drift Maps** | Added `config=CHART_CONFIG` to all 4 charts (Power vs HR, Power vs SmO₂, 2× Drift trend) |
+| **TTE** | Added `config=CHART_CONFIG` to power distribution chart |
+
+**Total: 45+ peer-reviewed references (all post-2020) integrated across 8 theory sections.**
+
 ### 2026-04-02 — Evidence-Based SmO2 Threshold Detection Overhaul
 
 **Scientific basis:** Perrey, Ferrari et al. (2024) Sports Medicine systematic review (191 studies), Sendra-Pérez et al. (2023, 2024), Feldmann et al. (2022), Racinais et al. (2014).

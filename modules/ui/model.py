@@ -6,6 +6,7 @@ import plotly.graph_objects as go
 import pandas as pd
 import numpy as np
 from scipy import stats
+from modules.plots import CHART_CONFIG
 
 def render_model_tab(df_plot, cp_input, w_prime_input):
     st.header("Matematyczny Model CP (Critical Power Estimation)")
@@ -81,7 +82,7 @@ def render_model_tab(df_plot, cp_input, w_prime_input):
                 x=np.array(x_actual)/60, y=y_actual,
                 mode='markers', name='MMP (Plik)',
                 marker=dict(color='#00cc96', size=8),
-                hovertemplate='%{y:.0f} W'
+                hovertemplate='<b>MMP:</b> %{y:.0f} W<br><b>Czas:</b> %{x:.1f} min<extra></extra>'
             ))
             
             # Model Teoretyczny
@@ -89,7 +90,7 @@ def render_model_tab(df_plot, cp_input, w_prime_input):
                 x=x_theory/60, y=y_theory,
                 mode='lines', name=f'Model: {modeled_cp:.0f}W',
                 line=dict(color='#ef553b', dash='dash'),
-                hovertemplate='%{y:.0f} W'
+                hovertemplate='<b>Model:</b> %{y:.0f} W<br><b>Czas:</b> %{x:.1f} min<extra></extra>'
             ))
 
             fig_model.update_layout(
@@ -101,18 +102,83 @@ def render_model_tab(df_plot, cp_input, w_prime_input):
                 hovermode="x unified",
                 height=500
             )
-            st.plotly_chart(fig_model, width="stretch")
+            st.plotly_chart(fig_model, width="stretch", config=CHART_CONFIG)
             
             # 5. Interpretacja
-            st.info(f"""
-            **📊 Interpretacja Modelu:**
-            
-            Ten algorytm próbuje dopasować Twoje wysiłki do fizjologicznego prawa mocy krytycznej.
-            
-            * **Jeśli Estymowane CP > Ustawione CP:** Brawo! W tym treningu pokazałeś, że jesteś mocniejszy niż myślisz. Rozważ aktualizację ustawień w sidebarze.
-            * **Jeśli Estymowane CP < Ustawione CP:** To normalne, jeśli nie jechałeś "do odciny" (All-Out) na odcinkach 3-20 min. Model pokazuje tylko to, co *zademonstrowałeś*, a nie Twój absolutny potencjał.
-            * **R² (R-kwadrat):** Jeśli jest niskie (< 0.95), oznacza to, że Twoja jazda była nieregularna i model nie może znaleźć jednej linii, która pasuje do Twoich wyników.
-            """)
+            with st.expander("📖 Model CP/W' — Teoria i Fizjologia", expanded=False):
+                st.markdown("""
+### Definicja: Critical Power (CP) i W'
+
+**Critical Power (CP)** to asymptota hiperbolicznej relacji między mocą a czasem do wyczerpania. Reprezentuje górną granicę intensywności, przy której organizm utrzymuje homeostazę metaboliczną — powyżej CP nie ma stanu ustalonego (steady-state) (Goulding & Marwood, 2023).
+
+**W'** (Work Capacity above CP) to skończona pojemność pracy beztlenowej wyrażona w dżulach. Działa jak "bateria" — każdy wysiłek powyżej CP zużywa W', a odpoczynek poniżej CP ją regeneruje (Chorley et al., 2022).
+
+---
+
+### Tabela Interpretacji Wyników
+
+| Parametr | Zakres | Interpretacja |
+|---|---|---|
+| **CP** | >95% ustawionego | Doskonała zgodność — Twoje ustawienia odzwierciedlają aktualną formę |
+| **CP** | 85-95% ustawionego | Lekki spadek lub trening nie był maksymalny — typowe dla jazdy grupowej |
+| **CP** | <85% ustawionego | Znaczna różnica — albo forma spadła, albo brakowało wysiłków all-out |
+| **W'** | 15-25 kJ | Typowy zakres dla wytrenowanych kolarzy (Lamb et al., 2020) |
+| **W'** | >25 kJ | Wysoka pojemność beztlenowa — predyspozycje do sprintów/ataków |
+| **W'** | <15 kJ | Niska pojemność beztlenowa — typowe dla specjalistów endurance |
+| **R²** | >0.98 | Bardzo wiarygodne dopasowanie modelu |
+| **R²** | 0.95-0.98 | Dobre dopasowanie, ale rozważ powtórzenie testu |
+| **R²** | <0.95 | Niska wiarygodność — jazda nieregularna, za mało punktów MMP |
+
+---
+
+### 4 Mechanizmy Fizjologiczne CP
+
+**1. Dostawa i Wykorzystanie Tlenu (Goulding & Marwood, 2023)**
+CP jest parametrem funkcji tlenowej — zależy od każdego ogniwa łańcucha transportu O₂: dostawa konwekcyjna (serce → naczynia → krew), dyfuzyjna (naczynia włosowate → mitochondria) i wykorzystanie wewnątrzkomórkowe. Trening wytrzymałościowy poprawia każde z tych ogniw.
+
+**2. Rekrutacja Jednostek Motorycznych**
+Powyżej CP organizm musi rekrutować włókna typu II (szybkokurczliwe), które mają niższą wydajność tlenową i szybciej generują metabolity. Punkt, w którym dzieje się to masowo, wyznacza CP.
+
+**3. Związek z Progami Wentylacyjnymi**
+CP koreluje silnie z VT2/RCP (r ≈ 0.85-0.95). W praktyce CP ≈ moc na VT2 ± 5-10W. To sprawia, że CP jest fizjologicznym odpowiednikiem "progu mleczanowego" w świecie mocy.
+
+**4. Regeneracja W' — Model Bi-Wykładniczy (Chorley et al., 2022)**
+Regeneracja W' ma dwie fazy:
+- **Szybka faza (FC):** τ ≈ 20-30s — regeneracja PCr (fosfokreatyny)
+- **Wolna faza (SC):** τ ≈ 150-300s — usuwanie metabolitów, przywrócenie homeostazy
+
+Pełna regeneracja W' po maksymalnym wysiłku zajmuje 10-15 minut jazdy poniżej CP.
+
+---
+
+### Metody Wyznaczania CP
+
+Istnieje kilka podejść (Lipková et al., 2022):
+- **Model liniowy (Work-Time):** Używany tutaj — regresja Praca vs Czas. Slope = CP, Intercept = W'.
+- **Model 3-min All-Out:** Test do wyczerpania — końcowa moc = CP (Klimstra, 2024).
+- **Model MMP:** Dopasowanie krzywej mocy-czas z danych z pliku — najwygodniejsze, ale wymaga wysiłków all-out w zakresie 3-20 min.
+
+**⚠️ Ważne:** Model z pliku jest ważny TYLKO jeśli zawierałeś wysiłki maksymalne (all-out) w zakresie 3-20 minut. Bez nich CP będzie zaniżone — model pokaże to, co *zademonstrowałeś*, a nie Twój absolutny potencjał.
+
+---
+
+### Wskazówki Praktyczne
+
+- **CP > ustawione:** Rozważ aktualizację w sidebarze — jazda na starych wartościach zaniża Twoje strefy treningowe
+- **CP < ustawione:** To normalne w dni "pod górkę" lub przy jeździe grupowej. Powtórz test po odpoczynku
+- **W' niskie:** Rozważ trening interwałowy powyżej CP (np. 4x4min na 110% CP)
+- **W' wysokie:** Wykorzystaj w wyścigach — masz duży "bufor" na ataki i sprinty
+
+---
+
+### Bibliografia
+
+- Goulding & Marwood (2023). Interaction of factors determining critical power. *Sports Medicine*, 53, 595–613.
+- Chorley et al. (2022). Bi-exponential modelling of W′ reconstitution kinetics in trained cyclists. *European Journal of Applied Physiology*, 122, 677–689.
+- Lipková et al. (2022). Determination of critical power using different possible approaches among endurance athletes: A review. *Int. J. Environ. Res. Public Health*, 19, 7589.
+- Lamb et al. (2020). The application of critical power, W′, and its reconstitution: A narrative review. *Sports*, 8(9), 123.
+- Klimstra (2024). Estimate anaerobic work capacity and critical power with constant-power all-out test. *J. Funct. Morphol. Kinesiol.*, 9(4), 202.
+                """)
 
         else:
             st.warning("Trening jest zbyt krótki lub brakuje mocnych odcinków, by zbudować wiarygodny model CP (wymagane wysiłki > 3 min i > 10 min).")

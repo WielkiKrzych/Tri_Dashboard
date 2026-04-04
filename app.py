@@ -441,24 +441,24 @@ if uploaded_file is not None:
             render_tab_content("tte", df_plot, cp_input, filename)
         with t10:
             render_tab_content(
-                "durability", df_plot, df_resampled, metrics,
+                "durability", df_plot, df_plot_resampled, metrics,
                 rider_weight, cp_input, w_prime_input,
             )
         with t11:
             render_tab_content(
-                "training_dist", df_plot, df_resampled, metrics,
+                "training_dist", df_plot, df_plot_resampled, metrics,
                 rider_weight, cp_input, w_prime_input,
                 hr_max, hr_rest,
             )
         with t12:
             render_tab_content(
-                "heat_strain", df_plot, df_resampled, metrics,
+                "heat_strain", df_plot, df_plot_resampled, metrics,
                 rider_weight, cp_input, w_prime_input,
                 hr_max, hr_rest, rider_age, is_male,
             )
         with t13:
             render_tab_content(
-                "race_predictor", df_plot, df_resampled, metrics,
+                "race_predictor", df_plot, df_plot_resampled, metrics,
                 rider_weight, cp_input, w_prime_input,
             )
 

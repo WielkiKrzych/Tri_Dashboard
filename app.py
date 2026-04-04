@@ -475,7 +475,7 @@ if uploaded_file is not None:
             ]
         )
         with t1:
-            render_tab_content("nutrition", df_plot, cp_input, vt1_watts, vt2_watts)
+            render_tab_content("nutrition", df_plot_resampled, cp_input, vt1_watts, vt2_watts)
         with t2:
             render_tab_content("limiters", df_plot, cp_input, vt2_vent)
         with t3:

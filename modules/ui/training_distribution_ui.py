@@ -74,8 +74,7 @@ def render_training_distribution_tab(
                 
                 fig.update_layout(
                     title=f"Czas w Strefach Mocy ({total_seconds//60:.0f} min łącznie)",
-                    annotations=[dict(text='Moc', x=0.5, y=0.5, font_size=20, showarrow=False)],
-                    **CHART_CONFIG
+                    annotations=[dict(text='Moc', x=0.5, y=0.5, font_size=20, showarrow=False)]
                 )
                 
                 chart(fig, key="power_zones_pie")
@@ -131,8 +130,7 @@ def render_training_distribution_tab(
                             fig_intensity.update_layout(
                                 title="Procent czasu w poszczególnych zakresach intensywności",
                                 yaxis_title="Procent czasu [%]",
-                                yaxis=dict(range=[0, 100]),
-                                **CHART_CONFIG
+                                yaxis=dict(range=[0, 100])
                             )
                             
                             chart(fig_intensity, key="intensity_distribution")
@@ -167,8 +165,7 @@ def render_training_distribution_tab(
                 
                 fig.update_layout(
                     title=f"Czas w Strefach Tętna ({total_seconds//60:.0f} min łącznie)",
-                    annotations=[dict(text='HR', x=0.5, y=0.5, font_size=20, showarrow=False)],
-                    **CHART_CONFIG
+                    annotations=[dict(text='HR', x=0.5, y=0.5, font_size=20, showarrow=False)]
                 )
                 
                 chart(fig, key="hr_zones_pie")
@@ -197,8 +194,7 @@ def render_training_distribution_tab(
                 
                 fig.update_layout(
                     title=f"Czas w Strefach SmO2 ({total_seconds//60:.0f} min łącznie)",
-                    annotations=[dict(text='SmO2', x=0.5, y=0.5, font_size=20, showarrow=False)],
-                    **CHART_CONFIG
+                    annotations=[dict(text='SmO2', x=0.5, y=0.5, font_size=20, showarrow=False)]
                 )
                 
                 chart(fig, key="smo2_zones_pie")

@@ -165,7 +165,6 @@ def render_w_prime_reconstitution_tab(
         yaxis_title="W' Balance [J]",
         yaxis=dict(range=[0, w_prime_input * 1.1]),
         hovermode="x unified",
-        **CHART_CONFIG,
     )
 
     chart(fig, key="wbal_timeline")
@@ -213,7 +212,6 @@ def render_w_prime_reconstitution_tab(
         yaxis=dict(title="Moc [W]", side="left"),
         yaxis2=dict(title="W' [%]", side="right", overlaying="y", range=[0, 110]),
         hovermode="x unified",
-        **CHART_CONFIG,
     )
 
     chart(fig2, key="power_wbal_overlay")
@@ -253,7 +251,6 @@ def render_w_prime_reconstitution_tab(
             title="Czas regeneracji dla każdego cyklu wyczerpania W'",
             yaxis_title="Czas regeneracji [min]",
             barmode="group",
-            **CHART_CONFIG,
         )
 
         chart(fig3, key="wbal_cycles_map")

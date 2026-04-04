@@ -208,7 +208,6 @@ def render_race_predictor_tab(
         yaxis_title="Moc [W]",
         xaxis_type="log",
         hovermode="x unified",
-        **CHART_CONFIG,
     )
 
     chart(fig, key="race_power_curve")

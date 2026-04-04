@@ -109,8 +109,7 @@ def render_durability_tab(
                     title="Zmiany Indeksu Wytrzymałości w Czasie (5-minutowe sezony)",
                     xaxis_title="Czas treningu [min]",
                     yaxis_title="Indeks Wytrzymałości [%]",
-                    hovermode='x unified',
-                    **CHART_CONFIG
+                    hovermode='x unified'
                 )
                 
                 chart(fig, key="durability_over_time")

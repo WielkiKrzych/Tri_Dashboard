@@ -144,8 +144,7 @@ def render_heat_strain_tab(
         xaxis_title="Czas treningu",
         yaxis_title="PSI (0-10)",
         yaxis=dict(range=[0, 10]),
-        hovermode='x unified',
-        **CHART_CONFIG
+        hovermode='x unified'
     )
     
     chart(fig, key="hsi_timeline")
@@ -166,8 +165,7 @@ def render_heat_strain_tab(
         )])
         
         fig_pie.update_layout(
-            title="Procent czasu w kategoriach obciążenia cieplnego",
-            **CHART_CONFIG
+            title="Procent czasu w kategoriach obciążenia cieplnego"
         )
         
         chart(fig_pie, key="hsi_distribution")

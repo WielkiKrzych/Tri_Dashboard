@@ -105,6 +105,19 @@ Tri_Dashboard/
 ## 📋 Changelog
 
 
+### 2026-04-04 — Runtime Bug Fixes for New Tabs
+
+**5 critical runtime fixes** applied after initial tab deployment:
+
+| Bug | Root Cause | Fix |
+|:----|:-----------|:----|
+| `NameError: df_resampled` | Wrong variable name in new tab render calls | `df_resampled` → `df_plot_resampled` |
+| `NameError: hr_max` | `max_hr` defined too late (inside Physiology section) | Moved to params block + added `hr_rest` |
+| `ValueError: displaylogo` | `**CHART_CONFIG` spread into `update_layout()` (it's a plotly config, not layout) | Removed from all 5 new UI files |
+| `NameError: duration_min` | Variable only set in "Czas→Moc" branch, referenced in "Moc→Czas" | Initialize `duration_min`, `target_power`, `pred` before mode branches |
+| `KeyError: time_min` | Nutrition tab received `df_plot` (no `time_min` column) | Changed to `df_plot_resampled` |
+| `StreamlitMixedNumericTypesError` | `min(cp_input, 500.0)` returned float, other params were int | `min(int(cp_input), 500)` keeps all int |
+
 ### 2026-04-04 — 5 New Performance Tabs: Durability, TSD, Heat Strain, Race Predictor, W' Reconstitution
 
 **5 new evidence-based tabs added to the Performance and Physiology sections.** Each tab features interactive charts, training recommendations, and comprehensive theory sections citing 8-10 post-2020 peer-reviewed publications.

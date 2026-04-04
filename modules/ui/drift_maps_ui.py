@@ -7,6 +7,7 @@ import streamlit as st
 import pandas as pd
 import json
 
+from modules.plots import CHART_CONFIG
 from modules.physio_maps import (
     scatter_power_hr,
     scatter_power_smo2,
@@ -53,7 +54,7 @@ def render_drift_maps_tab(df_plot: pd.DataFrame) -> None:
     with col1:
         fig_power_hr = scatter_power_hr(df_plot, title="Power vs HR")
         if fig_power_hr:
-            st.plotly_chart(fig_power_hr, width="stretch")
+            st.plotly_chart(fig_power_hr, width="stretch", config=CHART_CONFIG)
         else:
             st.info("Za mało danych do wygenerowania wykresu Power vs HR.")
     
@@ -61,7 +62,7 @@ def render_drift_maps_tab(df_plot: pd.DataFrame) -> None:
         if has_smo2:
             fig_power_smo2 = scatter_power_smo2(df_plot, title="Power vs SmO₂")
             if fig_power_smo2:
-                st.plotly_chart(fig_power_smo2, width="stretch")
+                st.plotly_chart(fig_power_smo2, width="stretch", config=CHART_CONFIG)
             else:
                 st.info("Za mało danych SmO₂ do wygenerowania wykresu.")
         else:
@@ -104,7 +105,7 @@ def render_drift_maps_tab(df_plot: pd.DataFrame) -> None:
         )
         
         if fig_drift:
-            st.plotly_chart(fig_drift, width="stretch")
+            st.plotly_chart(fig_drift, width="stretch", config=CHART_CONFIG)
             _display_drift_metrics(drift_metrics)
         else:
             st.warning(f"Brak danych w zakresie {power_target}W ±{tolerance}%.")
@@ -140,7 +141,7 @@ def render_drift_maps_tab(df_plot: pd.DataFrame) -> None:
         )
         
         if fig_drift:
-            st.plotly_chart(fig_drift, width="stretch")
+            st.plotly_chart(fig_drift, width="stretch", config=CHART_CONFIG)
             _display_drift_metrics(drift_metrics)
         else:
             st.warning("Nie można obliczyć dryfu dla wybranego segmentu.")
@@ -166,22 +167,92 @@ def render_drift_maps_tab(df_plot: pd.DataFrame) -> None:
             )
     
     # Interpretation
-    with st.expander("📚 Interpretacja metryk"):
+    with st.expander("📖 Drift Maps — Teoria i Fizjologia", expanded=False):
         st.markdown("""
-        ### HR Drift Slope (bpm/min)
-        - **> 0.5 bpm/min**: Znaczący drift - pogarszająca się wydolność sercowo-naczyniowa
-        - **0.2 - 0.5 bpm/min**: Umiarkowany drift - normalne zmęczenie
-        - **< 0.2 bpm/min**: Minimalny drift - dobra kondycja aerobowa
-        
-        ### SmO₂ Slope (%/min)
-        - **< -0.3 %/min**: Postępujący deficyt tlenowy - przekroczenie progu
-        - **-0.1 do -0.3 %/min**: Umiarkowany spadek - praca na granicy wydolności
-        - **> -0.1 %/min**: Stabilna saturacja - praca w strefie tlenowej
-        
-        ### Korelacja Power-HR
-        - **r > 0.7**: Silna zależność - typowa odpowiedź fizjologiczna
-        - **r 0.4-0.7**: Umiarkowana zależność
-        - **r < 0.4**: Słaba zależność - może wskazywać na problemy z danymi
+### Definicja: Cardiovascular Drift
+
+**Cardiovascular drift (CV Drift)** to zjawisko stopniowego wzrostu tętna przy stałej mocy wysiłku, spowodowane spadkiem objętości wyrzutowej serca (stroke volume, SV). Po 5-10 minutach ciągłego wysiłku, HR zaczyna "dryfować" w górę mimo braku wzrostu obciążenia (Souissi et al., 2021).
+
+**Mechanizm:** SV spada z powodu (1) utraty objętości osocza przez potenie, (2) redystrybucji krwi do skóry w termoregulacji, (3) wzrostu aktywności współczulnej. Aby utrzymać rzut serca (CO = HR × SV), serce przyspiesza (Ganio et al., 2021).
+
+---
+
+### Tabela Interpretacji HR Drift
+
+| HR Drift Slope | Zakres | Interpretacja |
+|---|---|---|
+| **Minimalny** | < 0.2 bpm/min | Doskonała stabilność sercowo-naczyniowa. Typowe dla dobrze wytrenowanych kolarzy w chłodnych warunkach |
+| **Umiarkowany** | 0.2 - 0.5 bpm/min | Normalne zmęczenie fizjologiczne. Oczekiwany przy wysiłku >30 min w strefie Z2-Z3 |
+| **Znaczący** | 0.5 - 1.0 bpm/min | Pogarszająca się wydolność. Możliwe: odwodnienie, przegrzanie, zbyt wysoka intensywność |
+| **Krytyczny** | > 1.0 bpm/min | Silny stres sercowo-naczyniowy. Ryzyko przedwczesnego zmęczenia. Rozważ nawodnienie i schłodzenie |
+
+---
+
+### Tabela Interpretacji SmO₂ Drift
+
+| SmO₂ Slope | Zakres | Interpretacja |
+|---|---|---|
+| **Stabilny** | > -0.1 %/min | Praca w strefie tlenowej — dostawa O₂ nadąża za zużyciem |
+| **Umiarkowany spadek** | -0.1 do -0.3 %/min | Praca na granicy wydolności — typowe dla strefy Z3-Z4 |
+| **Postępujący deficyt** | < -0.3 %/min | Przekroczenie progu — narastający deficyt tlenowy, typowe dla Z5+ |
+
+---
+
+### 4 Mechanizmy Cardiovascular Drift
+
+**1. Utrata Objętości Osocza (Plasma Volume Loss)**
+Podczas wysiłku, potenie powoduje utratę płynów → spadek objętości osocza o 5-15% w ciągu godziny → zmniejszenie SV → kompensacyjny wzrost HR. Barsumyan et al. (2025) pokazali że ML może predykować stan zmęczenia na podstawie wzorca CV drift z danych power meter + HR.
+
+**2. Redystrybucja Krwi do Skóry (Skin Blood Flow)**
+Wzrost temperatury ciała → rozszerzenie naczyń skórnych → krew "ucieka" z centralnego krążenia do obwodu → dalszy spadek SV. Souissi et al. (2021) zaproponowali że CV drift może być strategią ochronną — wzrost HR z NO (nitric oxide) chroni mięsień sercowy przed przeciążeniem.
+
+**3. Wzrost Aktywności Współczulnej (Sympathetic Drive)**
+Postępująca aktywacja układu współczulnego → przyspieszenie HR niezależnie od SV. Ganio et al. (2021) wykazali że siła skurczu serca rośnie z częstotliwością (force-frequency relationship), co częściowo kompensuje spadek SV.
+
+**4. Spadek VO₂max Skutkiem Driftu**
+CV drift redukuje VO₂max o 5-10% podczas długich wysiłków — serce nie jest w stanie dostarczyć wystarczającej ilości O₂ do mięśni mimo stałej mocy.
+
+---
+
+### Scatter Plots: Jak Czytać?
+
+**Power vs HR (Viridis):**
+- Gradient koloru (ciemny → jasny) = czas. Jeśli punkty o tej samej mocy są jaśniejsze (później w czasie) i mają wyższe HR → drift.
+- **Linia trendu (czerwona przerywana):** Nachylenie = ogólna relacja moc-tętno. Im większe nachylenie, tym mniej ekonomiczny jesteś.
+- **Korelacja r w tytule:** r > 0.7 = silna zależność (typowa), r < 0.4 = słaba (może wskazywać na problemy z danymi lub interwały).
+
+**Power vs SmO₂ (Plasma):**
+- Gradient koloru = czas. Jeśli punkty o tej samej mocy są ciemniejsze (później) i mają niższe SmO₂ → narastający deficyt tlenowy.
+- **Linia trendu (cyjan przerywana):** Ujemne nachylenie = SmO₂ spada z mocą (oczekiwane). Dodatnie nachylenie = anomalia.
+
+---
+
+### Analiza przy Stałej Mocy: Złoty Standard
+
+Najczujsza metoda detekcji driftu — izoluje efekt czasu od efektu zmiany mocy.
+- **Segment automatyczny:** Algorytm szuka odcinków ≥2 min z mocą ±10%.
+- **Ręczny wybór:** Jeśli nie znaleziono segmentów — wpisz moc i tolerancję.
+- **HR Drift Slope** w bpm/min: bezpośrednia miara CV drift.
+- **SmO₂ Slope** w %/min: miara narastającego deficytu tlenowego.
+
+---
+
+### Wskazówki Praktyczne
+
+- **HR Drift > 0.5 bpm/min:** Sprawdź nawodnienie (cel: 500-750 ml/h), rozważ chłodzenie (oblania, lód)
+- **SmO₂ Drift < -0.3 %/min:** Moc jest zbyt wysoka dla danej kondycji — rozważ obniżenie o 5-10W
+- **Aerobic Decoupling (Pwr:HR):** Jeśli stosunek mocy do HR spada >5% w drugiej połowie jazdy — sygnał że baza tlenowa wymaga pracy
+- **Barsumyan et al. (2025)** pokazali że wzorce CV drift są unikalne dla każdego kolarza — porównuj drift między sesjami, nie między zawodnikami
+
+---
+
+### Bibliografia
+
+- Souissi et al. (2021). A new perspective on cardiovascular drift during prolonged exercise. *Life Sciences*, 287, 120109.
+- Barsumyan et al. (2025). Quantifying training response in cycling based on cardiovascular drift using machine learning. *Frontiers in Artificial Intelligence*, 8, 1623384.
+- Ganio et al. (2021). Cardiovascular drift during prolonged exercise: New perspectives. *Exercise and Sport Sciences Reviews*.
+- Nuuttila et al. (2024). Monitoring fatigue state with HR-based and subjective methods. *Eur J Sport Sci*, 24(7), 857–869.
+- Arnold et al. (2024). Muscle reoxygenation is slower after higher cycling intensity. *Frontiers in Physiology*, 15, 1449384.
         """)
 
 

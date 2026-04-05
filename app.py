@@ -84,6 +84,7 @@ def classify_and_cache_session(df_raw: pd.DataFrame, file_hash: str, uploaded_fi
     st.session_state["session_type"] = session_type
 
     ramp_classification = None
+    st.session_state["ramp_classification"] = None
     if "watts" in df_raw.columns or "power" in df_raw.columns:
         power_col = "watts" if "watts" in df_raw.columns else "power"
         power = df_raw[power_col].dropna()

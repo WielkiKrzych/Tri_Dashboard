@@ -20,6 +20,11 @@ from typing import Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
+from modules.calculations.column_aliases import (
+    normalize_columns,
+    resolve_hr_column,
+    resolve_power_column,
+)
 from models.results import (
     TestValidity,
     ValidityLevel,
@@ -68,7 +73,11 @@ def validate_test(
 
     # Work on a copy to avoid mutating the caller's DataFrame
     df = df.copy()
-    df.columns = df.columns.str.lower().str.strip()
+    normalize_columns(df)
+    if power_column == "watts":
+        resolve_power_column(df)
+    if hr_column == "hr":
+        resolve_hr_column(df)
     has_power = power_column in df.columns
     has_hr = hr_column in df.columns
     has_time = time_column in df.columns
@@ -79,11 +88,19 @@ def validate_test(
         result.issues = issues
         return result
 
+    if not has_hr:
+        result.validity = ValidityLevel.INVALID
+        issues.append(f"Brak wymaganej kolumny HR: {hr_column}")
+        result.issues = issues
+        return result
+
     # Calculate ramp duration
     time_range = df[time_column].max() - df[time_column].min()
     result.ramp_duration_sec = int(time_range)
 
-    if time_range < 360:  # < 6 min = INVALID
+    absolute_min_duration_sec = min(360, min_ramp_duration_sec)
+
+    if time_range < absolute_min_duration_sec:
         result.validity = ValidityLevel.INVALID
         issues.append(f"Rampa za krótka: {int(time_range / 60)} min (minimum: 6 min)")
         result.ramp_duration_sufficient = False
@@ -212,7 +229,11 @@ def preprocess_signals(
     result = PreprocessedData(df=df.copy())
 
     # Normalize column names
-    result.df.columns = result.df.columns.str.lower().str.strip()
+    normalize_columns(result.df)
+    if power_column == "watts":
+        resolve_power_column(result.df)
+    if hr_column == "hr":
+        resolve_hr_column(result.df)
 
     # Check available signals
     for col, name in [
@@ -417,7 +438,7 @@ def integrate_signals(analysis: IndependentAnalysisResults) -> IntegrationResult
             vt1_mid = result.vt1.midpoint_watts
             deviation = smo2_drop_power - vt1_mid
             result.smo2_deviation_vt1 = deviation
-            
+
             # [Issue #8] Calculate relative deviation as % of Pmax
             # Estimate Pmax from VT2 or VT1 (VT2 ≈ 80% Pmax, VT1 ≈ 60% Pmax)
             estimated_pmax = 0
@@ -425,15 +446,15 @@ def integrate_signals(analysis: IndependentAnalysisResults) -> IntegrationResult
                 estimated_pmax = result.vt2.midpoint_watts / 0.80
             elif vt1_mid:
                 estimated_pmax = vt1_mid / 0.60
-            
+
             # Relative thresholds based on % of Pmax
             if estimated_pmax > 0:
                 relative_deviation_pct = abs(deviation) / estimated_pmax
-                
+
                 # ±3% Pmax = confirm, ±5% Pmax = minor, >5% Pmax = conflict
                 CONFIRM_THRESHOLD = 0.03  # 3% of Pmax
-                MINOR_THRESHOLD = 0.05    # 5% of Pmax
-                
+                MINOR_THRESHOLD = 0.05  # 5% of Pmax
+
                 if relative_deviation_pct <= CONFIRM_THRESHOLD:
                     # SmO₂ CONFIRMS VT → boost confidence, narrow range
                     result.vt1.confidence = min(0.95, result.vt1.confidence + 0.15)
@@ -444,24 +465,26 @@ def integrate_signals(analysis: IndependentAnalysisResults) -> IntegrationResult
                     result.vt1.upper_watts = mid + width * (0.5 - shrink)
                     result.vt1.sources.append("SmO2 ✓")
                     result.integration_notes.append(
-                        f"✓ SmO₂ (LOCAL) potwierdza VT1 (różnica: {deviation:.0f}W = {relative_deviation_pct*100:.1f}% Pmax) → confidence +0.15"
+                        f"✓ SmO₂ (LOCAL) potwierdza VT1 (różnica: {deviation:.0f}W = {relative_deviation_pct * 100:.1f}% Pmax) → confidence +0.15"
                     )
                 elif relative_deviation_pct <= MINOR_THRESHOLD:
                     # SmO₂ slightly off → minor confidence reduction
                     result.vt1.confidence = max(0.3, result.vt1.confidence - 0.05)
                     result.integration_notes.append(
-                        f"ℹ️ SmO₂ (LOCAL) bliski VT1 (różnica: {deviation:.0f}W = {relative_deviation_pct*100:.1f}% Pmax) → confidence -0.05"
+                        f"ℹ️ SmO₂ (LOCAL) bliski VT1 (różnica: {deviation:.0f}W = {relative_deviation_pct * 100:.1f}% Pmax) → confidence -0.05"
                     )
                 else:
                     # SmO₂ significantly different → conflict
-                    conflict_type = ConflictType.SMO2_EARLY if deviation < 0 else ConflictType.SMO2_LATE
+                    conflict_type = (
+                        ConflictType.SMO2_EARLY if deviation < 0 else ConflictType.SMO2_LATE
+                    )
                     result.conflicts.conflicts.append(
                         SignalConflict(
                             conflict_type=conflict_type,
                             severity=ConflictSeverity.WARNING,
                             signal_a="SmO2 (LOCAL)",
                             signal_b="VE",
-                            description=f"SmO₂ (LOCAL) różni się od VT1 o {deviation:.0f}W ({relative_deviation_pct*100:.1f}% Pmax)",
+                            description=f"SmO₂ (LOCAL) różni się od VT1 o {deviation:.0f}W ({relative_deviation_pct * 100:.1f}% Pmax)",
                             physiological_interpretation=(
                                 "SmO₂ jest sygnałem LOKALNYM (jeden mięsień). "
                                 "Rozbieżność z VT może oznaczać różnicę między lokalną a systemową odpowiedzią."
@@ -477,7 +500,7 @@ def integrate_signals(analysis: IndependentAnalysisResults) -> IntegrationResult
                     result.vt1.lower_watts = mid - width * (0.5 + expand)
                     result.vt1.upper_watts = mid + width * (0.5 + expand)
                     result.integration_notes.append(
-                        f"⚠️ SmO₂ (LOCAL) konflikt z VT1: {deviation:.0f}W ({relative_deviation_pct*100:.1f}% Pmax) → confidence -0.1"
+                        f"⚠️ SmO₂ (LOCAL) konflikt z VT1: {deviation:.0f}W ({relative_deviation_pct * 100:.1f}% Pmax) → confidence -0.1"
                     )
             else:
                 # Fallback to fixed thresholds if Pmax unknown
@@ -735,6 +758,7 @@ def run_ramp_test_pipeline(
         if len(valid_points) >= 3:
             try:
                 from modules.power_duration import fit_critical_power
+
                 cp_result = fit_critical_power(
                     durations=list(valid_points.keys()),
                     max_mean_powers=list(valid_points.values()),
@@ -743,7 +767,9 @@ def run_ramp_test_pipeline(
                 w_prime_joules = cp_result.w_prime
                 logger.info(
                     "CP model fitted: CP=%.1fW, W'=%.0fJ (R²=%.3f)",
-                    cp_watts, w_prime_joules, cp_result.r_squared,
+                    cp_watts,
+                    w_prime_joules,
+                    cp_result.r_squared,
                 )
             except (ValueError, Exception) as e:
                 logger.warning("CP model fitting failed: %s", e)

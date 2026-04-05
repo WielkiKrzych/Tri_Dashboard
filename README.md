@@ -105,6 +105,19 @@ Tri_Dashboard/
 ## 📋 Changelog
 
 
+### 2026-04-05 — Domain Model, Quality Bands & Threshold Cross-Check
+
+Zgodnie z planem refactoru (4 fazy, wiarygodność analizy > kosmetyka):
+
+| Faza | Artefakt | Co wnosi |
+|:-----|:---------|:---------|
+| **1** | `docs/DOMAIN_MODEL.md` | Jedno źródło prawdy: kanoniczne entry pointy (`detect_vt_cpet`, `detect_smo2_thresholds_moxy`, `classify_ramp_test`), aliasy kolumn + jednostki, kontrakty rezultatów, kontrakt UI tabs (co wolno / czego nie) |
+| **2** | `tests/test_threshold_snapshots.py` | Snapshot testy regresji na deterministycznych rampach z inżynierowanymi break-pointami (VT1 ≈ 235 W, VT2 ≈ 325 W); locks pól wynikowych `detect_vt_cpet`/`detect_smo2_thresholds_moxy`; wymusza `T2_steady=None` dla rampy |
+| **3** | `modules/domain/data_quality.py` | Enum `DataQuality` (HIGH/CONDITIONAL/LOW/INVALID @ 0.80/0.60/0.40) + `quality_band()` + `format_band_badge_html()` — ujednolicone bandy zaufania do konsumpcji przez zakładki UI |
+| **4** | `modules/domain/threshold_crosscheck.py` | `crosscheck_threshold("VT2", {vent, smo2, hr})` → `AgreementLevel` (STRONG/MODERATE/WEAK/CONFLICT) z delta-watts i pairwise diffs per DOMAIN_MODEL §6; **nie uśrednia cicho** — konflikty są surfaced |
+
+**Zmiany:** +1228 linii (7 nowych plików), zero zmian w runtime logice — czysto addytywne prymitywy. Adopcja przez zakładki UI będzie inkrementalna w kolejnych commitach. 40+ nowych testów pokrywa boundary values, NaN/None handling i kontrakty wiadomości. Bazuje na istniejącym `TransitionZone`/`confidence` modelu — nie duplikuje.
+
 ### 2026-04-04 — Runtime Bug Fixes for New Tabs
 
 **5 critical runtime fixes** applied after initial tab deployment:

@@ -4,18 +4,19 @@ Summary Calculations — pure math helpers, no Streamlit dependency.
 
 import pandas as pd
 from scipy import stats
-from typing import Tuple
+from typing import Any, Tuple
 
+from modules.calculations.column_aliases import resolve_breath_rate_column, resolve_hr_column
 from modules.ui.utils import hash_dataframe as _hash_dataframe
 
 
 def _calculate_np(watts_series: pd.Series) -> float:
     """Obliczenie Normalized Power."""
     if len(watts_series) < 30:
-        return watts_series.mean()
+        return float(watts_series.mean())
     rolling_avg = watts_series.rolling(30, min_periods=1).mean()
     fourth_power = rolling_avg**4
-    return fourth_power.mean() ** 0.25
+    return float(fourth_power.mean() ** 0.25)
 
 
 def _estimate_cp_wprime(df_plot: pd.DataFrame) -> Tuple[float, float]:
@@ -31,15 +32,15 @@ def _estimate_cp_wprime(df_plot: pd.DataFrame) -> Tuple[float, float]:
 
     work_values = []
     for d in valid_durations:
-        p = df_plot["watts"].rolling(window=d).mean().max()
-        if not pd.isna(p):
-            work_values.append(p * d)
-        else:
+        p_raw = df_plot["watts"].rolling(window=d).mean().max()
+        if isinstance(p_raw, pd.Series) or pd.isna(p_raw):
             return 0, 0
+        p = float(p_raw)
+        work_values.append(p * d)
 
     try:
-        slope, intercept, _, _, _ = stats.linregress(valid_durations, work_values)
-        return slope, intercept
+        regression: Any = stats.linregress(valid_durations, work_values)
+        return float(regression.slope), float(regression.intercept)
     except Exception:
         return 0, 0
 
@@ -58,6 +59,8 @@ def _get_vent_metrics_for_power(
         return 0, 0, 0
 
     power_col = "watts_smooth_5s" if "watts_smooth_5s" in df_plot.columns else "watts"
+    hr_col = resolve_hr_column(df_plot)
+    br_col = resolve_breath_rate_column(df_plot)
 
     idx = (df_plot[power_col] - power_watts).abs().idxmin()
 
@@ -65,20 +68,10 @@ def _get_vent_metrics_for_power(
     end_idx = min(len(df_plot), idx + 5)
     window_data = df_plot.iloc[start_idx:end_idx]
 
-    hr_col = None
-    for alias in ["hr", "heartrate", "heart_rate", "bpm"]:
-        if alias in df_plot.columns:
-            hr_col = alias
-            break
     hr_val = window_data[hr_col].mean() if hr_col else 0
 
     ve_val = window_data["tymeventilation"].mean() if "tymeventilation" in df_plot.columns else 0
 
-    br_col = None
-    for alias in ["tymebreathrate", "br", "rr", "breath_rate"]:
-        if alias in df_plot.columns:
-            br_col = alias
-            break
     br_val = window_data[br_col].mean() if br_col else 0
 
     return hr_val, ve_val, br_val

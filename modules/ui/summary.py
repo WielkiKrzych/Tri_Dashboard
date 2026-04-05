@@ -14,8 +14,9 @@ from plotly.subplots import make_subplots
 import plotly.graph_objects as go
 import pandas as pd
 import numpy as np
-from typing import Optional
+from typing import Any
 
+from modules.calculations.column_aliases import normalize_columns, resolve_hr_column
 from modules.config import Config
 from modules.calculations.thresholds import analyze_step_test
 from modules.calculations.smo2_advanced import detect_smo2_thresholds_moxy
@@ -37,7 +38,7 @@ from .summary_thresholds import (
 def render_summary_tab(
     df_plot: pd.DataFrame,
     df_plot_resampled: pd.DataFrame,
-    metrics: dict,
+    metrics: dict[str, Any] | None,
     training_notes,
     uploaded_file_name: str,
     cp_input: int,
@@ -54,38 +55,45 @@ def render_summary_tab(
 
     # Work on a copy to avoid mutating the caller's DataFrame
     df_plot = df_plot.copy()
-    df_plot.columns = df_plot.columns.str.lower().str.strip()
+    normalize_columns(df_plot)
 
     # --- SHARED THRESHOLD DETECTION ---
-    hr_col = None
-    for alias in ["hr", "heartrate", "heart_rate", "bpm"]:
-        if alias in df_plot.columns:
-            hr_col = alias
-            break
+    hr_col = resolve_hr_column(df_plot)
 
-    threshold_result = analyze_step_test(
-        df_plot,
-        power_column="watts",
-        ve_column="tymeventilation" if "tymeventilation" in df_plot.columns else None,
-        smo2_column="smo2" if "smo2" in df_plot.columns else None,
-        hr_column=hr_col,
-        time_column="time",
-    )
+    analyze_kwargs: dict[str, Any] = {
+        "power_column": "watts",
+        "time_column": "time",
+    }
+    if "tymeventilation" in df_plot.columns:
+        analyze_kwargs["ve_column"] = "tymeventilation"
+    if "smo2" in df_plot.columns:
+        analyze_kwargs["smo2_column"] = "smo2"
+    if hr_col:
+        analyze_kwargs["hr_column"] = hr_col
+
+    threshold_result = analyze_step_test(df_plot, **analyze_kwargs)
 
     smo2_result = None
     if "smo2" in df_plot.columns:
         hr_max = int(df_plot[hr_col].max()) if hr_col else None
+        detected_vt1 = int(threshold_result.vt1_watts) if threshold_result.vt1_watts else None
+        detected_vt2 = int(threshold_result.vt2_watts) if threshold_result.vt2_watts else None
+        smo2_kwargs: dict[str, Any] = {
+            "df": df_plot,
+            "step_duration_sec": 180,
+            "smo2_col": "smo2",
+            "power_col": "watts",
+            "time_col": "time",
+            "cp_watts": cp_input if cp_input > 0 else None,
+            "hr_max": hr_max,
+            "vt1_watts": detected_vt1,
+            "rcp_onset_watts": detected_vt2,
+        }
+        if hr_col:
+            smo2_kwargs["hr_col"] = hr_col
+
         smo2_result = detect_smo2_thresholds_moxy(
-            df=df_plot,
-            step_duration_sec=180,
-            smo2_col="smo2",
-            power_col="watts",
-            hr_col=hr_col,
-            time_col="time",
-            cp_watts=cp_input if cp_input > 0 else None,
-            hr_max=hr_max,
-            vt1_watts=threshold_result.vt1_watts,
-            rcp_onset_watts=threshold_result.vt2_watts,
+            **smo2_kwargs,
         )
 
     eff_vt1 = (
@@ -117,8 +125,8 @@ def render_summary_tab(
     fig_training = _build_training_timeline_chart(
         df_plot,
         cp_input=cp_input,
-        vt1_watts=eff_vt1,
-        vt2_watts=eff_vt2,
+        vt1_watts=int(eff_vt1),
+        vt2_watts=int(eff_vt2),
     )
     if fig_training is not None:
         st.plotly_chart(fig_training, width="stretch", config=CHART_CONFIG)
@@ -258,7 +266,7 @@ def render_summary_tab(
     # 7. THRESHOLD DISCORDANCE INDEX (TDI)
     # =========================================================================
     st.subheader("7️⃣ Threshold Discordance Index (TDI)")
-    _render_tdi_analysis(eff_vt1, eff_lt1)
+    _render_tdi_analysis(int(eff_vt1), int(eff_lt1))
 
     st.markdown("---")
 
@@ -283,9 +291,7 @@ def _render_metrics_panel(df_plot, metrics, cp_input, w_prime_input, rider_weigh
     np_power = _calculate_np(df_plot["watts"]) if "watts" in df_plot.columns else 0
     work_kj = df_plot["watts"].sum() / 1000 if "watts" in df_plot.columns else 0
 
-    hr_col = (
-        "heartrate" if "heartrate" in df_plot.columns else "hr" if "hr" in df_plot.columns else None
-    )
+    hr_col = resolve_hr_column(df_plot)
     avg_hr = df_plot[hr_col].mean() if hr_col else 0
     min_hr = df_plot[hr_col].min() if hr_col else 0
     max_hr = df_plot[hr_col].max() if hr_col else 0
@@ -368,9 +374,12 @@ def _render_vo2max_uncertainty(df_plot: pd.DataFrame, rider_weight: float):
         st.warning("⚠️ **Za mało danych** (wymagane min. 5 minut) — nie można estymować VO2max.")
         return
 
-    rolling_5min = df_plot["watts"].rolling(window=300, min_periods=300).mean()
-    best_5min_idx = rolling_5min.idxmax()
-    mmp_5min = rolling_5min.max()
+    rolling_5min = pd.Series(df_plot["watts"].rolling(window=300, min_periods=300).mean())
+    best_5min_idx_raw = rolling_5min.idxmax()
+    best_5min_idx = (
+        int(best_5min_idx_raw) if isinstance(best_5min_idx_raw, (int, np.integer)) else 299
+    )
+    mmp_5min = float(rolling_5min.max())
 
     best_5min_start = max(0, best_5min_idx - 299)
     df_best5 = df_plot.iloc[best_5min_start : best_5min_idx + 1]
@@ -388,11 +397,10 @@ def _render_vo2max_uncertainty(df_plot: pd.DataFrame, rider_weight: float):
     ci95_vo2 = 1.96 * se_vo2
 
     hr_penalty = 0
-    hr_col = None
-    for alias in ["hr", "heartrate", "heart_rate", "bpm"]:
-        if alias in df_best5.columns:
-            hr_col = alias
-            break
+    hr_col = resolve_hr_column(df_best5)
+    hr_mean = 0.0
+    hr_sd = 0.0
+    hr_cv = 0.0
 
     if hr_col:
         hr_mean = df_best5[hr_col].mean()

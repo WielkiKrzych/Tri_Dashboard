@@ -5,6 +5,8 @@ Manual Thresholds tab — step-test VT1/VT2 detection and editable threshold ent
 import streamlit as st
 import plotly.graph_objects as go
 import pandas as pd
+from typing import Any
+from modules.calculations.column_aliases import normalize_columns, resolve_hr_column
 from modules.calculations.thresholds import analyze_step_test
 from modules.calculations.vt_cpet import detect_vt_cpet
 from modules.calculations.quality import check_step_test_protocol
@@ -28,14 +30,8 @@ def render_manual_thresholds_tab(
 
     # Work on a copy to avoid mutating the caller's DataFrame
     target_df = target_df.copy()
-    target_df.columns = target_df.columns.str.lower().str.strip()
-
-    # Handle HR aliases
-    if "hr" not in target_df.columns:
-        for alias in ["heart_rate", "heart rate", "bpm", "tętno", "heartrate", "heart_rate_bpm"]:
-            if alias in target_df.columns:
-                target_df = target_df.rename(columns={alias: "hr"})
-                break
+    normalize_columns(target_df)
+    resolve_hr_column(target_df)
 
     if "watts_smooth_5s" not in target_df.columns and "watts" in target_df.columns:
         target_df["watts_smooth_5s"] = target_df["watts"].rolling(window=5, center=True).mean()
@@ -75,13 +71,21 @@ def render_manual_thresholds_tab(
 
     # Próba pobrania domyślnych wartości z automatycznej detekcji
     with st.spinner("Analizowanie progów dla sugestii..."):
-        result = analyze_step_test(
-            target_df,
-            power_column="watts",
-            ve_column="tymeventilation",
-            hr_column="hr" if "hr" in target_df.columns else None,
-            time_column="time",
-        )
+        if "hr" in target_df.columns:
+            result = analyze_step_test(
+                target_df,
+                power_column="watts",
+                ve_column="tymeventilation",
+                hr_column="hr",
+                time_column="time",
+            )
+        else:
+            result = analyze_step_test(
+                target_df,
+                power_column="watts",
+                ve_column="tymeventilation",
+                time_column="time",
+            )
 
     col_inp1, col_inp2 = st.columns(2)
     with col_inp1:
@@ -701,7 +705,7 @@ def render_manual_thresholds_tab(
         st.info("Ustaw manualnie VT1 i VT2, aby wygenerować strefy treningowe.")
 
 
-def _calculate_zones(vt1: int, vt2: int, cp: int, max_hr: int, lthr: int) -> dict:
+def _calculate_zones(vt1: int, vt2: int, cp: int, max_hr: int, lthr: int) -> dict[str, Any]:
     """Obliczanie stref treningowych na podstawie progów."""
     return {
         "power": {
@@ -731,12 +735,14 @@ def _calculate_zones(vt1: int, vt2: int, cp: int, max_hr: int, lthr: int) -> dic
     }
 
 
-def _render_zones_bar(power_zones: dict):
+def _render_zones_bar(power_zones: dict[str, tuple[int | None, int | None]]):
     """Renderowanie kolorowego paska stref mocy."""
     colors = ["#3498db", "#2ecc71", "#f1c40f", "#e67e22", "#e74c3c", "#9b59b6"]
     fig = go.Figure()
 
     for i, (zone, (low, high)) in enumerate(power_zones.items()):
+        if low is None or high is None:
+            continue
         fig.add_trace(
             go.Bar(
                 y=["Strefy Mocy"],

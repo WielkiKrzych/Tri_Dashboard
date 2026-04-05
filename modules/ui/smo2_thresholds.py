@@ -5,6 +5,7 @@ SmO2 Thresholds tab — Moxy ramp-test pipeline: T1 / T2_onset detection and zon
 import streamlit as st
 import plotly.graph_objects as go
 import pandas as pd
+from modules.calculations.column_aliases import normalize_columns, resolve_hr_column
 from modules.calculations.smo2_advanced import detect_smo2_thresholds_moxy
 
 
@@ -21,13 +22,8 @@ def render_smo2_thresholds_tab(target_df, training_notes, uploaded_file_name, cp
         return
 
     target_df = target_df.copy()
-    target_df.columns = target_df.columns.str.lower().str.strip()
-
-    if "hr" not in target_df.columns:
-        for alias in ["heart_rate", "bpm", "heartrate"]:
-            if alias in target_df.columns:
-                target_df = target_df.rename(columns={alias: "hr"})
-                break
+    normalize_columns(target_df)
+    resolve_hr_column(target_df)
 
     if "smo2" not in target_df.columns:
         st.info("ℹ️ Brak danych SmO2 w tym pliku.")
@@ -53,18 +49,31 @@ def render_smo2_thresholds_tab(target_df, training_notes, uploaded_file_name, cp
     hr_max = int(target_df["hr"].max()) if "hr" in target_df.columns else None
 
     with st.spinner("Analiza SmO₂..."):
-        result = detect_smo2_thresholds_moxy(
-            df=target_df,
-            step_duration_sec=180,
-            smo2_col="smo2",
-            power_col="watts",
-            hr_col="hr" if "hr" in target_df.columns else None,
-            time_col="time",
-            cp_watts=cp_input if cp_input > 0 else None,
-            hr_max=hr_max,
-            vt1_watts=vt1_watts,
-            rcp_onset_watts=rcp_onset,
-        )
+        if "hr" in target_df.columns:
+            result = detect_smo2_thresholds_moxy(
+                df=target_df,
+                step_duration_sec=180,
+                smo2_col="smo2",
+                power_col="watts",
+                hr_col="hr",
+                time_col="time",
+                cp_watts=cp_input if cp_input > 0 else None,
+                hr_max=hr_max,
+                vt1_watts=vt1_watts,
+                rcp_onset_watts=rcp_onset,
+            )
+        else:
+            result = detect_smo2_thresholds_moxy(
+                df=target_df,
+                step_duration_sec=180,
+                smo2_col="smo2",
+                power_col="watts",
+                time_col="time",
+                cp_watts=cp_input if cp_input > 0 else None,
+                hr_max=hr_max,
+                vt1_watts=vt1_watts,
+                rcp_onset_watts=rcp_onset,
+            )
 
     st.markdown("---")
 
@@ -146,9 +155,17 @@ def render_smo2_thresholds_tab(target_df, training_notes, uploaded_file_name, cp
                 cols.insert(3, "hr")
 
             available = [c for c in cols if c in diag_df.columns]
-            diag = diag_df[available].round(
-                {"power": 0, "smo2": 1, "trend": 2, "cv": 1, "osc_amp": 1, "curvature": 5}
-            )
+            diag = diag_df[available].copy()
+            for column, decimals in {
+                "power": 0,
+                "smo2": 1,
+                "trend": 2,
+                "cv": 1,
+                "osc_amp": 1,
+                "curvature": 5,
+            }.items():
+                if column in diag.columns:
+                    diag[column] = diag[column].round(decimals)
 
             rename = {
                 "step": "Step",
@@ -161,7 +178,8 @@ def render_smo2_thresholds_tab(target_df, training_notes, uploaded_file_name, cp
                 "curvature": "Curv",
             }
 
-            st.dataframe(diag.rename(columns=rename), width="stretch", hide_index=True)
+            diag.columns = [rename.get(str(column), str(column)) for column in diag.columns]
+            st.dataframe(diag, width="stretch", hide_index=True)
 
     # =========================================================================
     # STREFY
@@ -454,7 +472,8 @@ def render_smo2_thresholds_tab(target_df, training_notes, uploaded_file_name, cp
                     ),
                     "neutral": ("➡️ Neutral (Flat)", "No clear trend change at BP2"),
                 }
-                label, desc = labels.get(inf_type, (inf_type, ""))
+                inflection_key = inf_type or "neutral"
+                label, desc = labels.get(inflection_key, (inflection_key, ""))
                 st.markdown(f"**{label}**")
                 st.caption(desc)
 

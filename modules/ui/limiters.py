@@ -1,49 +1,48 @@
 """
 Limiters tab — identifies the primary performance limiter (central vs local vs metabolic).
 """
+
 import streamlit as st
 import plotly.graph_objects as go
 import pandas as pd
+from modules.calculations.column_aliases import normalize_columns, resolve_hr_column
 from modules.plots import CHART_CONFIG, CHART_HEIGHT_RADAR
+
 
 def render_limiters_tab(df_plot, cp_input, vt2_vent):
     st.header("Analiza Limiterów Fizjologicznych (INSCYD-style)")
-    st.markdown("Identyfikujemy Twoje ograniczenia metaboliczne i typ zawodniczy na podstawie danych treningowych.")
+    st.markdown(
+        "Identyfikujemy Twoje ograniczenia metaboliczne i typ zawodniczy na podstawie danych treningowych."
+    )
 
     # Work on a copy to avoid mutating the caller's DataFrame
     df_plot = df_plot.copy()
-    df_plot.columns = df_plot.columns.str.lower().str.strip()
+    normalize_columns(df_plot)
+    resolve_hr_column(df_plot)
 
-    # Handle HR aliases
-    if 'hr' not in df_plot.columns:
-        for alias in ['heartrate', 'heart_rate', 'bpm']:
-            if alias in df_plot.columns:
-                df_plot = df_plot.rename(columns={alias: 'hr'})
-                break
-    
-    has_hr = 'hr' in df_plot.columns
-    has_ve = any(c in df_plot.columns for c in ['tymeventilation', 've', 'ventilation'])
-    has_smo2 = 'smo2' in df_plot.columns
-    has_watts = 'watts' in df_plot.columns
+    has_hr = "hr" in df_plot.columns
+    has_ve = any(c in df_plot.columns for c in ["tymeventilation", "ve", "ventilation"])
+    has_smo2 = "smo2" in df_plot.columns
+    has_watts = "watts" in df_plot.columns
 
     if has_watts:
         # --- SEKCJA 1: PROFIL METABOLICZNY (INSCYD-style) ---
         st.subheader("🧬 Profil Metaboliczny (Szacunkowy)")
-        
+
         # Oblicz MMP dla różnych okien
-        df_plot['mmp_1min'] = df_plot['watts'].rolling(window=60, min_periods=60).mean()
-        df_plot['mmp_5min'] = df_plot['watts'].rolling(window=300, min_periods=300).mean()
-        df_plot['mmp_20min'] = df_plot['watts'].rolling(window=1200, min_periods=1200).mean()
-        
-        mmp_1min = df_plot['mmp_1min'].max() if not df_plot['mmp_1min'].isna().all() else 0
-        mmp_5min = df_plot['mmp_5min'].max() if not df_plot['mmp_5min'].isna().all() else 0
-        mmp_20min = df_plot['mmp_20min'].max() if not df_plot['mmp_20min'].isna().all() else 0
-        
+        df_plot["mmp_1min"] = df_plot["watts"].rolling(window=60, min_periods=60).mean()
+        df_plot["mmp_5min"] = df_plot["watts"].rolling(window=300, min_periods=300).mean()
+        df_plot["mmp_20min"] = df_plot["watts"].rolling(window=1200, min_periods=1200).mean()
+
+        mmp_1min = df_plot["mmp_1min"].max() if not df_plot["mmp_1min"].isna().all() else 0
+        mmp_5min = df_plot["mmp_5min"].max() if not df_plot["mmp_5min"].isna().all() else 0
+        mmp_20min = df_plot["mmp_20min"].max() if not df_plot["mmp_20min"].isna().all() else 0
+
         # Klasyfikacja typu zawodnika
         if mmp_20min > 0:
             anaerobic_ratio = mmp_5min / mmp_20min
             sprint_ratio = mmp_1min / mmp_5min if mmp_5min > 0 else 1.0
-            
+
             if anaerobic_ratio > 1.08:
                 profile = "🏃 Sprinter / Puncheur"
                 vlamax_est = "Wysoki (>0.5 mmol/L/s)"
@@ -62,67 +61,83 @@ def render_limiters_tab(df_plot, cp_input, vt2_vent):
                 profile_color = "#ffd93d"
                 strength = "Wszechstronność"
                 weakness = "Brak dominującej cechy"
-            
+
             # Wyświetl profil
             col1, col2, col3 = st.columns(3)
             col1.metric("Typ Zawodnika", profile)
             col2.metric("Est. VLaMax", vlamax_est)
             col3.metric("Ratio 5min/20min", f"{anaerobic_ratio:.2f}")
-            
-            st.markdown(f"""
+
+            st.markdown(
+                f"""
             <div style="padding:15px; border-radius:8px; border:2px solid {profile_color}; background-color: #222;">
                 <p style="margin:0;"><b>💪 Mocna strona:</b> {strength}</p>
                 <p style="margin:5px 0 0 0;"><b>⚠️ Do poprawy:</b> {weakness}</p>
             </div>
-            """, unsafe_allow_html=True)
+            """,
+                unsafe_allow_html=True,
+            )
         else:
             st.info("Trening zbyt krótki dla analizy profilu metabolicznego (min. 20 min).")
             anaerobic_ratio = None
-        
+
         st.divider()
 
         # --- SEKCJA 2: RADAR LIMITERÓW ---
         if has_hr or has_ve or has_smo2:
             st.subheader("📊 Radar Obciążenia Systemów")
-            
+
             window_options = {
-                "1 min (Anaerobic)": 60, 
-                "5 min (VO2max)": 300, 
+                "1 min (Anaerobic)": 60,
+                "5 min (VO2max)": 300,
                 "20 min (FTP)": 1200,
-                "60 min (Endurance)": 3600
+                "60 min (Endurance)": 3600,
             }
-            selected_window_name = st.selectbox("Wybierz okno analizy (MMP):", list(window_options.keys()), index=1)
+            selected_window_name = st.selectbox(
+                "Wybierz okno analizy (MMP):", list(window_options.keys()), index=1
+            )
             window_sec = window_options[selected_window_name]
 
-            df_plot['rolling_watts'] = df_plot['watts'].rolling(window=window_sec, min_periods=window_sec).mean()
+            df_plot["rolling_watts"] = (
+                df_plot["watts"].rolling(window=window_sec, min_periods=window_sec).mean()
+            )
 
-            if df_plot['rolling_watts'].isna().all():
-                st.warning(f"Trening jest krótszy niż {window_sec/60:.0f} min. Wybierz krótsze okno.")
+            if df_plot["rolling_watts"].isna().all():
+                st.warning(
+                    f"Trening jest krótszy niż {window_sec / 60:.0f} min. Wybierz krótsze okno."
+                )
             else:
-                peak_idx = df_plot['rolling_watts'].idxmax()
+                peak_idx = df_plot["rolling_watts"].idxmax()
 
                 if not pd.isna(peak_idx):
                     start_idx = max(0, peak_idx - window_sec + 1)
-                    df_peak = df_plot.iloc[start_idx:peak_idx+1]
-                    
+                    df_peak = df_plot.iloc[start_idx : peak_idx + 1]
+
                     # Obliczenia % with z-score normalization
                     # Raw percentages are on different physiological scales,
                     # so we normalize to expected ranges at given intensity
                     # to make cross-system comparison meaningful.
 
-                    peak_hr_avg = df_peak['hr'].mean() if has_hr else 0
-                    max_hr_user = df_plot['hr'].max() if has_hr else 1
+                    peak_hr_avg = df_peak["hr"].mean() if has_hr else 0
+                    max_hr_user = df_plot["hr"].max() if has_hr else 1
                     pct_hr = (peak_hr_avg / max_hr_user * 100) if max_hr_user > 0 else 0
 
-                    col_ve_nm = next((c for c in ['tymeventilation', 've', 'ventilation'] if c in df_plot.columns), None)
+                    col_ve_nm = next(
+                        (
+                            c
+                            for c in ["tymeventilation", "ve", "ventilation"]
+                            if c in df_plot.columns
+                        ),
+                        None,
+                    )
                     peak_ve_avg = df_peak[col_ve_nm].mean() if col_ve_nm else 0
                     max_ve_user = vt2_vent * 1.1 if vt2_vent > 0 else 1
                     pct_ve = (peak_ve_avg / max_ve_user * 100) if max_ve_user > 0 else 0
 
-                    peak_smo2_avg = df_peak['smo2'].mean() if has_smo2 else 100
+                    peak_smo2_avg = df_peak["smo2"].mean() if has_smo2 else 100
                     pct_smo2_util = 100 - peak_smo2_avg
 
-                    peak_w_avg = df_peak['watts'].mean()
+                    peak_w_avg = df_peak["watts"].mean()
                     pct_power = (peak_w_avg / cp_input * 100) if cp_input > 0 else 0
 
                     # Normalize to comparable 0-100 scale using expected physiological ranges
@@ -131,10 +146,10 @@ def render_limiters_tab(df_plot, cp_input, vt2_vent):
                     # - SmO2 desaturation >60% is extremely rare
                     # - VE 95% VEmax suggests ventilatory limitation
                     # Expected maximal values (population norms for trained cyclists):
-                    expected_max_hr_pct = 98.0     # HR rarely exceeds ~98% HRmax sustained
-                    expected_max_ve_pct = 95.0     # VE at max effort ~95% of capacity
-                    expected_max_desat = 55.0      # SmO2 desaturation rarely >55% in VL
-                    expected_max_power_pct = 120.0 # Can exceed CP in short efforts
+                    expected_max_hr_pct = 98.0  # HR rarely exceeds ~98% HRmax sustained
+                    expected_max_ve_pct = 95.0  # VE at max effort ~95% of capacity
+                    expected_max_desat = 55.0  # SmO2 desaturation rarely >55% in VL
+                    expected_max_power_pct = 120.0  # Can exceed CP in short efforts
 
                     norm_hr = min(100.0, pct_hr / expected_max_hr_pct * 100)
                     norm_ve = min(100.0, pct_ve / expected_max_ve_pct * 100)
@@ -142,7 +157,12 @@ def render_limiters_tab(df_plot, cp_input, vt2_vent):
                     norm_power = min(100.0, pct_power / expected_max_power_pct * 100)
 
                     # Radar uses normalized values for cross-system comparison
-                    categories = ['Serce (norm.)', 'Płuca (norm.)', 'Mięśnie (norm.)', 'Moc (norm.)']
+                    categories = [
+                        "Serce (norm.)",
+                        "Płuca (norm.)",
+                        "Mięśnie (norm.)",
+                        "Moc (norm.)",
+                    ]
                     values = [norm_hr, norm_ve, norm_smo2, norm_power]
                     values += [values[0]]
                     categories += [categories[0]]
@@ -156,24 +176,28 @@ def render_limiters_tab(df_plot, cp_input, vt2_vent):
 
                     fig_radar = go.Figure()
                     # User profile
-                    fig_radar.add_trace(go.Scatterpolar(
-                        r=values,
-                        theta=categories,
-                        fill='toself',
-                        name=selected_window_name,
-                        line=dict(color='#00cc96'),
-                        fillcolor='rgba(0, 204, 150, 0.3)',
-                        hovertemplate="%{theta}: <b>%{r:.1f}%</b><extra></extra>"
-                    ))
+                    fig_radar.add_trace(
+                        go.Scatterpolar(
+                            r=values,
+                            theta=categories,
+                            fill="toself",
+                            name=selected_window_name,
+                            line=dict(color="#00cc96"),
+                            fillcolor="rgba(0, 204, 150, 0.3)",
+                            hovertemplate="%{theta}: <b>%{r:.1f}%</b><extra></extra>",
+                        )
+                    )
                     # Elite reference ring
-                    fig_radar.add_trace(go.Scatterpolar(
-                        r=elite_r,
-                        theta=categories,
-                        fill=None,
-                        name="Norma Elity",
-                        line=dict(color="rgba(255,255,255,0.35)", dash="dot", width=1),
-                        hovertemplate="%{theta}: <b>%{r:.0f}%</b> (norma)<extra></extra>",
-                    ))
+                    fig_radar.add_trace(
+                        go.Scatterpolar(
+                            r=elite_r,
+                            theta=categories,
+                            fill=None,
+                            name="Norma Elity",
+                            line=dict(color="rgba(255,255,255,0.35)", dash="dot", width=1),
+                            hovertemplate="%{theta}: <b>%{r:.0f}%</b> (norma)<extra></extra>",
+                        )
+                    )
 
                     fig_radar.update_layout(
                         polar=dict(
@@ -192,9 +216,13 @@ def render_limiters_tab(df_plot, cp_input, vt2_vent):
                     )
 
                     st.plotly_chart(fig_radar, width="stretch", config=CHART_CONFIG)
-                    
+
                     # Diagnoza — use normalized values for fair comparison
-                    limiting_factor = "Serce" if norm_hr >= max(norm_ve, norm_smo2) else ("Płuca" if norm_ve >= norm_smo2 else "Mięśnie")
+                    limiting_factor = (
+                        "Serce"
+                        if norm_hr >= max(norm_ve, norm_smo2)
+                        else ("Płuca" if norm_ve >= norm_smo2 else "Mięśnie")
+                    )
 
                     st.markdown(f"""
                     ### 🔍 Diagnoza: {selected_window_name}
@@ -210,7 +238,7 @@ def render_limiters_tab(df_plot, cp_input, vt2_vent):
 
                     *Normalizacja: surowe % przeliczone na wspólną skalę 0-100 względem oczekiwanych wartości maksymalnych w populacji wytrenowanych kolarzy.*
                     """)
-                    
+
                     # Rekomendacje
                     if limiting_factor == "Serce":
                         st.warning("""
@@ -259,9 +287,9 @@ def render_limiters_tab(df_plot, cp_input, vt2_vent):
                         - Sprawdź pozycję — okluzja mechaniczna? (SmO₂ zależy od ATT i pozycji sensora)
                         - Monitoruj reoxygenation half-time (<15s = dobra kapilaryzacja)
                         """)
-        
+
         st.divider()
-        
+
         # --- SEKCJA 3: TEORIA INSCYD ---
         with st.expander("📚 Teoria: Model INSCYD i Typy Zawodników", expanded=False):
             st.markdown("""

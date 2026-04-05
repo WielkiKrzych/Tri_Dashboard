@@ -1,9 +1,11 @@
 """
 SmO2 Manual Thresholds tab — step-test SmO2 threshold entry and slope analysis.
 """
+
 import streamlit as st
 import plotly.graph_objects as go
 import pandas as pd
+from modules.calculations.column_aliases import normalize_columns, resolve_hr_column
 from modules.calculations.thresholds import analyze_step_test
 from modules.calculations.quality import check_step_test_protocol
 
@@ -22,7 +24,7 @@ def render_smo2_manual_thresholds_tab(target_df, training_notes, uploaded_file_n
 
     # Work on a copy to avoid mutating the caller's DataFrame
     target_df = target_df.copy()
-    target_df.columns = target_df.columns.str.lower().str.strip()
+    normalize_columns(target_df)
 
     if "smo2" not in target_df.columns:
         st.info("ℹ️ Brak danych SmO2 w tym pliku.")
@@ -32,12 +34,7 @@ def render_smo2_manual_thresholds_tab(target_df, training_notes, uploaded_file_n
         st.error("Brak kolumny czasu!")
         return
 
-    # Handle HR aliases
-    if "hr" not in target_df.columns:
-        for alias in ["heart_rate", "heart rate", "bpm", "tętno", "heartrate", "heart_rate_bpm"]:
-            if alias in target_df.columns:
-                target_df = target_df.rename(columns={alias: "hr"})
-                break
+    resolve_hr_column(target_df)
 
     # Wygładzanie
     if "watts_smooth_5s" not in target_df.columns and "watts" in target_df.columns:
@@ -64,14 +61,38 @@ def render_smo2_manual_thresholds_tab(target_df, training_notes, uploaded_file_n
 
     # Próba pobrania domyślnych wartości z automatycznej detekcji
     with st.spinner("Analizowanie progów SmO2 dla sugestii..."):
-        result = analyze_step_test(
-            target_df,
-            power_column="watts",
-            ve_column="tymeventilation" if "tymeventilation" in target_df.columns else None,
-            smo2_column="smo2",
-            hr_column="hr" if "hr" in target_df.columns else None,
-            time_column="time",
-        )
+        if "tymeventilation" in target_df.columns and "hr" in target_df.columns:
+            result = analyze_step_test(
+                target_df,
+                power_column="watts",
+                ve_column="tymeventilation",
+                smo2_column="smo2",
+                hr_column="hr",
+                time_column="time",
+            )
+        elif "tymeventilation" in target_df.columns:
+            result = analyze_step_test(
+                target_df,
+                power_column="watts",
+                ve_column="tymeventilation",
+                smo2_column="smo2",
+                time_column="time",
+            )
+        elif "hr" in target_df.columns:
+            result = analyze_step_test(
+                target_df,
+                power_column="watts",
+                smo2_column="smo2",
+                hr_column="hr",
+                time_column="time",
+            )
+        else:
+            result = analyze_step_test(
+                target_df,
+                power_column="watts",
+                smo2_column="smo2",
+                time_column="time",
+            )
 
     col_inp1, col_inp2 = st.columns(2)
     with col_inp1:

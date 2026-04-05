@@ -6,6 +6,7 @@ import streamlit as st
 import plotly.graph_objects as go
 import pandas as pd
 import numpy as np
+from modules.calculations.column_aliases import normalize_columns, resolve_hr_column
 from modules.ui.shared import chart, require_data
 
 
@@ -18,14 +19,8 @@ def render_hr_tab(df):
     # 1. Normalizacja danych
     df_chart = df.copy()
     # Ensure columns are lowercased and stripped (though load_data usually does this)
-    df_chart.columns = df_chart.columns.str.lower().str.strip()
-
-    # Aliasy dla HR
-    if "hr" not in df_chart.columns:
-        for alias in ["heart_rate", "heart rate", "bpm", "tętno", "heartrate", "heart_rate_bpm"]:
-            if alias in df_chart.columns:
-                df_chart = df_chart.rename(columns={alias: "hr"})
-                break
+    normalize_columns(df_chart)
+    resolve_hr_column(df_chart)
 
     if "hr" not in df_chart.columns:
         st.warning("⚠️ Brak danych tętna (HR) w wczytanym pliku.")

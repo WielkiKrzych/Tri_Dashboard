@@ -11,6 +11,7 @@ Orchestrates:
 import logging
 import streamlit as st
 import pandas as pd
+from modules.calculations.column_aliases import normalize_columns, resolve_hr_column
 from modules.calculations.vt_cpet import detect_vt_cpet
 from modules.calculations.quality import check_step_test_protocol
 from modules.calculations.pipeline import run_ramp_test_pipeline
@@ -48,13 +49,8 @@ def render_vent_thresholds_tab(
 
     # Work on a copy to avoid mutating the caller's DataFrame
     target_df = target_df.copy()
-    target_df.columns = target_df.columns.str.lower().str.strip()
-
-    if "hr" not in target_df.columns:
-        for alias in ["heart_rate", "heart rate", "bpm", "tętno", "heartrate", "heart_rate_bpm"]:
-            if alias in target_df.columns:
-                target_df = target_df.rename(columns={alias: "hr"})
-                break
+    normalize_columns(target_df)
+    resolve_hr_column(target_df)
 
     if "watts_smooth_5s" not in target_df.columns and "watts" in target_df.columns:
         target_df["watts_smooth_5s"] = target_df["watts"].rolling(window=5, center=True).mean()
@@ -121,22 +117,70 @@ def render_vent_thresholds_tab(
         st.session_state["cpet_vt_result"] = cpet_result
 
         try:
-            pipeline_result = run_ramp_test_pipeline(
-                target_df,
-                power_column="watts",
-                ve_column="tymeventilation",
-                hr_column="hr" if "hr" in target_df.columns else None,
-                smo2_column="smo2" if "smo2" in target_df.columns else None,
-                time_column="time",
-                test_date=pd.Timestamp.now().strftime("%Y-%m-%d"),
-                protocol="Ramp Test",
-                cp_watts=float(cp_input),
-                w_prime_joules=float(w_prime_input),
-                smo2_manual_lt1=st.session_state.get("smo2_lt1_m"),
-                smo2_manual_lt2=st.session_state.get("smo2_lt2_m"),
-                rider_weight=float(rider_weight),
-                max_hr=float(max_hr),
-            )
+            if "hr" in target_df.columns and "smo2" in target_df.columns:
+                pipeline_result = run_ramp_test_pipeline(
+                    target_df,
+                    power_column="watts",
+                    hr_column="hr",
+                    ve_column="tymeventilation",
+                    smo2_column="smo2",
+                    time_column="time",
+                    test_date=pd.Timestamp.now().strftime("%Y-%m-%d"),
+                    protocol="Ramp Test",
+                    cp_watts=float(cp_input),
+                    w_prime_joules=float(w_prime_input),
+                    smo2_manual_lt1=st.session_state.get("smo2_lt1_m"),
+                    smo2_manual_lt2=st.session_state.get("smo2_lt2_m"),
+                    rider_weight=float(rider_weight),
+                    max_hr=float(max_hr),
+                )
+            elif "hr" in target_df.columns:
+                pipeline_result = run_ramp_test_pipeline(
+                    target_df,
+                    power_column="watts",
+                    hr_column="hr",
+                    ve_column="tymeventilation",
+                    time_column="time",
+                    test_date=pd.Timestamp.now().strftime("%Y-%m-%d"),
+                    protocol="Ramp Test",
+                    cp_watts=float(cp_input),
+                    w_prime_joules=float(w_prime_input),
+                    smo2_manual_lt1=st.session_state.get("smo2_lt1_m"),
+                    smo2_manual_lt2=st.session_state.get("smo2_lt2_m"),
+                    rider_weight=float(rider_weight),
+                    max_hr=float(max_hr),
+                )
+            elif "smo2" in target_df.columns:
+                pipeline_result = run_ramp_test_pipeline(
+                    target_df,
+                    power_column="watts",
+                    ve_column="tymeventilation",
+                    smo2_column="smo2",
+                    time_column="time",
+                    test_date=pd.Timestamp.now().strftime("%Y-%m-%d"),
+                    protocol="Ramp Test",
+                    cp_watts=float(cp_input),
+                    w_prime_joules=float(w_prime_input),
+                    smo2_manual_lt1=st.session_state.get("smo2_lt1_m"),
+                    smo2_manual_lt2=st.session_state.get("smo2_lt2_m"),
+                    rider_weight=float(rider_weight),
+                    max_hr=float(max_hr),
+                )
+            else:
+                pipeline_result = run_ramp_test_pipeline(
+                    target_df,
+                    power_column="watts",
+                    ve_column="tymeventilation",
+                    time_column="time",
+                    test_date=pd.Timestamp.now().strftime("%Y-%m-%d"),
+                    protocol="Ramp Test",
+                    cp_watts=float(cp_input),
+                    w_prime_joules=float(w_prime_input),
+                    smo2_manual_lt1=st.session_state.get("smo2_lt1_m"),
+                    smo2_manual_lt2=st.session_state.get("smo2_lt2_m"),
+                    rider_weight=float(rider_weight),
+                    max_hr=float(max_hr),
+                )
 
             st.session_state["pending_pipeline_result"] = pipeline_result
             st.session_state["pending_source_df"] = target_df

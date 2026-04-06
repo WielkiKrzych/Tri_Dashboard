@@ -104,6 +104,19 @@ Tri_Dashboard/
 
 ## 📋 Changelog
 
+### 2026-04-06 — Critical Bug & Security Fixes
+
+**Commits on `main` branch:**
+
+| # | Commit | Description |
+|---|--------|-------------|
+| 1 | `92c7617` | **Fix critical bugs, security issues, and exception handling**
+- Fix variable name typo in modules/reports.py: vt2watts → vt2_watts
+- Fix XSS vulnerabilities in app.py: change unsafe_allow_html=True to False
+- Improve exception handling in scripts/generate_pdf_from_csv.py: use specific exceptions and add logging
+- Improve exception handling in services/data_validation.py: add logger, fix broad exception handlers, remove duplicate return
+- Update README.md with summary of changes
+
 
 ### 2026-04-06 — Performance Optimization Plan
 

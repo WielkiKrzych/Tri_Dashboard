@@ -192,4 +192,59 @@ def get_session_store() -> "SessionStore":
     return _get_store()
 
 
+# =============================================================================
+# STREAMLIT CACHE_DATA - Rolling window computations
+# =============================================================================
 
+import streamlit as st  # noqa: E402
+
+
+def _hash_df(df: pd.DataFrame) -> str:
+    """Hash a DataFrame for cache key generation."""
+    return str(pd.util.hash_pandas_object(df).sum())
+
+
+@st.cache_data(hash_funcs={pd.DataFrame: _hash_df}, show_spinner=False)
+def cached_rolling_mean(
+    series: pd.Series,
+    window: int,
+    center: bool = True,
+    min_periods: int = 1,
+) -> pd.Series:
+    """
+    Cached rolling mean computation.
+
+    Avoids recomputing rolling windows on every Streamlit rerun.
+
+    Args:
+        series: Input pandas Series
+        window: Rolling window size
+        center: Whether to center the window
+        min_periods: Minimum number of observations in window
+
+    Returns:
+        Series with rolling mean values
+    """
+    return series.rolling(window=window, center=center, min_periods=min_periods).mean()
+
+
+@st.cache_data(hash_funcs={pd.DataFrame: _hash_df}, show_spinner=False)
+def cached_rolling_median(
+    series: pd.Series,
+    window: int,
+    center: bool = True,
+    min_periods: int = 1,
+) -> pd.Series:
+    """
+    Cached rolling median computation.
+
+    Args:
+        series: Input pandas Series
+        window: Rolling window size
+        center: Whether to center the window
+        min_periods: Minimum number of observations in window
+
+    Returns:
+        Series with rolling median values
+    """
+    return series.rolling(window=window, center=center, min_periods=min_periods).median()

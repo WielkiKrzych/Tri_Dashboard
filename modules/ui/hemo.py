@@ -1,11 +1,13 @@
 """
 Haemodynamics tab — cardiac output, stroke volume, and SpO2 trends.
 """
+
 import streamlit as st
 import plotly.graph_objects as go
 import plotly.express as px
 import pandas as pd
 from modules.plots import CHART_CONFIG
+from modules.cache_utils import cached_rolling_mean
 
 
 def render_hemo_tab(target_df):
@@ -27,15 +29,15 @@ def render_hemo_tab(target_df):
 
     if col_thb and col_smo2:
         if f"{col_thb}_smooth" not in target_df.columns:
-            target_df[f"{col_thb}_smooth"] = (
-                target_df[col_thb].rolling(window=10, center=True).mean()
+            target_df[f"{col_thb}_smooth"] = cached_rolling_mean(
+                target_df[col_thb], window=10, center=True
             )
 
         thb_val = f"{col_thb}_smooth"
 
         if "smo2" in target_df.columns:
-            target_df["smo2_smooth_10s_hemo_trend"] = (
-                target_df["smo2"].rolling(window=10, center=True).mean()
+            target_df["smo2_smooth_10s_hemo_trend"] = cached_rolling_mean(
+                target_df["smo2"], window=10, center=True
             )
             col_smo2_hemo_trend = "smo2_smooth_10s_hemo_trend"
         else:

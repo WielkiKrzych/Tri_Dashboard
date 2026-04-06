@@ -5,6 +5,7 @@ Summary Thresholds — VT/LT/TDI threshold renderers for the Summary tab.
 import streamlit as st
 import plotly.graph_objects as go
 
+from modules.cache_utils import cached_rolling_mean
 from .summary_calculations import _get_vent_metrics_for_power
 
 
@@ -14,7 +15,7 @@ def _render_vent_thresholds_summary(df_plot, cp_input, vt1_watts, vt2_watts, thr
         st.info("Brak danych wentylacji do analizy progów VT.")
         return
 
-    df_plot["ve_smooth"] = df_plot["tymeventilation"].rolling(window=10, center=True).mean()
+    df_plot["ve_smooth"] = cached_rolling_mean(df_plot["tymeventilation"], window=10, center=True)
     if "watts_smooth_5s" not in df_plot.columns and "watts" in df_plot.columns:
         df_plot["watts_smooth_5s"] = df_plot["watts"].rolling(window=5, center=True).mean()
 
@@ -137,7 +138,7 @@ def _render_smo2_thresholds_summary(df_plot, cp_input, lt1_watts, lt2_watts, smo
         st.info("Brak danych SmO2 do analizy progów LT.")
         return
 
-    df_plot["smo2_smooth"] = df_plot["smo2"].rolling(window=10, center=True).mean()
+    df_plot["smo2_smooth"] = cached_rolling_mean(df_plot["smo2"], window=10, center=True)
     if "watts_smooth_5s" not in df_plot.columns and "watts" in df_plot.columns:
         df_plot["watts_smooth_5s"] = df_plot["watts"].rolling(window=5, center=True).mean()
 

@@ -8,6 +8,7 @@ import pandas as pd
 from modules.calculations.column_aliases import normalize_columns, resolve_hr_column
 from modules.calculations.thresholds import analyze_step_test
 from modules.calculations.quality import check_step_test_protocol
+from modules.cache_utils import cached_rolling_mean
 
 
 def render_smo2_manual_thresholds_tab(target_df, training_notes, uploaded_file_name, cp_input):
@@ -39,7 +40,7 @@ def render_smo2_manual_thresholds_tab(target_df, training_notes, uploaded_file_n
     # Wygładzanie
     if "watts_smooth_5s" not in target_df.columns and "watts" in target_df.columns:
         target_df["watts_smooth_5s"] = target_df["watts"].rolling(window=5, center=True).mean()
-    target_df["smo2_smooth"] = target_df["smo2"].rolling(window=10, center=True).mean()
+    target_df["smo2_smooth"] = cached_rolling_mean(target_df["smo2"], window=10, center=True)
     target_df["time_str"] = pd.to_datetime(target_df["time"], unit="s").dt.strftime("%H:%M:%S")
 
     # --- Quality Check: Protocol Compliance ---

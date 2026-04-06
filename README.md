@@ -102,20 +102,40 @@ Tri_Dashboard/
 
 ---
 
+
+## Summary of Fixes Applied
+
+Critical Bug Fixes
+
+- **modules/reports.py**: Fixed variable name typo vt2watts → vt2_watts (lines 309, 335) that caused NameError during report generation
+
+Security Fixes
+
+- **app.py**: Changed unsafe_allow_html=True to False in two locations:
+  - Session type badge rendering (line ~132)
+  - Alert/badge rendering (line ~359)
+  - Prevents potential XSS vulnerabilities
+
+Exception Handling Improvements
+
+- **scripts/generate_pdf_from_csv.py**:
+  - Fixed CSV loading to catch specific pd.errors.ParserError instead of bare Exception
+  - Added proper error logging before re-raising
+  - Fixed all remaining broad exception handlers to log specific warnings instead of silently failing
+
+- **services/data_validation.py**:
+  - Added missing logger import
+  - Fixed heartrate validation (lines 131-140): replaced bare except Exception: with specific (ValueError, TypeError) handling and added logging
+  - Fixed cadence validation (lines 147-156): replaced bare except Exception: with specific (ValueError, TypeError) handling and added logging
+  - Removed duplicate return statement
+
+Verification
+
+- All modified modules import successfully
+- Data validation functions properly handle both valid and invalid data inputs
+- Core utility and validation tests pass
+
 ## 📋 Changelog
-
-### 2026-04-06 — Critical Bug & Security Fixes
-
-**Commits on `main` branch:**
-
-| # | Commit | Description |
-|---|--------|-------------|
-| 1 | `92c7617` | **Fix critical bugs, security issues, and exception handling**
-- Fix variable name typo in modules/reports.py: vt2watts → vt2_watts
-- Fix XSS vulnerabilities in app.py: change unsafe_allow_html=True to False
-- Improve exception handling in scripts/generate_pdf_from_csv.py: use specific exceptions and add logging
-- Improve exception handling in services/data_validation.py: add logger, fix broad exception handlers, remove duplicate return
-- Update README.md with summary of changes
 
 
 ### 2026-04-06 — Performance Optimization Plan

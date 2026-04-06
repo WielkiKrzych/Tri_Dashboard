@@ -7,6 +7,8 @@ Handles DataFrame validation logic for uploaded training files.
 import pandas as pd
 
 from modules.config import Config
+import logging
+logger = logging.getLogger(__name__)
 
 
 def validate_dataframe(df: pd.DataFrame) -> tuple[bool, str]:
@@ -133,7 +135,8 @@ def validate_dataframe(df: pd.DataFrame) -> tuple[bool, str]:
                 df["heartrate"] = pd.to_numeric(df["heartrate"], errors="coerce")
                 if df["heartrate"].isna().all():
                     return False, "Kolumna 'heartrate' zawiera nieprawidłowe dane (nie-liczbowe)."
-            except Exception:
+            except (ValueError, TypeError) as e:
+                logger.warning("Heartrate conversion failed: %s", e)
                 return False, "Kolumna 'heartrate' zawiera nieprawidłowe dane (nie-liczbowe)."
         max_hr = df["heartrate"].max()
         if max_hr > Config.VALIDATION_MAX_HR:
@@ -148,7 +151,8 @@ def validate_dataframe(df: pd.DataFrame) -> tuple[bool, str]:
                 df["cadence"] = pd.to_numeric(df["cadence"], errors="coerce")
                 if df["cadence"].isna().all():
                     return False, "Kolumna 'cadence' zawiera nieprawidłowe dane (nie-liczbowe)."
-            except Exception:
+            except (ValueError, TypeError) as e:
+                logger.warning("Cadence conversion failed: %s", e)
                 return False, "Kolumna 'cadence' zawiera nieprawidłowe dane (nie-liczbowe)."
         max_cad = df["cadence"].max()
         if max_cad > Config.VALIDATION_MAX_CADENCE:

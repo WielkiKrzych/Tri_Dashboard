@@ -129,7 +129,7 @@ def render_session_badge(session_type, ramp_classification) -> None:
             <span style="font-size: 1.1em;">{session_type.emoji} {msg}</span>
         </div>
         """,
-        unsafe_allow_html=True,
+        unsafe_allow_html=False,
     )
 
 
@@ -356,7 +356,7 @@ if uploaded_file is not None:
             f'<div style="background: rgba(231, 76, 60, 0.15); padding: 8px 15px; '
             f'border-radius: 8px; margin-bottom: 8px; display: inline-block;">'
             f'<span style="font-size: 1.0em;">{badge_text}</span></div>',
-            unsafe_allow_html=True,
+            unsafe_allow_html=False,
         )
 
     # Layout Tabs

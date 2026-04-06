@@ -56,12 +56,11 @@ def main():
     logger.info("Loading CSV: %s", csv_path)
     try:
         df = pd.read_csv(csv_path, low_memory=False)
-    except Exception:
+    except pd.errors.ParserError:
         df = pd.read_csv(csv_path, sep=";", low_memory=False)
-    df.columns = df.columns.str.lower().str.strip()
-
-    # Normalize columns same as load_data would
-    from modules.utils import normalize_columns_pandas
+    except Exception as e:
+        logger.error("Failed to load CSV: %s", e)
+        raise
     df = normalize_columns_pandas(df)
     if "time" not in df.columns:
         df["time"] = np.arange(len(df)).astype(float)

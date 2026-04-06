@@ -71,30 +71,39 @@ def render_summary_tab(
     if hr_col:
         analyze_kwargs["hr_column"] = hr_col
 
-    threshold_result = analyze_step_test(df_plot, **analyze_kwargs)
+    # --- Try cached results first (from other tabs) ---
+    cached_vt = st.session_state.get("cpet_vt_result") or st.session_state.get("threshold_result")
+    if cached_vt and hasattr(cached_vt, "vt1_watts"):
+        threshold_result = cached_vt
+    else:
+        threshold_result = analyze_step_test(df_plot, **analyze_kwargs)
 
     smo2_result = None
     if "smo2" in df_plot.columns:
-        hr_max = int(df_plot[hr_col].max()) if hr_col else None
-        detected_vt1 = int(threshold_result.vt1_watts) if threshold_result.vt1_watts else None
-        detected_vt2 = int(threshold_result.vt2_watts) if threshold_result.vt2_watts else None
-        smo2_kwargs: dict[str, Any] = {
-            "df": df_plot,
-            "step_duration_sec": 180,
-            "smo2_col": "smo2",
-            "power_col": "watts",
-            "time_col": "time",
-            "cp_watts": cp_input if cp_input > 0 else None,
-            "hr_max": hr_max,
-            "vt1_watts": detected_vt1,
-            "rcp_onset_watts": detected_vt2,
-        }
-        if hr_col:
-            smo2_kwargs["hr_col"] = hr_col
+        cached_smo2 = st.session_state.get("smo2_threshold_result")
+        if cached_smo2 and hasattr(cached_smo2, "t1_watts"):
+            smo2_result = cached_smo2
+        else:
+            hr_max = int(df_plot[hr_col].max()) if hr_col else None
+            detected_vt1 = int(threshold_result.vt1_watts) if threshold_result.vt1_watts else None
+            detected_vt2 = int(threshold_result.vt2_watts) if threshold_result.vt2_watts else None
+            smo2_kwargs: dict[str, Any] = {
+                "df": df_plot,
+                "step_duration_sec": 180,
+                "smo2_col": "smo2",
+                "power_col": "watts",
+                "time_col": "time",
+                "cp_watts": cp_input if cp_input > 0 else None,
+                "hr_max": hr_max,
+                "vt1_watts": detected_vt1,
+                "rcp_onset_watts": detected_vt2,
+            }
+            if hr_col:
+                smo2_kwargs["hr_col"] = hr_col
 
-        smo2_result = detect_smo2_thresholds_moxy(
-            **smo2_kwargs,
-        )
+            smo2_result = detect_smo2_thresholds_moxy(
+                **smo2_kwargs,
+            )
 
     eff_vt1 = (
         vt1_watts

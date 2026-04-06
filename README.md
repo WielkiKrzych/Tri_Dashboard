@@ -105,6 +105,18 @@ Tri_Dashboard/
 ## 📋 Changelog
 
 
+### 2026-04-06 — Performance Optimization Plan
+
+**Commits on `claude/laughing-goldberg`:**
+
+| # | Commit | Description |
+|---|--------|-------------|
+| 1 | `d606e49` | **Column aliases centralization** — new `modules/calculations/column_aliases.py` with `normalize_columns()`, `resolve_hr_column()`, `resolve_power_column()`, `resolve_breath_rate_column()`, `resolve_all_aliases()`. 26 tests. Replaced inline `df.columns.str.lower().str.strip()` in 10 UI modules + pipeline.py. |
+| 2 | `0b368b1` | **Summary tab cache-first reads** — `modules/ui/summary.py` now reads `st.session_state` cached thresholds (`cpet_vt_result`, `smo2_threshold_result`) before calling expensive detection functions. Falls back to detection if cache empty. |
+| 3 | `fc6b925` | **Extract `calculate_cv()` utility** — added to `modules/calculations/common.py`. Replaced inline CV calculations in `repeatability.py` and `threshold_types.py`. Cleaned dead imports. |
+| 4 | `62e5282` | **Cached rolling windows** — added `cached_rolling_mean()` and `cached_rolling_median()` with `@st.cache_data` to `modules/cache_utils.py`. Adopted in `summary_thresholds.py`, `hemo.py`, `smo2_manual_thresholds.py`. |
+| 5 | `4631846` | **Test coverage** — new `tests/test_pipeline_orchestration.py` (5 tests for `run_ramp_test_pipeline()`) and `tests/test_alert_engine.py` (9 tests for `detect_cardiac_drift()`, `detect_smo2_crash()`, `analyze_session_alerts()`). 40/40 pass. |
+
 ### 2026-04-05 — Domain Model, Quality Bands & Threshold Cross-Check
 
 Zgodnie z planem refactoru (4 fazy, wiarygodność analizy > kosmetyka):

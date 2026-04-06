@@ -52,7 +52,8 @@ def render_ai_coach_tab(df_plot_resampled, cp_watts: float = 0.0):
                         st.toast("Odświeżanie...", icon="🔄")
                         st.rerun()
                     except Exception as e:
-                        st.error(f"Błąd treningu: {e}") 
+                        logger.error("AI training failed: %s", e, exc_info=True)
+                        st.error("Blad treningu modelu. Sprawdz logi.")
             
             last_base, last_thresh = "-", "-"
             
@@ -144,7 +145,8 @@ def render_ai_coach_tab(df_plot_resampled, cp_watts: float = 0.0):
                         )
                         st.plotly_chart(fig_evo, width="stretch")
                 except Exception as e:
-                    st.error(f"Błąd wykresu historii: {e}")
+                    logger.error("AI history chart failed: %s", e, exc_info=True)
+                    st.error("Blad wykresu historii. Sprawdz logi.")
 
         st.divider()
         

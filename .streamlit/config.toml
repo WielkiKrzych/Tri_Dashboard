@@ -1,0 +1,7 @@
+[server]
+# Enforce upload size limit at the server level (MB).
+# Prevents large files from consuming server memory before application-level checks.
+maxUploadSize = 50
+
+[browser]
+gatherUsageStats = false

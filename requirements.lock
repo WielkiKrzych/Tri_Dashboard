@@ -1,31 +1,30 @@
-# Requirements lock file for Tri_Dashboard
-# WARNING: This file uses >= specifiers instead of pinned == versions.
-# For reproducible builds, generate a proper lock file:
-#   pip install pip-tools && pip-compile pyproject.toml --output-file requirements.lock
-# Run: pip install -r requirements.lock
+# Requirements for Tri_Dashboard
+#
+# SECURITY NOTE: For reproducible, auditable builds, generate a proper lock
+# file from your environment:
+#
+#   pip freeze > requirements.lock
+#   pip audit                        # scan for known CVEs
+#
+# The version bounds below are conservative min+max ranges.
+# Pin to exact versions (==) after confirming your environment works.
 
 # Core dependencies
-streamlit>=1.30.0
-pandas>=2.0.0
-polars>=0.20.0
-plotly>=5.18.0
-numpy>=1.26.0
-scipy>=1.11.0
-neurokit2>=0.2.7
-matplotlib>=3.8.0
-statsmodels>=0.14.0
-python-docx>=1.1.0
-mlx>=0.0.10
-numba>=0.59.0
+streamlit>=1.30.0,<2.0.0
+pandas>=2.0.0,<3.0.0
+polars>=0.20.0,<2.0.0
+plotly>=5.18.0,<6.0.0
+numpy>=1.26.0,<3.0.0
+scipy>=1.11.0,<2.0.0
+neurokit2>=0.2.7,<1.0.0
+matplotlib>=3.8.0,<4.0.0
+statsmodels>=0.14.0,<1.0.0
+python-docx>=1.1.0,<2.0.0
+numba>=0.59.0,<1.0.0
 kaleido==0.2.1
-python-dotenv>=1.0.0
-requests>=2.28.0
-pytest>=8.0.0
-pytest-timeout>=2.2.0
+python-dotenv>=1.0.0,<2.0.0
+requests>=2.28.0,<3.0.0
 
-# Development dependencies (optional)
-# black
-# ruff
-# mypy
-# pytest-cov
-# bandit
+# Test dependencies
+pytest>=8.0.0,<9.0.0
+pytest-timeout>=2.2.0,<3.0.0

@@ -4,11 +4,15 @@ Frontend Layout Manager.
 Handles the main application shell, sidebar, and high-level routing.
 """
 
+import logging
+
 import streamlit as st
 from typing import Tuple, Any
 
 from modules.config import Config
 from .state import StateManager
+
+logger = logging.getLogger(__name__)
 
 
 class AppLayout:
@@ -105,16 +109,54 @@ class AppLayout:
         params["crank_length"] = st.sidebar.number_input(
             "Długość korby [mm]", key="crank", on_change=self.state.save_settings_callback
         )
-        # File upload with size limit (50 MB max)
+        # File upload with size limit (50 MB max) and content validation
         MAX_FILE_SIZE_MB = 50
         uploaded_file = st.sidebar.file_uploader(
             "Wgraj plik (CSV / TXT)", type=["csv", "txt"], accept_multiple_files=False
         )
         if uploaded_file and uploaded_file.size > MAX_FILE_SIZE_MB * 1024 * 1024:
-            st.sidebar.error(f"Plik za duży. Maksymalny rozmiar: {MAX_FILE_SIZE_MB} MB")
+            st.sidebar.error(f"Plik za duzy. Maksymalny rozmiar: {MAX_FILE_SIZE_MB} MB")
             uploaded_file = None
+        if uploaded_file is not None:
+            uploaded_file = self._validate_upload_content(uploaded_file)
 
         return uploaded_file, params
+
+    @staticmethod
+    def _validate_upload_content(uploaded_file):
+        """Server-side content validation for uploaded files.
+
+        Checks that the file content is valid UTF-8 text with CSV structure.
+        Returns the file if valid, None otherwise.
+        """
+        try:
+            header = uploaded_file.read(1024)
+            uploaded_file.seek(0)
+
+            # Must be decodable as UTF-8 text
+            try:
+                header_text = header.decode("utf-8")
+            except (UnicodeDecodeError, AttributeError):
+                st.sidebar.error("Plik nie jest prawidlowym plikiem tekstowym (CSV/TXT).")
+                return None
+
+            # Must contain at least one comma or tab (CSV/TSV structure)
+            if "," not in header_text and "\t" not in header_text:
+                st.sidebar.error("Plik nie zawiera danych CSV (brak separatorow).")
+                return None
+
+            # Must not contain null bytes (binary file disguised as CSV)
+            if "\x00" in header_text:
+                logger.warning("Upload rejected: binary content detected (null bytes)")
+                st.sidebar.error("Plik zawiera dane binarne — tylko CSV/TXT.")
+                return None
+
+            return uploaded_file
+
+        except Exception as e:
+            logger.error("Upload content validation failed: %s", e, exc_info=True)
+            st.sidebar.error("Blad walidacji pliku. Sprawdz format.")
+            return None
 
     def render_header(self) -> None:
         """Render the main header."""

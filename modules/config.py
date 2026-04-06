@@ -17,7 +17,7 @@ BASE_DIR = Path(__file__).parent.parent
 
 _raw_css = os.getenv("CSS_FILE", "style.css")
 _css_path = Path(BASE_DIR) / _raw_css if not Path(_raw_css).is_absolute() else Path(_raw_css)
-if not _css_path.resolve().is_relative_to(BASE_DIR):
+if not _css_path.resolve().is_relative_to(BASE_DIR) or _css_path.suffix.lower() != ".css":
     _raw_css = "style.css"
 
 # ── Domain Dataclasses ────────────────────────────────────────────────

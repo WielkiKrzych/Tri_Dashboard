@@ -5,8 +5,11 @@ Reusable UI components (widgets) for the application.
 """
 
 import html
+import logging
 
 import streamlit as st
+
+logger = logging.getLogger(__name__)
 from typing import Dict, Any
 
 
@@ -139,4 +142,5 @@ def render_export_buttons_fragment(
         )
         st.download_button("📸 PNG", zip_data, f"{safe_filename}.zip", mime="application/zip")
     except Exception as e:
-        st.warning(f"PNG export issue: {e}")
+        logger.warning("PNG export issue: %s", e, exc_info=True)
+        st.warning("Problem z eksportem PNG.")

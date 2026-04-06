@@ -2,7 +2,11 @@
 HRV Analysis tab — DFA-α1, RMSSD, and readiness scoring.
 """
 
+import logging
+
 import streamlit as st
+
+logger = logging.getLogger(__name__)
 import plotly.graph_objects as go
 import numpy as np
 from typing import Any, Optional
@@ -35,7 +39,8 @@ def render_hrv_tab(df_clean_pl: Any) -> None:
                     st.session_state.dfa_error = error_msg
                     st.rerun()
                 except Exception as e:
-                    st.error(f"Wystąpił błąd krytyczny algorytmu: {e}")
+                    logger.error("DFA algorithm critical error: %s", e, exc_info=True)
+                    st.error("Wystapil blad krytyczny algorytmu. Sprawdz logi.")
 
         if st.session_state.dfa_error and col_btn2.button("🧹 Wyczyść błędy"):
             st.session_state.dfa_error = None

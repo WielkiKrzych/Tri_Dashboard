@@ -157,8 +157,8 @@ def _render_save_json_section() -> None:
                 st.error("❌ Nieznany błąd zapisu")
 
         except Exception as e:
-            st.error(f"❌ Błąd zapisu raportu: {e}")
-            logger.warning("Report save failed: %s", e)
+            logger.error("Report save failed: %s", e, exc_info=True)
+            st.error("Blad zapisu raportu. Sprawdz logi.")
 
 
 def render_ramp_archive():
@@ -183,7 +183,8 @@ def render_ramp_archive():
     try:
         df = pd.read_csv(index_path)
     except Exception as e:
-        st.error(f"Błąd odczytu indeksu raportów: {e}")
+        logger.error("Report index read failed: %s", e, exc_info=True)
+        st.error("Blad odczytu indeksu raportow. Sprawdz logi.")
         return
 
     if df.empty:
@@ -244,7 +245,8 @@ def render_ramp_archive():
     try:
         report_data = load_ramp_test_report(json_path)
     except Exception as e:
-        st.error(f"Błąd odczytu raportu: {e}")
+        logger.error("Report read failed: %s", e, exc_info=True)
+        st.error("Blad odczytu raportu. Sprawdz logi.")
         return
 
     meta = report_data.get("metadata", {})
@@ -340,7 +342,8 @@ def render_ramp_archive():
                     key=f"pdf_dl_{session_id}",
                 )
             except Exception as e:
-                st.error(f"Błąd odczytu PDF: {e}")
+                logger.error("PDF read failed: %s", e, exc_info=True)
+                st.error("Blad odczytu PDF. Sprawdz logi.")
 
     with btn_col2:
         button_label = (
@@ -358,4 +361,5 @@ def render_ramp_archive():
                     st.success("✅ PDF wygenerowany pomyślnie!")
                     st.rerun()
                 except Exception as e:
-                    st.error(f"Błąd generowania PDF: {e}")
+                    logger.error("PDF generation failed: %s", e, exc_info=True)
+                    st.error("Blad generowania PDF. Sprawdz logi.")

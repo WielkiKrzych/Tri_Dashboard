@@ -10,7 +10,6 @@ Sub-modules:
 """
 
 import logging
-import traceback
 
 import streamlit as st
 from plotly.subplots import make_subplots
@@ -168,7 +167,7 @@ def render_summary_tab(
             st.plotly_chart(fig_training, width="stretch", config=CHART_CONFIG)
     except Exception as e:
         logger.error("Summary section 1 (Training Timeline) failed: %s", e, exc_info=True)
-        st.error(f"Blad wykresu przebiegu treningu: {e}")
+        st.error("Blad wykresu przebiegu treningu. Sprawdz format danych.")
 
     # =========================================================================
     # 1a. METRYKI POD WYKRESEM
@@ -177,7 +176,7 @@ def render_summary_tab(
         _render_metrics_panel(df_plot, metrics, cp_input, w_prime_input, rider_weight)
     except Exception as e:
         logger.error("Summary section 1a (Metrics Panel) failed: %s", e, exc_info=True)
-        st.error(f"Blad panelu metryk: {e}")
+        st.error("Blad panelu metryk. Sprawdz format danych.")
 
     st.markdown("---")
 
@@ -273,7 +272,7 @@ def render_summary_tab(
             st.info("Brak danych wentylacji (VE/BR) w tym pliku.")
     except Exception as e:
         logger.error("Summary section 2 (VE/BR) failed: %s", e, exc_info=True)
-        st.error(f"Blad wykresu VE/BR: {e}")
+        st.error("Blad wykresu VE/BR. Sprawdz format danych.")
 
     st.markdown("---")
 
@@ -285,7 +284,7 @@ def render_summary_tab(
         _render_cp_model_chart(df_plot, cp_input, w_prime_input)
     except Exception as e:
         logger.error("Summary section 3 (CP Model) failed: %s", e, exc_info=True)
-        st.error(f"Blad modelu CP: {e}")
+        st.error("Blad modelu CP. Sprawdz format danych.")
 
     st.markdown("---")
 
@@ -297,7 +296,7 @@ def render_summary_tab(
         _render_smo2_thb_chart(df_plot)
     except Exception as e:
         logger.error("Summary section 4 (SmO2/THb) failed: %s", e, exc_info=True)
-        st.error(f"Blad wykresu SmO2/THb: {e}")
+        st.error("Blad wykresu SmO2/THb. Sprawdz format danych.")
 
     st.markdown("---")
 
@@ -309,7 +308,7 @@ def render_summary_tab(
         _render_vent_thresholds_summary(df_plot, cp_input, _safe_int(eff_vt1), _safe_int(eff_vt2), threshold_result)
     except Exception as e:
         logger.error("Summary section 5 (Vent Thresholds) failed: %s", e, exc_info=True)
-        st.error(f"Blad progow wentylacyjnych: {e}")
+        st.error("Blad progow wentylacyjnych. Sprawdz format danych.")
 
     st.markdown("---")
 
@@ -321,7 +320,7 @@ def render_summary_tab(
         _render_smo2_thresholds_summary(df_plot, cp_input, _safe_int(eff_lt1), _safe_int(eff_lt2), smo2_result)
     except Exception as e:
         logger.error("Summary section 6 (SmO2 Thresholds) failed: %s", e, exc_info=True)
-        st.error(f"Blad progow SmO2: {e}")
+        st.error("Blad progow SmO2. Sprawdz format danych.")
 
     st.markdown("---")
 
@@ -333,7 +332,7 @@ def render_summary_tab(
         _render_tdi_analysis(_safe_int(eff_vt1), _safe_int(eff_lt1))
     except Exception as e:
         logger.error("Summary section 7 (TDI) failed: %s", e, exc_info=True)
-        st.error(f"Blad TDI: {e}")
+        st.error("Blad TDI. Sprawdz format danych.")
 
     st.markdown("---")
 
@@ -345,7 +344,7 @@ def render_summary_tab(
         _render_vo2max_uncertainty(df_plot, rider_weight)
     except Exception as e:
         logger.error("Summary section 8 (VO2max) failed: %s", e, exc_info=True)
-        st.error(f"Blad estymacji VO2max: {e}")
+        st.error("Blad estymacji VO2max. Sprawdz format danych.")
 
 
 # =============================================================================

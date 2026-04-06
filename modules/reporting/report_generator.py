@@ -486,10 +486,7 @@ def save_ramp_test_report(
             data["metabolic_strategy"] = formatted
 
     except Exception as e:
-        logger.error("[Canonical Physio / Metabolic Engine] Analysis failed: %s", e)
-        import traceback
-
-        traceback.print_exc()
+        logger.exception("[Canonical Physio / Metabolic Engine] Analysis failed: %s", e)
 
     # 1.7 Limiter Analysis
     try:

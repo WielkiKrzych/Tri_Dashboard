@@ -196,8 +196,8 @@ def render_vent_thresholds_tab(
                 st.warning("⚠️ Test niepoprawny - raport może być niewiarygodny")
 
         except Exception as e:
-            st.error(f"Błąd analizy pipeline: {e}")
-            logger.error("Pipeline failed: %s", e)
+            logger.error("Pipeline failed: %s", e, exc_info=True)
+            st.error("Blad analizy pipeline. Sprawdz logi.")
 
     # 5. Sub-sections
     st.markdown("---")

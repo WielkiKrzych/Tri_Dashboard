@@ -10,6 +10,7 @@ Sub-modules:
 """
 
 import logging
+import traceback
 
 import streamlit as st
 from plotly.subplots import make_subplots
@@ -130,26 +131,26 @@ def render_summary_tab(
             except Exception as e:
                 logger.error("Summary: detect_smo2_thresholds_moxy failed: %s", e, exc_info=True)
 
-    eff_vt1 = (
-        vt1_watts
-        if vt1_watts > 0
-        else (threshold_result.vt1_watts if threshold_result.vt1_watts else 0)
-    )
-    eff_vt2 = (
-        vt2_watts
-        if vt2_watts > 0
-        else (threshold_result.vt2_watts if threshold_result.vt2_watts else 0)
-    )
-    eff_lt1 = (
-        lt1_watts
-        if lt1_watts > 0
-        else (smo2_result.t1_watts if smo2_result and smo2_result.t1_watts else 0)
-    )
-    eff_lt2 = (
-        lt2_watts
-        if lt2_watts > 0
-        else (smo2_result.t2_onset_watts if smo2_result and smo2_result.t2_onset_watts else 0)
-    )
+    try:
+        eff_vt1 = _safe_int(
+            vt1_watts if vt1_watts and vt1_watts > 0
+            else (threshold_result.vt1_watts if threshold_result and threshold_result.vt1_watts else 0)
+        )
+        eff_vt2 = _safe_int(
+            vt2_watts if vt2_watts and vt2_watts > 0
+            else (threshold_result.vt2_watts if threshold_result and threshold_result.vt2_watts else 0)
+        )
+        eff_lt1 = _safe_int(
+            lt1_watts if lt1_watts and lt1_watts > 0
+            else (smo2_result.t1_watts if smo2_result and smo2_result.t1_watts else 0)
+        )
+        eff_lt2 = _safe_int(
+            lt2_watts if lt2_watts and lt2_watts > 0
+            else (smo2_result.t2_onset_watts if smo2_result and smo2_result.t2_onset_watts else 0)
+        )
+    except Exception as e:
+        logger.error("Summary: eff threshold calc failed: %s", e, exc_info=True)
+        eff_vt1, eff_vt2, eff_lt1, eff_lt2 = 0, 0, 0, 0
 
     # =========================================================================
     # 1. WYKRES PRZEBIEG TRENINGU (CACHED)
@@ -185,90 +186,94 @@ def render_summary_tab(
     # =========================================================================
     st.subheader("2️⃣ Wentylacja (VE) i Oddechy (BR)")
 
-    if "tymeventilation" in df_plot.columns:
-        fig_ve_br = make_subplots(specs=[[{"secondary_y": True}]])
+    try:
+        if "tymeventilation" in df_plot.columns:
+            fig_ve_br = make_subplots(specs=[[{"secondary_y": True}]])
 
-        time_x_s = df_plot["time"] if "time" in df_plot.columns else range(len(df_plot))
+            time_x_s = df_plot["time"] if "time" in df_plot.columns else range(len(df_plot))
 
-        ve_data = (
-            df_plot["tymeventilation"].rolling(10, center=True).mean()
-            if "tymeventilation" in df_plot.columns
-            else None
-        )
-        if ve_data is not None:
-            fig_ve_br.add_trace(
-                go.Scatter(
-                    x=time_x_s,
-                    y=ve_data,
-                    name="VE (L/min)",
-                    line=dict(color="#ffa15a", width=2),
-                    hovertemplate="VE: %{y:.1f} L/min<extra></extra>",
-                ),
-                secondary_y=False,
+            ve_data = (
+                df_plot["tymeventilation"].rolling(10, center=True).mean()
+                if "tymeventilation" in df_plot.columns
+                else None
             )
+            if ve_data is not None:
+                fig_ve_br.add_trace(
+                    go.Scatter(
+                        x=time_x_s,
+                        y=ve_data,
+                        name="VE (L/min)",
+                        line=dict(color="#ffa15a", width=2),
+                        hovertemplate="VE: %{y:.1f} L/min<extra></extra>",
+                    ),
+                    secondary_y=False,
+                )
 
-        if "tymebreathrate" in df_plot.columns:
-            br_data = df_plot["tymebreathrate"].rolling(10, center=True).mean()
-            fig_ve_br.add_trace(
-                go.Scatter(
-                    x=time_x_s,
-                    y=br_data,
-                    name="BR (oddech/min)",
-                    line=dict(color="#00cc96", width=2),
-                    hovertemplate="BR: %{y:.0f} /min<extra></extra>",
-                ),
-                secondary_y=True,
+            if "tymebreathrate" in df_plot.columns:
+                br_data = df_plot["tymebreathrate"].rolling(10, center=True).mean()
+                fig_ve_br.add_trace(
+                    go.Scatter(
+                        x=time_x_s,
+                        y=br_data,
+                        name="BR (oddech/min)",
+                        line=dict(color="#00cc96", width=2),
+                        hovertemplate="BR: %{y:.0f} /min<extra></extra>",
+                    ),
+                    secondary_y=True,
+                )
+
+            fig_ve_br.update_layout(
+                template="plotly_dark",
+                height=350,
+                legend=dict(orientation="h", y=1.05, x=0),
+                hovermode="x unified",
+                margin=dict(l=20, r=20, t=30, b=20),
             )
+            fig_ve_br.update_yaxes(title_text="VE (L/min)", secondary_y=False)
+            fig_ve_br.update_yaxes(title_text="BR (/min)", secondary_y=True)
+            st.plotly_chart(fig_ve_br, width="stretch", config=CHART_CONFIG)
 
-        fig_ve_br.update_layout(
-            template="plotly_dark",
-            height=350,
-            legend=dict(orientation="h", y=1.05, x=0),
-            hovermode="x unified",
-            margin=dict(l=20, r=20, t=30, b=20),
-        )
-        fig_ve_br.update_yaxes(title_text="VE (L/min)", secondary_y=False)
-        fig_ve_br.update_yaxes(title_text="BR (/min)", secondary_y=True)
-        st.plotly_chart(fig_ve_br, width="stretch", config=CHART_CONFIG)
+            ve_min = float(df_plot["tymeventilation"].min())
+            ve_max = float(df_plot["tymeventilation"].max())
+            ve_mean = float(df_plot["tymeventilation"].mean())
 
-        ve_min = df_plot["tymeventilation"].min()
-        ve_max = df_plot["tymeventilation"].max()
-        ve_mean = df_plot["tymeventilation"].mean()
+            br_min = float(df_plot["tymebreathrate"].min()) if "tymebreathrate" in df_plot.columns else None
+            br_max = float(df_plot["tymebreathrate"].max()) if "tymebreathrate" in df_plot.columns else None
+            br_mean = float(df_plot["tymebreathrate"].mean()) if "tymebreathrate" in df_plot.columns else None
 
-        br_min = df_plot["tymebreathrate"].min() if "tymebreathrate" in df_plot.columns else None
-        br_max = df_plot["tymebreathrate"].max() if "tymebreathrate" in df_plot.columns else None
-        br_mean = df_plot["tymebreathrate"].mean() if "tymebreathrate" in df_plot.columns else None
+            col1, col2 = st.columns(2)
 
-        col1, col2 = st.columns(2)
-
-        with col1:
-            st.markdown(
-                f"""
-            <div style="padding:15px; border-radius:8px; border:2px solid #ffa15a; background-color: #222;">
-                <h3 style="margin:0; color: #ffa15a;">🫁 VE (Wentylacja)</h3>
-                <p style="margin:5px 0; color:#aaa;"><b>Min:</b> {ve_min:.1f} L/min</p>
-                <p style="margin:5px 0; color:#aaa;"><b>Max:</b> {ve_max:.1f} L/min</p>
-                <p style="margin:5px 0; color:#aaa;"><b>Śr:</b> {ve_mean:.1f} L/min</p>
-            </div>
-            """,
-                unsafe_allow_html=True,
-            )
-
-        with col2:
-            if br_min is not None:
+            with col1:
                 st.markdown(
                     f"""
-                <div style="padding:15px; border-radius:8px; border:2px solid #00cc96; background-color: #222;">
-                    <h3 style="margin:0; color: #00cc96;">🌬️ BR (Oddechy)</h3>
-                    <p style="margin:5px 0; color:#aaa;"><b>Min:</b> {br_min:.0f} /min</p>
-                    <p style="margin:5px 0; color:#aaa;"><b>Max:</b> {br_max:.0f} /min</p>
-                    <p style="margin:5px 0; color:#aaa;"><b>Śr:</b> {br_mean:.0f} /min</p>
+                <div style="padding:15px; border-radius:8px; border:2px solid #ffa15a; background-color: #222;">
+                    <h3 style="margin:0; color: #ffa15a;">🫁 VE (Wentylacja)</h3>
+                    <p style="margin:5px 0; color:#aaa;"><b>Min:</b> {ve_min:.1f} L/min</p>
+                    <p style="margin:5px 0; color:#aaa;"><b>Max:</b> {ve_max:.1f} L/min</p>
+                    <p style="margin:5px 0; color:#aaa;"><b>Śr:</b> {ve_mean:.1f} L/min</p>
                 </div>
                 """,
                     unsafe_allow_html=True,
                 )
-    else:
-        st.info("Brak danych wentylacji (VE/BR) w tym pliku.")
+
+            with col2:
+                if br_min is not None:
+                    st.markdown(
+                        f"""
+                    <div style="padding:15px; border-radius:8px; border:2px solid #00cc96; background-color: #222;">
+                        <h3 style="margin:0; color: #00cc96;">🌬️ BR (Oddechy)</h3>
+                        <p style="margin:5px 0; color:#aaa;"><b>Min:</b> {br_min:.0f} /min</p>
+                        <p style="margin:5px 0; color:#aaa;"><b>Max:</b> {br_max:.0f} /min</p>
+                        <p style="margin:5px 0; color:#aaa;"><b>Śr:</b> {br_mean:.0f} /min</p>
+                    </div>
+                    """,
+                        unsafe_allow_html=True,
+                    )
+        else:
+            st.info("Brak danych wentylacji (VE/BR) w tym pliku.")
+    except Exception as e:
+        logger.error("Summary section 2 (VE/BR) failed: %s", e, exc_info=True)
+        st.error(f"Blad wykresu VE/BR: {e}")
 
     st.markdown("---")
 

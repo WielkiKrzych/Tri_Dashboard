@@ -3,6 +3,7 @@ import html
 import hashlib
 import logging
 import re
+import traceback
 from datetime import datetime, timedelta
 from typing import Optional, Tuple, Any
 
@@ -192,8 +193,11 @@ class TabRegistry:
             func = getattr(module, func_name)
             return func(*args, **kwargs)
         except Exception as e:
-            logger.error("Tab load error [%s]: %s", tab_name, e, exc_info=True)
-            st.error(f"Nie udalo sie zaladowac zakladki {tab_name}. Sprawdz logi.")
+            tb = traceback.format_exc()
+            logger.error("Tab load error [%s]: %s\n%s", tab_name, e, tb)
+            st.error(f"Nie udalo sie zaladowac zakladki {tab_name}: {type(e).__name__}: {e}")
+            with st.expander("Szczegoly bledu", expanded=False):
+                st.code(tb, language="python")
 
 
 def render_tab_content(tab_name, *args, **kwargs):

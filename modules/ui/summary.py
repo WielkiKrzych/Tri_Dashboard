@@ -9,12 +9,29 @@ Sub-modules:
   summary_thresholds.py   — VT/LT/TDI renderers (_render_vent_thresholds_summary, etc.)
 """
 
+import logging
+
 import streamlit as st
 from plotly.subplots import make_subplots
 import plotly.graph_objects as go
 import pandas as pd
 import numpy as np
 from typing import Any
+
+logger = logging.getLogger(__name__)
+
+
+def _safe_int(value, default: int = 0) -> int:
+    """Convert to int, returning *default* for None / NaN / non-finite."""
+    if value is None:
+        return default
+    try:
+        f = float(value)
+        if f != f:  # NaN
+            return default
+        return int(f)
+    except (TypeError, ValueError, OverflowError):
+        return default
 
 from modules.calculations.column_aliases import normalize_columns, resolve_hr_column
 from modules.config import Config
@@ -76,7 +93,12 @@ def render_summary_tab(
     if cached_vt and hasattr(cached_vt, "vt1_watts"):
         threshold_result = cached_vt
     else:
-        threshold_result = analyze_step_test(df_plot, **analyze_kwargs)
+        try:
+            threshold_result = analyze_step_test(df_plot, **analyze_kwargs)
+        except Exception as e:
+            logger.error("Summary: analyze_step_test failed: %s", e, exc_info=True)
+            from modules.calculations.threshold_types import StepTestResult
+            threshold_result = StepTestResult()
 
     smo2_result = None
     if "smo2" in df_plot.columns:
@@ -84,26 +106,29 @@ def render_summary_tab(
         if cached_smo2 and hasattr(cached_smo2, "t1_watts"):
             smo2_result = cached_smo2
         else:
-            hr_max = int(df_plot[hr_col].max()) if hr_col else None
-            detected_vt1 = int(threshold_result.vt1_watts) if threshold_result.vt1_watts else None
-            detected_vt2 = int(threshold_result.vt2_watts) if threshold_result.vt2_watts else None
-            smo2_kwargs: dict[str, Any] = {
-                "df": df_plot,
-                "step_duration_sec": 180,
-                "smo2_col": "smo2",
-                "power_col": "watts",
-                "time_col": "time",
-                "cp_watts": cp_input if cp_input > 0 else None,
-                "hr_max": hr_max,
-                "vt1_watts": detected_vt1,
-                "rcp_onset_watts": detected_vt2,
-            }
-            if hr_col:
-                smo2_kwargs["hr_col"] = hr_col
+            try:
+                hr_max = _safe_int(df_plot[hr_col].max()) if hr_col else None
+                detected_vt1 = _safe_int(threshold_result.vt1_watts) or None
+                detected_vt2 = _safe_int(threshold_result.vt2_watts) or None
+                smo2_kwargs: dict[str, Any] = {
+                    "df": df_plot,
+                    "step_duration_sec": 180,
+                    "smo2_col": "smo2",
+                    "power_col": "watts",
+                    "time_col": "time",
+                    "cp_watts": cp_input if cp_input > 0 else None,
+                    "hr_max": hr_max,
+                    "vt1_watts": detected_vt1,
+                    "rcp_onset_watts": detected_vt2,
+                }
+                if hr_col:
+                    smo2_kwargs["hr_col"] = hr_col
 
-            smo2_result = detect_smo2_thresholds_moxy(
-                **smo2_kwargs,
-            )
+                smo2_result = detect_smo2_thresholds_moxy(
+                    **smo2_kwargs,
+                )
+            except Exception as e:
+                logger.error("Summary: detect_smo2_thresholds_moxy failed: %s", e, exc_info=True)
 
     eff_vt1 = (
         vt1_watts
@@ -131,19 +156,27 @@ def render_summary_tab(
     # =========================================================================
     st.subheader("1️⃣ Przebieg Treningu")
 
-    fig_training = _build_training_timeline_chart(
-        df_plot,
-        cp_input=cp_input,
-        vt1_watts=int(eff_vt1),
-        vt2_watts=int(eff_vt2),
-    )
-    if fig_training is not None:
-        st.plotly_chart(fig_training, width="stretch", config=CHART_CONFIG)
+    try:
+        fig_training = _build_training_timeline_chart(
+            df_plot,
+            cp_input=cp_input,
+            vt1_watts=_safe_int(eff_vt1),
+            vt2_watts=_safe_int(eff_vt2),
+        )
+        if fig_training is not None:
+            st.plotly_chart(fig_training, width="stretch", config=CHART_CONFIG)
+    except Exception as e:
+        logger.error("Summary section 1 (Training Timeline) failed: %s", e, exc_info=True)
+        st.error(f"Blad wykresu przebiegu treningu: {e}")
 
     # =========================================================================
     # 1a. METRYKI POD WYKRESEM
     # =========================================================================
-    _render_metrics_panel(df_plot, metrics, cp_input, w_prime_input, rider_weight)
+    try:
+        _render_metrics_panel(df_plot, metrics, cp_input, w_prime_input, rider_weight)
+    except Exception as e:
+        logger.error("Summary section 1a (Metrics Panel) failed: %s", e, exc_info=True)
+        st.error(f"Blad panelu metryk: {e}")
 
     st.markdown("---")
 
@@ -243,7 +276,11 @@ def render_summary_tab(
     # 3. WYKRES MATEMATYCZNY MODEL CP
     # =========================================================================
     st.subheader("3️⃣ Model Matematyczny CP")
-    _render_cp_model_chart(df_plot, cp_input, w_prime_input)
+    try:
+        _render_cp_model_chart(df_plot, cp_input, w_prime_input)
+    except Exception as e:
+        logger.error("Summary section 3 (CP Model) failed: %s", e, exc_info=True)
+        st.error(f"Blad modelu CP: {e}")
 
     st.markdown("---")
 
@@ -251,7 +288,11 @@ def render_summary_tab(
     # 4. WYKRES SmO2 vs THb W CZASIE
     # =========================================================================
     st.subheader("4️⃣ SmO2 vs THb w czasie")
-    _render_smo2_thb_chart(df_plot)
+    try:
+        _render_smo2_thb_chart(df_plot)
+    except Exception as e:
+        logger.error("Summary section 4 (SmO2/THb) failed: %s", e, exc_info=True)
+        st.error(f"Blad wykresu SmO2/THb: {e}")
 
     st.markdown("---")
 
@@ -259,7 +300,11 @@ def render_summary_tab(
     # 5. PROGI WENTYLACYJNE VT1/VT2
     # =========================================================================
     st.subheader("5️⃣ Progi Wentylacyjne (VT1/VT2)")
-    _render_vent_thresholds_summary(df_plot, cp_input, eff_vt1, eff_vt2, threshold_result)
+    try:
+        _render_vent_thresholds_summary(df_plot, cp_input, _safe_int(eff_vt1), _safe_int(eff_vt2), threshold_result)
+    except Exception as e:
+        logger.error("Summary section 5 (Vent Thresholds) failed: %s", e, exc_info=True)
+        st.error(f"Blad progow wentylacyjnych: {e}")
 
     st.markdown("---")
 
@@ -267,7 +312,11 @@ def render_summary_tab(
     # 6. PROGI SmO2 LT1/LT2
     # =========================================================================
     st.subheader("6️⃣ Progi SmO2 (LT1/LT2)")
-    _render_smo2_thresholds_summary(df_plot, cp_input, eff_lt1, eff_lt2, smo2_result)
+    try:
+        _render_smo2_thresholds_summary(df_plot, cp_input, _safe_int(eff_lt1), _safe_int(eff_lt2), smo2_result)
+    except Exception as e:
+        logger.error("Summary section 6 (SmO2 Thresholds) failed: %s", e, exc_info=True)
+        st.error(f"Blad progow SmO2: {e}")
 
     st.markdown("---")
 
@@ -275,7 +324,11 @@ def render_summary_tab(
     # 7. THRESHOLD DISCORDANCE INDEX (TDI)
     # =========================================================================
     st.subheader("7️⃣ Threshold Discordance Index (TDI)")
-    _render_tdi_analysis(int(eff_vt1), int(eff_lt1))
+    try:
+        _render_tdi_analysis(_safe_int(eff_vt1), _safe_int(eff_lt1))
+    except Exception as e:
+        logger.error("Summary section 7 (TDI) failed: %s", e, exc_info=True)
+        st.error(f"Blad TDI: {e}")
 
     st.markdown("---")
 
@@ -283,7 +336,11 @@ def render_summary_tab(
     # 8. VO2max UNCERTAINTY ESTIMATION (CI95%)
     # =========================================================================
     st.subheader("8️⃣ Estymacja VO2max z Niepewnością (CI95%)")
-    _render_vo2max_uncertainty(df_plot, rider_weight)
+    try:
+        _render_vo2max_uncertainty(df_plot, rider_weight)
+    except Exception as e:
+        logger.error("Summary section 8 (VO2max) failed: %s", e, exc_info=True)
+        st.error(f"Blad estymacji VO2max: {e}")
 
 
 # =============================================================================

@@ -80,7 +80,7 @@ def validate_threshold_vs_pmax(
 ) -> Dict:
     """
     Validate that a threshold is physiologically plausible relative to Pmax.
-    
+
     [Issue #2] Prevents detection of thresholds that exceed physiological limits.
 
     Args:
@@ -94,17 +94,41 @@ def validate_threshold_vs_pmax(
     """
     if pmax_watts <= 0 or threshold_watts is None:
         return {"is_valid": True, "confidence_penalty": 0.0, "message": ""}
-    
+
+
+def calculate_cv(values, percentage: bool = True) -> float:
+    """
+    Calculate coefficient of variation (CV) for a set of values.
+
+    Args:
+        values: Input data (Series, array, or list)
+        percentage: If True, return CV as percentage (*100). If False, return ratio.
+
+    Returns:
+        CV value (0.0 if mean is zero or data is empty)
+    """
+    import numpy as np
+
+    arr = np.asarray(values)
+    if len(arr) == 0:
+        return 0.0
+    mean_val = float(np.mean(arr))
+    std_val = float(np.std(arr))
+    if mean_val == 0:
+        return 0.0
+    cv = std_val / mean_val
+    return cv * 100.0 if percentage else cv
+
     ratio = threshold_watts / pmax_watts
-    
+
     if ratio > max_ratio:
         return {
             "is_valid": False,
             "confidence_penalty": 0.3,
             "message": (
-                f"⚠️ {threshold_name} ({threshold_watts}W) > {max_ratio*100:.0f}% of Pmax "
+                f"⚠️ {threshold_name} ({threshold_watts}W) > {max_ratio * 100:.0f}% of Pmax "
                 f"({pmax_watts}W) → UNRELIABLE, confidence -0.3"
             ),
         }
-    
+
     return {"is_valid": True, "confidence_penalty": 0.0, "message": ""}

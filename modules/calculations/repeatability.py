@@ -11,6 +11,8 @@ Key Metrics:
 import numpy as np
 from typing import List, Dict, Union, Any
 
+from modules.calculations.common import calculate_cv
+
 
 def classify_reproducibility(cv: float) -> str:
     """Classify the stability of a metric based on CV."""
@@ -67,7 +69,7 @@ def calculate_repeatability_metrics(
 
         mean_val = np.mean(values)
         std_val = np.std(values, ddof=1)
-        cv = (std_val / mean_val * 100.0) if mean_val != 0 else 0
+        cv = calculate_cv(values)
         sem = std_val / np.sqrt(len(values))
 
         results[metric] = {
@@ -152,7 +154,7 @@ def calculate_icc(values: List[float]) -> Dict[str, Any]:
     values_arr = np.array(values, dtype=float)
     mean_val = float(np.mean(values_arr))
     std_val = float(np.std(values_arr, ddof=1))
-    cv = std_val / mean_val if mean_val != 0 else 0.0
+    cv = calculate_cv(values_arr, percentage=False)
     icc = max(0.0, 1.0 - cv**2)
 
     # Bootstrap 95% CI (1000 resamples)

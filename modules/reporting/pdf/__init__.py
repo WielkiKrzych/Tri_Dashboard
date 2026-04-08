@@ -5,10 +5,17 @@ Generates publication-ready PDF reports from canonical JSON data.
 Uses ReportLab library. No Streamlit dependency.
 
 Module Structure:
-- styles.py: Typography, colors, reusable styles
-- layout.py: Page sections and content builders
-- builder.py: Document orchestration and assembly
-- summary_pdf.py: Summary tab PDF generator
+    - styles.py: Typography, colors, reusable styles
+    - layout.py: Page sections (core layout, reduced from 5447 lines)
+        - cards.py: Shared card builder components
+        - metabolic.py: Metabolic Engine page layout
+        - smo2.py: SmO2 threshold page layout
+        - thermal.py: Thermal limits page layout
+        - biomech.py: Biomechanical analysis page layout
+    - builder.py: Document orchestration and assembly
+    - summary_pdf.py: Summary tab PDF generator
+
+
 
 Usage:
     from modules.reporting.pdf import build_ramp_pdf, PDFConfig

@@ -170,10 +170,16 @@ class TabRegistry:
         "tte": ("modules.ui.tte_ui", "render_tte_tab"),
         "ramp_archive": ("modules.ui.ramp_archive", "render_ramp_archive"),
         "durability": ("modules.ui.durability_ui", "render_durability_tab"),
-        "training_dist": ("modules.ui.training_distribution_ui", "render_training_distribution_tab"),
+        "training_dist": (
+            "modules.ui.training_distribution_ui",
+            "render_training_distribution_tab",
+        ),
         "heat_strain": ("modules.ui.heat_strain_ui", "render_heat_strain_tab"),
         "race_predictor": ("modules.ui.race_predictor_ui", "render_race_predictor_tab"),
-        "wprime_recon": ("modules.ui.w_prime_reconstitution_ui", "render_w_prime_reconstitution_tab"),
+        "wprime_recon": (
+            "modules.ui.w_prime_reconstitution_ui",
+            "render_w_prime_reconstitution_tab",
+        ),
     }
 
     @classmethod
@@ -212,7 +218,7 @@ state.init_session_state()
 from modules.db.athlete_profiles import AthleteProfileStore
 
 _profile_store = AthleteProfileStore()
-if st.session_state["selected_athlete_id"] == "default":
+if st.session_state.get("selected_athlete_id", "default") == "default":
     _first_profile = _profile_store.get_or_create_default()
     st.session_state["selected_athlete_id"] = _first_profile.id
     state.load_profile_into_state(_first_profile.id)
@@ -444,25 +450,49 @@ if uploaded_file is not None:
             render_tab_content("tte", df_plot, cp_input, filename)
         with t10:
             render_tab_content(
-                "durability", df_plot, df_plot_resampled, metrics,
-                rider_weight, cp_input, w_prime_input,
+                "durability",
+                df_plot,
+                df_plot_resampled,
+                metrics,
+                rider_weight,
+                cp_input,
+                w_prime_input,
             )
         with t11:
             render_tab_content(
-                "training_dist", df_plot, df_plot_resampled, metrics,
-                rider_weight, cp_input, w_prime_input,
-                max_hr, hr_rest,
+                "training_dist",
+                df_plot,
+                df_plot_resampled,
+                metrics,
+                rider_weight,
+                cp_input,
+                w_prime_input,
+                max_hr,
+                hr_rest,
             )
         with t12:
             render_tab_content(
-                "heat_strain", df_plot, df_plot_resampled, metrics,
-                rider_weight, cp_input, w_prime_input,
-                max_hr, hr_rest, rider_age, is_male,
+                "heat_strain",
+                df_plot,
+                df_plot_resampled,
+                metrics,
+                rider_weight,
+                cp_input,
+                w_prime_input,
+                max_hr,
+                hr_rest,
+                rider_age,
+                is_male,
             )
         with t13:
             render_tab_content(
-                "race_predictor", df_plot, df_plot_resampled, metrics,
-                rider_weight, cp_input, w_prime_input,
+                "race_predictor",
+                df_plot,
+                df_plot_resampled,
+                metrics,
+                rider_weight,
+                cp_input,
+                w_prime_input,
             )
 
     with tab_intelligence:
@@ -535,8 +565,13 @@ if uploaded_file is not None:
             render_tab_content("ramp_archive")
         with t10:
             render_tab_content(
-                "wprime_recon", df_plot, df_plot_resampled, metrics,
-                rider_weight, cp_input, w_prime_input,
+                "wprime_recon",
+                df_plot,
+                df_plot_resampled,
+                metrics,
+                rider_weight,
+                cp_input,
+                w_prime_input,
             )
 
     # PNG Export

@@ -276,41 +276,49 @@ def _classify_adaptation_direction(analysis: TrendAnalysis) -> str:
 
     Returns: central, peripheral, thermal, or balanced
     """
-    scores = {"central": 0, "peripheral": 0, "thermal": 0}
+    scores = {
+        "central": _score_central_indicators(analysis),
+        "peripheral": _score_peripheral_indicators(analysis),
+        "thermal": _score_thermal_indicators(analysis),
+    }
 
-    # Central indicators: VT1, VT2, CP, EF
-    if analysis.vt1.direction == "improving":
-        scores["central"] += 2
-    if analysis.vt2.direction == "improving":
-        scores["central"] += 2
-    if analysis.cp.direction == "improving":
-        scores["central"] += 3
-    if analysis.ef.direction == "improving":
-        scores["central"] += 2
-
-    # Peripheral indicators: SmO2 slope, Occlusion Index, W'
-    if analysis.smo2_slope.direction == "improving":
-        scores["peripheral"] += 3
-    if analysis.occlusion_index.direction == "improving":
-        scores["peripheral"] += 3
-    if analysis.w_prime.direction == "improving":
-        scores["peripheral"] += 2
-
-    # Thermal indicators: HSI
-    if analysis.hsi.direction == "improving":
-        scores["thermal"] += 4
-
-    # Find dominant direction
     max_score = max(scores.values())
     if max_score == 0:
         return "balanced"
 
     dominant = [k for k, v in scores.items() if v == max_score]
-
     if len(dominant) > 1:
         return "balanced"
 
     return dominant[0]
+
+
+# --- Ported from Analiza Kolarska ---
+
+
+def _score_if_improving(trend: MetricTrend, weight: int) -> int:
+    return weight if trend.direction == "improving" else 0
+
+
+def _score_central_indicators(analysis: TrendAnalysis) -> int:
+    return (
+        _score_if_improving(analysis.vt1, 2)
+        + _score_if_improving(analysis.vt2, 2)
+        + _score_if_improving(analysis.cp, 3)
+        + _score_if_improving(analysis.ef, 2)
+    )
+
+
+def _score_peripheral_indicators(analysis: TrendAnalysis) -> int:
+    return (
+        _score_if_improving(analysis.smo2_slope, 3)
+        + _score_if_improving(analysis.occlusion_index, 3)
+        + _score_if_improving(analysis.w_prime, 2)
+    )
+
+
+def _score_thermal_indicators(analysis: TrendAnalysis) -> int:
+    return _score_if_improving(analysis.hsi, 4)
 
 
 def _calculate_engine_map(analysis: TrendAnalysis) -> Dict[str, float]:

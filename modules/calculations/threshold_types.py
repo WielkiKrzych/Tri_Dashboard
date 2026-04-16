@@ -3,7 +3,7 @@ Common types and dataclasses for threshold detection.
 """
 
 from dataclasses import dataclass, field
-from typing import Optional, List, Tuple
+from typing import Optional, List, Tuple, Dict, Any, Literal
 
 from modules.calculations.common import calculate_cv
 
@@ -122,6 +122,7 @@ class StepTestResult:
     smo2_2_value: Optional[float] = None
     step_smo2_analysis: List[dict] = field(default_factory=list)
     step_range: Optional["StepTestRange"] = None
+    validation_report: Optional["TestValidityReport"] = None
 
 
 @dataclass
@@ -134,6 +135,89 @@ class DetectedStep:
     duration_sec: float
     avg_power: float
     power_diff_from_prev: float = 0.0
+
+
+# --- Ported from Analiza Kolarska ---
+
+
+@dataclass
+class TestValidityReport:
+    """Validation result for ramp test data quality.
+
+    Status levels:
+    - "valid": Test passes all criteria, proceed with full analysis
+    - "conditional": Test has issues but analysis can proceed with warnings
+    - "invalid": Test fails critical criteria, analysis not recommended
+    """
+
+    __test__ = False
+    status: Literal["valid", "conditional", "invalid"]
+    criteria: Dict[str, bool] = field(default_factory=dict)
+    criteria_details: Dict[str, Dict[str, Any]] = field(default_factory=dict)
+    quality_score: float = 0.0
+    recommendations: List[str] = field(default_factory=list)
+    warnings: List[str] = field(default_factory=list)
+
+    @property
+    def is_valid(self) -> bool:
+        return self.status != "invalid"
+
+    @property
+    def has_warnings(self) -> bool:
+        return len(self.warnings) > 0
+
+    @property
+    def quality_label(self) -> str:
+        if self.quality_score >= 80:
+            return "Wysoka"
+        elif self.quality_score >= 50:
+            return "Średnia"
+        return "Niska"
+
+
+@dataclass
+class EnhancedThresholdResult:
+    """Full threshold result with confidence breakdown.
+
+    Use this instead of simple point values for new code.
+    Provides CI95% range and confidence factors for transparency.
+    """
+
+    value_watts: float
+    value_hr: Optional[float] = None
+    value_secondary: Optional[float] = None
+
+    confidence: float = 0.0
+    ci_low: float = 0.0
+    ci_high: float = 0.0
+
+    method: str = "unknown"
+    signals_used: List[str] = field(default_factory=list)
+    confidence_factors: Dict[str, float] = field(default_factory=dict)
+    notes: List[str] = field(default_factory=list)
+
+    @property
+    def is_high_confidence(self) -> bool:
+        return self.confidence >= 0.8
+
+    @property
+    def is_medium_confidence(self) -> bool:
+        return 0.6 <= self.confidence < 0.8
+
+    @property
+    def is_low_confidence(self) -> bool:
+        return self.confidence < 0.6
+
+    @property
+    def ci_width(self) -> float:
+        return self.ci_high - self.ci_low
+
+    def to_legacy_dict(self) -> Dict[str, float]:
+        return {
+            "value": self.value_watts,
+            "hr": self.value_hr,
+            "confidence": self.confidence,
+        }
 
 
 @dataclass

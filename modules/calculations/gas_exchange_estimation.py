@@ -7,9 +7,10 @@ from power and heart rate data when direct gas exchange measurements are unavail
 Uses ACSM and Wasserman equations for estimation.
 """
 
-from typing import Optional
+from typing import Optional, Tuple
 
 import numpy as np
+import pandas as pd
 
 
 def estimate_vo2_from_power(
@@ -118,3 +119,191 @@ def estimate_vco2_from_vo2(
 
     vco2_ml_min = vo2_array * rer_array
     return vco2_ml_min
+
+
+# --- Ported from Analiza Kolarska ---
+
+
+def add_estimated_gas_exchange(
+    df: pd.DataFrame,
+    power_col: str = "watts",
+    hr_col: str = "heartrate",
+    body_weight_kg: float = 70.0,
+    hr_max: float = 185.0,
+    hr_rest: float = 60.0,
+    vo2max_ml_kg_min: float = 55.0,
+    use_power_based: bool = True,
+    use_hr_based: bool = True,
+    blend_factor: float = 0.7,
+) -> pd.DataFrame:
+    """
+    Add estimated VO2 and VCO2 columns to DataFrame.
+
+    Blends power-based and HR-based VO2 estimates (70/30 default),
+    then estimates VCO2 from the blended VO2.
+
+    Args:
+        df: Input DataFrame
+        power_col: Column name for power (watts)
+        hr_col: Column name for heart rate (bpm)
+        body_weight_kg: Rider body weight
+        hr_max: Maximum heart rate
+        hr_rest: Resting heart rate
+        vo2max_ml_kg_min: VO2max in mL/kg/min
+        use_power_based: Include power-based VO2 estimation
+        use_hr_based: Include HR-based VO2 estimation
+        blend_factor: Weight for power-based vs HR-based (0.7 = 70% power, 30% HR)
+
+    Returns:
+        DataFrame with added 'vo2', 'vco2', and 'rer_estimated' columns
+    """
+    df_result = df.copy()
+
+    power = df_result[power_col].values if power_col in df_result.columns else None
+    hr = df_result[hr_col].values if hr_col in df_result.columns else None
+
+    vo2_estimates = []
+
+    if use_power_based and power is not None:
+        vo2_power = estimate_vo2_from_power(power, body_weight_kg)
+        vo2_estimates.append(vo2_power)
+
+    if use_hr_based and hr is not None:
+        vo2_hr = estimate_vo2_from_hr(hr, hr_max, hr_rest, vo2max_ml_kg_min, body_weight_kg)
+        vo2_estimates.append(vo2_hr)
+
+    if len(vo2_estimates) == 2:
+        vo2_final = blend_factor * vo2_estimates[0] + (1 - blend_factor) * vo2_estimates[1]
+    elif len(vo2_estimates) == 1:
+        vo2_final = vo2_estimates[0]
+    else:
+        vo2_final = estimate_vo2_from_power(np.linspace(100, 300, len(df_result)), body_weight_kg)
+
+    vco2_final = estimate_vco2_from_vo2(vo2_final, power_watts=power)
+
+    df_result["vo2"] = vo2_final / 1000.0
+    df_result["vco2"] = vco2_final / 1000.0
+    df_result["rer_estimated"] = vco2_final / np.maximum(vo2_final, 1.0)
+
+    return df_result
+
+
+def detect_vt_with_estimated_gas_exchange(
+    df: pd.DataFrame,
+    ve_col: str = "TymeVentilation",
+    power_col: str = "watts",
+    hr_col: str = "heartrate",
+    time_col: str = "time",
+    body_weight_kg: float = 70.0,
+    **kwargs,
+) -> dict:
+    """
+    Detect ventilatory thresholds using estimated VO2/VCO2.
+
+    Wrapper that adds estimated gas exchange data before calling
+    the standard VT detection functions.
+
+    Args:
+        df: Input DataFrame with ventilation data
+        ve_col: Column name for ventilation
+        power_col: Column name for power
+        hr_col: Column name for heart rate
+        time_col: Column name for time
+        body_weight_kg: Rider body weight for VO2 estimation
+        **kwargs: Additional arguments passed to detect_vt_ramp_python
+
+    Returns:
+        Dictionary with VT1 and VT2 detection results
+    """
+    from .ventilatory import detect_vt_cpet
+
+    df_with_gas = add_estimated_gas_exchange(
+        df,
+        power_col=power_col,
+        hr_col=hr_col,
+        body_weight_kg=body_weight_kg,
+    )
+
+    result = detect_vt_cpet(df_with_gas, **kwargs)
+
+    result["gas_exchange_method"] = "estimated_from_power_hr"
+    result["body_weight_kg"] = body_weight_kg
+
+    return result
+
+
+def detect_vt_percentile_based(
+    df: pd.DataFrame,
+    power_col: str = "watts",
+    hr_col: str = "heartrate",
+    ve_col: str = "TymeVentilation",
+    vt1_percentile: float = 60.0,
+    vt2_percentile: float = 80.0,
+    min_power: float = 100.0,
+) -> dict:
+    """
+    Detect ventilatory thresholds using percentile-based estimation.
+
+    Fallback method when gas exchange data is unavailable.
+    Uses power percentiles as proxy for VT1/VT2 based on typical
+    distribution in ramp tests.
+
+    Args:
+        df: Input DataFrame with power and optional HR/VE data
+        power_col: Column name for power
+        hr_col: Column name for heart rate
+        ve_col: Column name for ventilation
+        vt1_percentile: Percentile for VT1 (default 60th)
+        vt2_percentile: Percentile for VT2 (default 80th)
+        min_power: Minimum power to consider (filters warmup/cooldown)
+
+    Returns:
+        Dictionary with VT1 and VT2 detection results
+    """
+    df_work = df.copy()
+
+    mask = df_work[power_col] >= min_power
+    df_active = df_work[mask]
+
+    if len(df_active) < 100:
+        return {
+            "error": "Insufficient active data for percentile-based detection",
+            "vt1_onset": None,
+            "vt2_onset": None,
+        }
+
+    power_values = df_active[power_col].values
+    hr_values = df_active[hr_col].values if hr_col in df_active.columns else None
+    ve_values = df_active[ve_col].values if ve_col in df_active.columns else None
+
+    vt1_power = np.percentile(power_values, vt1_percentile)
+    vt2_power = np.percentile(power_values, vt2_percentile)
+
+    vt1_idx = np.argmin(np.abs(power_values - vt1_power))
+    vt2_idx = np.argmin(np.abs(power_values - vt2_power))
+
+    result = {
+        "vt1_onset": {
+            "power": float(vt1_power),
+            "hr": float(hr_values[vt1_idx]) if hr_values is not None else None,
+            "ve": float(ve_values[vt1_idx]) if ve_values is not None else None,
+            "percentile": vt1_percentile,
+            "method": "percentile_based",
+        },
+        "vt2_onset": {
+            "power": float(vt2_power),
+            "hr": float(hr_values[vt2_idx]) if hr_values is not None else None,
+            "ve": float(ve_values[vt2_idx]) if ve_values is not None else None,
+            "percentile": vt2_percentile,
+            "method": "percentile_based",
+        },
+        "analysis_log": [
+            f"VT1 detected at {vt1_power:.0f}W ({vt1_percentile:.0f}th percentile)",
+            f"VT2 detected at {vt2_power:.0f}W ({vt2_percentile:.0f}th percentile)",
+            "Method: Percentile-based estimation (fallback when gas exchange unavailable)",
+        ],
+        "confidence": 0.6,
+        "method": "percentile_based",
+    }
+
+    return result

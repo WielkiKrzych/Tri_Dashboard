@@ -367,11 +367,56 @@ def _generate_recommendations(conflicts: List[SignalConflict]) -> List[str]:
 # CONFIDENCE CALCULATION
 # ============================================================
 
+# --- Ported from Analiza Kolarska ---
+
+
+def calculate_conflict_adjusted_confidence(
+    base_confidence: float,
+    conflicts: ConflictReport,
+) -> float:
+    """
+    Adjust confidence based on detected conflicts.
+
+    Each conflict reduces confidence by its penalty.
+    Does NOT attempt to resolve conflicts.
+
+    Args:
+        base_confidence: Starting confidence (0-1)
+        conflicts: Detected conflicts
+
+    Returns:
+        Adjusted confidence (0-1)
+    """
+    total_penalty = conflicts.total_confidence_penalty()
+    adjusted = base_confidence - total_penalty
+    return max(0.1, min(1.0, adjusted))
+
+
+def get_conflict_summary(conflicts: ConflictReport) -> str:
+    """
+    Generate human-readable summary of conflicts.
+
+    For report display.
+    """
+    if not conflicts.has_conflicts:
+        return "✅ Brak konfliktów między sygnałami"
+
+    n = len(conflicts.conflicts)
+    critical = len(conflicts.critical_conflicts)
+
+    if critical > 0:
+        return f"⛔ {n} konflikt(ów), w tym {critical} krytyczny(ch)"
+    else:
+        return f"⚠️ {n} konflikt(ów) - patrz szczegóły"
+
+
 # ============================================================
 # EXPORTS
 # ============================================================
 
 __all__ = [
     "detect_conflicts",
+    "calculate_conflict_adjusted_confidence",
+    "get_conflict_summary",
     "CONFLICT_DESCRIPTIONS",
 ]

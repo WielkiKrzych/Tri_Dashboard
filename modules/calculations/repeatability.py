@@ -246,3 +246,10 @@ def calculate_sem(values):
         return 0.0
     std_val = np.std(values, ddof=1)
     return float(std_val / np.sqrt(len(values)))
+
+
+# --- Ported from Analiza Kolarska: standalone CV ---
+from modules.calculations.common import calculate_cv as _cv_from_common
+def calculate_cv(values):
+    """Calculate Coefficient of Variation (%)."""
+    return _cv_from_common(values, percentage=True)

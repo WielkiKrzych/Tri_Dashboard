@@ -754,3 +754,8 @@ __all__ = [
     "generate_training_cards",
     "LIMITER_TYPES",
 ]
+
+
+# --- Ported from Analiza Kolarska: public aliases ---
+safe_float = _safe_float
+safe_int = _safe_int

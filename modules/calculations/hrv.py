@@ -428,3 +428,7 @@ def calculate_dynamic_dfa_v2(
 
     except Exception as e:
         return None, f"Błąd obliczeń Numba: {e}"
+
+
+# --- Ported from Analiza Kolarska: alias ---
+_get_cache_key = _generate_cache_key

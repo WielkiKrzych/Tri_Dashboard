@@ -225,3 +225,24 @@ def bland_altman_data(values: List[float]) -> Dict[str, Any]:
         "lower_loa": round(lower_loa, 3),
         "sd_diff": round(sd_diff, 3),
     }
+
+
+# --- Ported from Analiza Kolarska ---
+
+def calculate_sem(values):
+    """Calculate Standard Error of Measurement.
+
+    SEM = SD / sqrt(n)
+    Represents the typical error range for repeated measurements.
+
+    Args:
+        values: List of float measurements
+
+    Returns:
+        float: SEM value, or 0.0 if insufficient data
+    """
+    import numpy as np
+    if len(values) < 2:
+        return 0.0
+    std_val = np.std(values, ddof=1)
+    return float(std_val / np.sqrt(len(values)))

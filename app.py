@@ -606,6 +606,7 @@ if uploaded_file is not None:
             from modules.export.zone_exporter import export_hr_zones_csv, export_power_zones_csv
             from modules.export.tcx_generator import generate_tcx_bytes
             from modules.export.workout_exporter import export_trainingpeaks_csv
+            from modules.export.fit_exporter import FitExporter
 
             export_name = safe_filename.replace(".csv", "").replace(".fit", "")[:50]
 
@@ -614,6 +615,13 @@ if uploaded_file is not None:
                 data=generate_tcx_bytes(df_plot, metrics, cp_input),
                 file_name=f"{export_name}.tcx",
                 mime="application/vnd.garmin.tcx+xml",
+                use_container_width=True,
+            )
+            st.download_button(
+                "🏃 FIT (Garmin Connect/Strava)",
+                data=FitExporter().export(df_plot, metrics),
+                file_name=f"{export_name}.fit",
+                mime="application/octet-stream",
                 use_container_width=True,
             )
             st.download_button(

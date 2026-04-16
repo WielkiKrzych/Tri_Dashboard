@@ -1,5 +1,5 @@
 """
-Export module — TCX, CSV, and TrainingPeaks export functionality.
+Export module — FIT, TCX, CSV, and TrainingPeaks export functionality.
 """
 
 from .zone_exporter import (
@@ -11,6 +11,7 @@ from .zone_exporter import (
 )
 from .tcx_generator import generate_tcx_bytes
 from .workout_exporter import export_trainingpeaks_csv
+from .fit_exporter import FitExporter, PlatformSync
 
 __all__ = [
     "PowerZone",
@@ -20,4 +21,6 @@ __all__ = [
     "export_hr_zones_csv",
     "generate_tcx_bytes",
     "export_trainingpeaks_csv",
+    "FitExporter",
+    "PlatformSync",
 ]

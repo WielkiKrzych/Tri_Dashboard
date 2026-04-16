@@ -421,3 +421,66 @@ def format_tte(seconds: int) -> str:
     mins = seconds // 60
     secs = seconds % 60
     return f"{mins:02d}:{secs:02d}"
+
+
+# --- Ported from Analiza Kolarska: parallel TTE batch processing ---
+
+def _submit_tte_tasks(
+    executor,
+    sessions: list,
+    file_cache: dict,
+    target_pcts: list,
+    ftp: float,
+    tol_pct: float,
+    progress_callback=None,
+    total: int = 0,
+):
+    """Submit TTE computation tasks to a ProcessPoolExecutor."""
+    futures: dict = {}
+    fail_count = 0
+    for i, row in enumerate(sessions):
+        from pathlib import Path
+        filename = row["filename"]
+        csv_path = file_cache.get(Path(filename).stem)
+        if not csv_path or not Path(csv_path).exists():
+            fail_count += 1
+            if progress_callback:
+                progress_callback(i + 1, total, f"❌ {filename}: Not found")
+            continue
+        future = executor.submit(_compute_single_session_tte, csv_path, target_pcts, ftp, tol_pct)
+        futures[future] = (row["id"], filename, row.get("extra_metrics", "{}"))
+    return futures, fail_count
+
+
+def _collect_tte_results(
+    futures: dict,
+    progress_callback=None,
+    total: int = 0,
+):
+    """Collect TTE computation results from futures."""
+    from concurrent.futures import as_completed
+    import json
+    updates: list = []
+    success_count = 0
+    fail_count = 0
+    for j, future in enumerate(as_completed(futures)):
+        row_id, fname, old_extra_json = futures[future]
+        try:
+            new_tte = future.result()
+            if new_tte:
+                extra = json.loads(old_extra_json or "{}")
+                if "tte" not in extra:
+                    extra["tte"] = {}
+                extra["tte"].update(new_tte)
+                updates.append((json.dumps(extra), row_id))
+                success_count += 1
+                msg = f"✅ {fname}: OK"
+            else:
+                fail_count += 1
+                msg = f"❌ {fname}: Data error"
+        except Exception as e:
+            fail_count += 1
+            msg = f"⚠️ {fname}: {str(e)}"
+        if progress_callback:
+            progress_callback(j + 1, total, msg)
+    return updates, success_count, fail_count

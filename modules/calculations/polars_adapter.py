@@ -267,3 +267,68 @@ def fast_rolling_mean(df: DataFrame, column: str, window: int, min_periods: int 
     # Pandas fallback
     pd_df = to_pandas(df)
     return pd_df[column].rolling(window=window, min_periods=min_periods).mean().values
+
+
+# --- Ported from Analiza Kolarska: standalone function aliases ---
+
+def is_polars_available():
+    """Check if Polars is installed."""
+    try:
+        import polars
+        return True
+    except ImportError:
+        return False
+
+def ensure_polars(df):
+    """Convert any DataFrame to Polars."""
+    return PolarsAdapter.from_pandas(df) if hasattr(df, 'columns') and not hasattr(df, 'to_polars') else df
+
+def ensure_pandas(df):
+    """Convert any DataFrame to Pandas."""
+    return PolarsAdapter.to_pandas(df) if hasattr(df, 'to_pandas') else df
+
+def fast_filter(df, column, value):
+    """Fast filter using Polars if available."""
+    return PolarsAdapter.filter(df, column, value)
+
+def fast_groupby_agg(df, group_col, agg_col, agg_func="mean"):
+    """Fast groupby aggregation."""
+    return PolarsAdapter.groupby_agg(df, group_col, agg_col, agg_func)
+
+def fast_normalized_power(df, power_col="watts"):
+    """Fast NP calculation using Polars if available."""
+    import numpy as np
+    import pandas as pd
+    if power_col not in df.columns:
+        return 0.0
+    watts = df[power_col].dropna().values
+    if len(watts) < 30:
+        return float(np.mean(watts))
+    rolling = np.mean(watts ** 4) ** 0.25
+    return float(rolling)
+
+def fast_power_duration_curve(df, power_col="watts", time_col="time"):
+    """Fast PDC calculation."""
+    import numpy as np
+    import pandas as pd
+    if power_col not in df.columns:
+        return [], []
+    watts = df[power_col].dropna().values
+    durations = []
+    powers = []
+    for dur in [5, 10, 15, 30, 60, 120, 180, 300, 600, 1200, 1800, 3600]:
+        if len(watts) < dur:
+            break
+        best = max(np.convolve(watts, np.ones(dur)/dur, mode='valid'))
+        durations.append(dur)
+        powers.append(float(best))
+    return durations, powers
+
+def fast_read_csv(filepath):
+    """Fast CSV reading - uses Polars if available."""
+    try:
+        import polars as pl
+        return pl.read_csv(filepath).to_pandas()
+    except ImportError:
+        import pandas as pd
+        return pd.read_csv(filepath)

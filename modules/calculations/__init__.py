@@ -175,6 +175,46 @@ from .durability import (
     get_durability_recommendations,
 )
 
+from .mpa import (
+    calculate_mpa,
+    calculate_time_to_exhaustion,
+    MPAProfile,
+)
+
+from .multisport_zones import (
+    calculate_cycling_zones,
+    calculate_running_zones,
+    calculate_swim_zones,
+    estimate_critical_pace,
+    pace_to_str,
+    swim_pace_to_str,
+    SportZones,
+)
+
+from .fueling import (
+    calculate_fueling_plan,
+    estimate_sweat_rate,
+    estimate_carb_burn_rate,
+    FuelingPlan,
+    FuelingStep,
+)
+
+from .dfa_longitudinal import (
+    extract_dfa_threshold,
+    calculate_dfa_longitudinal_trend,
+    cross_validate_with_vt,
+    DFAThresholdSession,
+    DFALongitudinalTrend,
+)
+
+from .aerobic_efficiency import (
+    calculate_session_efficiency,
+    calculate_efficiency_trend,
+    interpret_trend,
+    SessionEfficiency,
+    EfficiencyTrend,
+)
+
 __all__ = [
     # W' Balance
     "calculate_w_prime_balance",
@@ -282,4 +322,34 @@ __all__ = [
     # Durability Extended (NEW)
     "calculate_durability_by_season",
     "get_durability_recommendations",
+    # MPA (NEW)
+    "calculate_mpa",
+    "calculate_time_to_exhaustion",
+    "MPAProfile",
+    # Multisport Zones (NEW)
+    "calculate_cycling_zones",
+    "calculate_running_zones",
+    "calculate_swim_zones",
+    "estimate_critical_pace",
+    "pace_to_str",
+    "swim_pace_to_str",
+    "SportZones",
+    # Fueling Engine (NEW)
+    "calculate_fueling_plan",
+    "estimate_sweat_rate",
+    "estimate_carb_burn_rate",
+    "FuelingPlan",
+    "FuelingStep",
+    # DFA Longitudinal (NEW)
+    "extract_dfa_threshold",
+    "calculate_dfa_longitudinal_trend",
+    "cross_validate_with_vt",
+    "DFAThresholdSession",
+    "DFALongitudinalTrend",
+    # Aerobic Efficiency (NEW)
+    "calculate_session_efficiency",
+    "calculate_efficiency_trend",
+    "interpret_trend",
+    "SessionEfficiency",
+    "EfficiencyTrend",
 ]

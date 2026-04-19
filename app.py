@@ -180,6 +180,20 @@ class TabRegistry:
             "modules.ui.w_prime_reconstitution_ui",
             "render_w_prime_reconstitution_tab",
         ),
+        "pmc": ("modules.ui.training_load_ui", "render_pmc_tab"),
+        "vlamax": ("modules.ui.vlamax_ui", "render_vlamax_tab"),
+        "training_impact": ("modules.ui.training_impact_ui", "render_training_impact_tab"),
+        "hrv_readiness": ("modules.ui.hrv_readiness_ui", "render_hrv_readiness_tab"),
+        "smo2_longitudinal": ("modules.ui.smo2_longitudinal_ui", "render_smo2_longitudinal_tab"),
+        "mpa": ("modules.ui.mpa_ui", "render_mpa_tab"),
+        "multisport": ("modules.ui.multisport_zones_ui", "render_multisport_zones_tab"),
+        "fueling": ("modules.ui.fueling_ui", "render_fueling_tab"),
+        "dfa_longitudinal": ("modules.ui.dfa_longitudinal_ui", "render_dfa_longitudinal_tab"),
+        "aerobic_efficiency": ("modules.ui.aerobic_efficiency_ui", "render_aerobic_efficiency_tab"),
+        "banister": ("modules.ui.banister_ui", "render_banister_tab"),
+        "running_dynamics": ("modules.ui.running_dynamics_ui", "render_running_dynamics_tab"),
+        "sleep_recovery": ("modules.ui.sleep_recovery_ui", "render_sleep_recovery_tab"),
+        "periodization": ("modules.ui.periodization_ui", "render_periodization_tab"),
     }
 
     @classmethod
@@ -368,8 +382,8 @@ if uploaded_file is not None:
         )
 
     # Layout Tabs
-    tab_overview, tab_performance, tab_intelligence, tab_physiology = st.tabs(
-        ["📊 Overview", "⚡ Performance", "🧠 Intelligence", "🫀 Physiology"]
+    tab_overview, tab_performance, tab_intelligence, tab_physiology, tab_planning = st.tabs(
+        ["📊 Overview", "⚡ Performance", "🧠 Intelligence", "🫀 Physiology", "📅 Planning"]
     )
 
     with tab_overview:
@@ -407,12 +421,17 @@ if uploaded_file is not None:
 
     with tab_performance:
         UIComponents.show_breadcrumb("⚡ Performance")
-        t1, t3, t4, t5, t6, t7, t8, t9, t10, t11, t12, t13 = st.tabs(
+        t1, t2, t3, t4, t5, t6, t7, t8, t9, t10, t11, t12, t13, t14, t15, t16, t17 = st.tabs(
             [
+                "📊 PMC",
                 "🔋 Power",
                 "⏱️ Intervals",
                 "🦵 Biomech",
                 "📐 Model",
+                "🎯 Training Impact",
+                "⚡ MPA",
+                "🏃‍♂️ Multisport",
+                "📊 Aerobic EF",
                 "❤️ HR",
                 "🧬 Hematology",
                 "📈 Drift Maps",
@@ -424,6 +443,8 @@ if uploaded_file is not None:
             ]
         )
         with t1:
+            render_tab_content("pmc")
+        with t2:
             render_tab_content(
                 "power",
                 df_plot,
@@ -442,15 +463,23 @@ if uploaded_file is not None:
         with t5:
             render_tab_content("model", df_plot, cp_input, w_prime_input)
         with t6:
-            render_tab_content("heart_rate", df_plot)
+            render_tab_content("training_impact", df_plot, cp_input, w_prime_input)
         with t7:
-            render_tab_content("hemo", df_plot)
+            render_tab_content("mpa", df_plot, cp_input, w_prime_input)
         with t8:
+            render_tab_content("multisport", cp_input, w_prime_input, rider_weight)
+        with t9:
+            render_tab_content("aerobic_efficiency", df_plot, cp_input)
+        with t10:
+            render_tab_content("heart_rate", df_plot)
+        with t11:
+            render_tab_content("hemo", df_plot)
+        with t12:
             render_tab_content("drift_maps", df_plot)
         filename = safe_filename if uploaded_file else "manual_upload"
-        with t9:
+        with t13:
             render_tab_content("tte", df_plot, cp_input, filename)
-        with t10:
+        with t14:
             render_tab_content(
                 "durability",
                 df_plot,
@@ -460,7 +489,7 @@ if uploaded_file is not None:
                 cp_input,
                 w_prime_input,
             )
-        with t11:
+        with t15:
             render_tab_content(
                 "training_dist",
                 df_plot,
@@ -472,7 +501,7 @@ if uploaded_file is not None:
                 max_hr,
                 hr_rest,
             )
-        with t12:
+        with t16:
             render_tab_content(
                 "heat_strain",
                 df_plot,
@@ -486,7 +515,7 @@ if uploaded_file is not None:
                 rider_age,
                 is_male,
             )
-        with t13:
+        with t17:
             render_tab_content(
                 "race_predictor",
                 df_plot,
@@ -499,9 +528,11 @@ if uploaded_file is not None:
 
     with tab_intelligence:
         UIComponents.show_breadcrumb("\U0001f9e0 Intelligence")
-        t1, t2, t3, t4 = st.tabs(
+        t1, t2, t3, t4, t5, t6 = st.tabs(
             [
                 "\U0001f34e Nutrition",
+                "\U0001f9ec VLamax",
+                "\U0001f355 Fueling Engine",
                 "\U0001f6a7 Limiters",
                 "\U0001f916 AI Coach",
                 "\U0001f514 Alerty",
@@ -510,22 +541,29 @@ if uploaded_file is not None:
         with t1:
             render_tab_content("nutrition", df_plot_resampled, cp_input, vt1_watts, vt2_watts)
         with t2:
-            render_tab_content("limiters", df_plot, cp_input, vt2_vent)
+            render_tab_content("vlamax", df_plot, cp_input, w_prime_input, rider_weight)
         with t3:
-            render_tab_content("ai_coach", df_plot_resampled, cp_watts=cp_input)
+            render_tab_content("fueling", df_plot_resampled, cp_input)
         with t4:
+            render_tab_content("limiters", df_plot, cp_input, vt2_vent)
+        with t5:
+            render_tab_content("ai_coach", df_plot_resampled, cp_watts=cp_input)
+        with t6:
             from modules.ui.alerts import render_alerts_tab
 
             render_alerts_tab(alert_report)
 
     with tab_physiology:
         UIComponents.show_breadcrumb("🫀 Physiology")
-        t1, t2, t3, t4, t5, t6, t7, t8, t9, t10 = st.tabs(
+        t1, t2, t3, t4, t5, t6, t7, t8, t9, t10, t11, t12, t13 = st.tabs(
             [
                 "💓 HRV",
+                "🌅 Readiness",
                 "🩸 SmO2",
                 "🫁 Ventilation",
                 "🌡️ Thermal",
+                "📈 SmO2 Longitudinal",
+                "🔬 DFA α1 Longitudinal",
                 "🎯 Vent - Progi",
                 "🛠️ Vent - Progi Manuals",
                 "🎯 SmO2 - Progi",
@@ -537,12 +575,18 @@ if uploaded_file is not None:
         with t1:
             render_tab_content("hrv", df_clean_pl)
         with t2:
-            render_tab_content("smo2", df_plot, training_notes, safe_filename)
+            render_tab_content("hrv_readiness", df_plot)
         with t3:
-            render_tab_content("vent", df_plot, training_notes, safe_filename)
+            render_tab_content("smo2", df_plot, training_notes, safe_filename)
         with t4:
-            render_tab_content("thermal", df_plot)
+            render_tab_content("vent", df_plot, training_notes, safe_filename)
         with t5:
+            render_tab_content("thermal", df_plot)
+        with t6:
+            render_tab_content("smo2_longitudinal", df_plot, cp_input)
+        with t7:
+            render_tab_content("dfa_longitudinal", df_plot)
+        with t8:
             render_tab_content(
                 "vent_thresholds",
                 df_plot,
@@ -553,19 +597,19 @@ if uploaded_file is not None:
                 rider_weight,
                 max_hr,
             )
-        with t6:
+        with t9:
             render_tab_content(
                 "manual_thresholds", df_plot, training_notes, safe_filename, cp_input, max_hr
             )
-        with t7:
+        with t10:
             render_tab_content("smo2_thresholds", df_plot, training_notes, safe_filename, cp_input)
-        with t8:
+        with t11:
             render_tab_content(
                 "smo2_manual_thresholds", df_plot, training_notes, safe_filename, cp_input
             )
-        with t9:
+        with t12:
             render_tab_content("ramp_archive")
-        with t10:
+        with t13:
             render_tab_content(
                 "wprime_recon",
                 df_plot,
@@ -575,6 +619,25 @@ if uploaded_file is not None:
                 cp_input,
                 w_prime_input,
             )
+
+    with tab_planning:
+        UIComponents.show_breadcrumb("📅 Planning")
+        t1, t2, t3, t4 = st.tabs(
+            [
+                "🎯 Banister",
+                "🏃 Running Dynamics",
+                "😴 Sen i Odnowa",
+                "📅 Periodyzacja",
+            ]
+        )
+        with t1:
+            render_tab_content("banister")
+        with t2:
+            render_tab_content("running_dynamics")
+        with t3:
+            render_tab_content("sleep_recovery")
+        with t4:
+            render_tab_content("periodization")
 
     # PNG Export
     st.sidebar.markdown("---")

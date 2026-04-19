@@ -149,6 +149,55 @@ Verification
 ## 📋 Changelog
 
 
+### 2026-04-19 — 14 New Tabs: PMC, VLamax, Training Impact, HRV Readiness, SmO2 Longitudinal, MPA, Multi-Sport, Fueling, DFA alpha1, Aerobic Efficiency, Banister, Running Dynamics, Sleep, Periodization
+
+**14 nowych zakładek analitycznych + nowa sekcja „Planowanie" (5. główna zakładka).** Liczba zakładek: 28 → 42. 14 nowych modułów obliczeniowych + 14 nowych modułów UI. Wszystkie funkcje reużywają istniejące moduły (`training_load`, `stamina`, `w_prime`, `hrv`, `cardiac_drift`, `smo2_thresholds`).
+
+**Performance Management (3 zakładki):**
+
+| # | Kategoria | Zmiana | Opis |
+|---|-----------|--------|------|
+| 1 | **NEW** | PMC Dashboard (CTL/ATL/TSB) | Śledzenie formy/zmęczenia/fitness w klasie TrainingPeaks — wykresy 42-dniowe, prognoza formy na zawody |
+| 2 | **NEW** | Training Impact Decomposition | Rozkład TSS na komponent tlenowy vs beztlenowy per sesja — identyfikacja typów treningu |
+| 3 | **NEW** | Aerobic Efficiency Trends | Ewolucja stosunku moc/HR w czasie — monitorowanie postępów wydolności tlenowej |
+
+**Physiological Analysis (4 zakładki):**
+
+| # | Kategoria | Zmiana | Opis |
+|---|-----------|--------|------|
+| 4 | **NEW** | HRV Readiness Score | Poranny wskaźnik gotowości z 7-dniowego CV rMSSD + semafor kolorowy (zielony/żółty/czerwony) |
+| 5 | **NEW** | SmO2 NIRS Longitudinal Tracker | Trendy punktów przełomowych progów tlenowych (T1/T2) w serii sesji — detekcja zmian adaptacyjnych |
+| 6 | **NEW** | DFA alpha1 Longitudinal | Nieinwazyjny proxy progu mleczanowego — trendy DFA α1 w czasie, korelacja z VT1/VT2 |
+| 7 | **NEW** | MPA (Maximum Power Available) | Sufit mocy w czasie rzeczywistym z bilansu W' — wizualizacja rezerw anaerobowych |
+
+**Metabolic & Fueling (2 zakładki):**
+
+| # | Kategoria | Zmiana | Opis |
+|---|-----------|--------|------|
+| 8 | **NEW** | VLamax Metabolic Profile | Estymacja pojemności anaerobowej z krzywej moc-czas (PD curve) — profil glikolityczny |
+| 9 | **NEW** | Fueling/Hydration Engine | Generator planu węglowodanów/płynów/sodu przed zawodami — kalkulacja na podstawie mocy/czasu/masy |
+
+**Multi-Sport (1 zakładka):**
+
+| # | Kategoria | Zmiana | Opis |
+|---|-----------|--------|------|
+| 10 | **NEW** | Multi-Sport Thresholds | Kalkulator stref tlenowych (kolarstwo/bieganie/pływanie) z Critical Pace — jedne dane, trzy dyscypliny |
+
+**Planowanie (4 zakładki — nowa sekcja):**
+
+| # | Kategoria | Zmiana | Opis |
+|---|-----------|--------|------|
+| 11 | **NEW** | Banister Performance Prediction | Model impuls-odpowiedź (impulse-response) do prognozowania szczytu formy — kalibracja z historycznym TSS |
+| 12 | **NEW** | Running Dynamics | Czas kontaktu z podłożem, oscylacja pionowa, sztywność sprężyny nogi — analiza biomechaniki biegu |
+| 13 | **NEW** | Sleep/Recovery Integration | Import CSV z Garmin/Oura, złożony wskaźnik regeneracji (HRV + sen + TSS) |
+| 14 | **NEW** | Periodization Planner | Wizualny planer bloków Base/Build/Peak/Race — Gantt chart z TSS i CTL target |
+
+**Architektura:**
+- Nowa sekcja „Planowanie" jako 5. główna zakładka aplikacji
+- Liczba zakładek: 28 → 42 (+14)
+- 14 nowych modułów obliczeniowych, 14 nowych modułów UI
+- Wszystkie funkcje reużywają istniejące moduły: `training_load`, `stamina`, `w_prime`, `hrv`, `cardiac_drift`, `smo2_thresholds`
+
 ### 2026-04-19 — Comprehensive Performance Review & Optimization
 
 **Commit `2616942` on `main`:** 22 files, +1276/-808 lines, 721 tests passing, 0 regressions.

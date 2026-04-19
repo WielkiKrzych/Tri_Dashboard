@@ -3,7 +3,6 @@ Summary Calculations — pure math helpers, no Streamlit dependency.
 """
 
 import pandas as pd
-from scipy import stats
 from typing import Any, Tuple
 
 from modules.calculations.column_aliases import resolve_breath_rate_column, resolve_hr_column
@@ -21,6 +20,8 @@ def _calculate_np(watts_series: pd.Series) -> float:
 
 def _estimate_cp_wprime(df_plot: pd.DataFrame) -> Tuple[float, float]:
     """Estymacja CP i W' z danych MMP."""
+    from scipy import stats
+
     if "watts" not in df_plot.columns or len(df_plot) < 1200:
         return 0, 0
 

@@ -1,13 +1,20 @@
 """
 SRP: Moduł odpowiedzialny za obliczenia W' Balance (Skarbiec Beztlenowy).
 """
+
 from typing import Union
 import numpy as np
 import pandas as pd
 import io
+import streamlit as st
 from numba import jit
 
 from ..utils import _serialize_df_to_parquet_bytes
+
+
+def _hash_df(df: pd.DataFrame) -> str:
+    """Hash a DataFrame for Streamlit cache key generation."""
+    return str(pd.util.hash_pandas_object(df).sum())
 
 
 @jit(nopython=True, fastmath=True)
@@ -109,7 +116,7 @@ def calculate_w_prime_biexp(watts, time, cp, w_prime_cap, sport: int = 0):
     curr_w = w_prime_cap
 
     # Sport-specific time constants
-    if sport == 1:    # Running
+    if sport == 1:  # Running
         tau_fast = 150.0
         tau_slow = 750.0
         fast_fraction = 0.45
@@ -117,7 +124,7 @@ def calculate_w_prime_biexp(watts, time, cp, w_prime_cap, sport: int = 0):
         tau_fast = 90.0
         tau_slow = 500.0
         fast_fraction = 0.55
-    else:             # Cycling (default)
+    else:  # Cycling (default)
         tau_fast = 120.0
         tau_slow = 600.0
         fast_fraction = 0.50
@@ -169,24 +176,25 @@ def _calculate_w_prime_balance_cached(df_bytes: bytes, cp: float, w_prime: float
             bio.seek(0)
             df_pd = pd.read_csv(bio)
 
-        if 'watts' not in df_pd.columns:
-            df_pd['w_prime_balance'] = np.nan
+        if "watts" not in df_pd.columns:
+            df_pd["w_prime_balance"] = np.nan
             return df_pd
 
-        watts_arr = df_pd['watts'].to_numpy(dtype=np.float64)
-        
-        if 'time' in df_pd.columns:
-            time_arr = df_pd['time'].to_numpy(dtype=np.float64)
+        watts_arr = df_pd["watts"].to_numpy(dtype=np.float64)
+
+        if "time" in df_pd.columns:
+            time_arr = df_pd["time"].to_numpy(dtype=np.float64)
         else:
             time_arr = np.arange(len(watts_arr), dtype=np.float64)
 
         w_bal = calculate_w_prime_fast(watts_arr, time_arr, float(cp), float(w_prime))
 
-        df_pd['w_prime_balance'] = w_bal
+        df_pd["w_prime_balance"] = w_bal
         return df_pd
 
     except Exception as e:
         import logging
+
         logging.getLogger(__name__).warning(f"W' calculation failed: {e}")
         # Try to return DataFrame with zero W' balance
         try:
@@ -196,14 +204,19 @@ def _calculate_w_prime_balance_cached(df_bytes: bytes, cp: float, w_prime: float
             except (ImportError, ValueError):
                 bio.seek(0)
                 df_pd = pd.read_csv(bio)
-            df_pd['w_prime_balance'] = 0.0
+            df_pd["w_prime_balance"] = 0.0
             return df_pd
         except (pd.errors.ParserError, ValueError, KeyError) as recovery_error:
             logging.getLogger(__name__).error(f"W' recovery failed: {recovery_error}")
-            return pd.DataFrame({'w_prime_balance': []})
+            return pd.DataFrame({"w_prime_balance": []})
 
 
-def calculate_w_prime_balance(_df_pl_active, cp: float, w_prime: float, model: str = "biexp", sport: int = 0) -> pd.DataFrame:
+# Cached: W' balance recomputes Numba-accelerated arrays on every rerun.
+# Input can be pandas/polars/dict; _hash_df_like handles all types.
+@st.cache_data(ttl=3600, show_spinner=False, hash_funcs={pd.DataFrame: _hash_df})
+def calculate_w_prime_balance(
+    _df_pl_active, cp: float, w_prime: float, model: str = "biexp", sport: int = 0
+) -> pd.DataFrame:
     """Calculate W' Balance for the entire workout.
 
     Args:
@@ -218,33 +231,34 @@ def calculate_w_prime_balance(_df_pl_active, cp: float, w_prime: float, model: s
     """
     if isinstance(_df_pl_active, dict):
         df_pd = pd.DataFrame(_df_pl_active)
-    elif hasattr(_df_pl_active, 'to_pandas'):
+    elif hasattr(_df_pl_active, "to_pandas"):
         df_pd = _df_pl_active.to_pandas()
     else:
         df_pd = _df_pl_active.copy()
 
-    if 'time' not in df_pd.columns:
-        df_pd['time'] = np.arange(len(df_pd), dtype=float)
+    if "time" not in df_pd.columns:
+        df_pd["time"] = np.arange(len(df_pd), dtype=float)
 
-    if 'watts' not in df_pd.columns:
-        df_pd['w_prime_balance'] = np.nan
+    if "watts" not in df_pd.columns:
+        df_pd["w_prime_balance"] = np.nan
         return df_pd
 
-    watts_arr = df_pd['watts'].to_numpy(dtype=np.float64)
-    time_arr = df_pd['time'].to_numpy(dtype=np.float64)
+    watts_arr = df_pd["watts"].to_numpy(dtype=np.float64)
+    time_arr = df_pd["time"].to_numpy(dtype=np.float64)
 
     if model == "biexp":
         w_bal = calculate_w_prime_biexp(watts_arr, time_arr, float(cp), float(w_prime), sport)
     else:
         w_bal = calculate_w_prime_fast(watts_arr, time_arr, float(cp), float(w_prime))
 
-    df_pd['w_prime_balance'] = w_bal
+    df_pd["w_prime_balance"] = w_bal
     return df_pd
 
 
 # ============================================================
 # NEW: Recovery Score - TrainerRoad Readiness Inspired
 # ============================================================
+
 
 def calculate_recovery_score(
     w_bal_end: float,
@@ -255,19 +269,19 @@ def calculate_recovery_score(
     return_rich: bool = False,
     smo2_baseline_drop_pct: float = 0.0,
     cardiac_drift_pct: float = 0.0,
-) -> Union[float, 'RecoveryScoreResult']:
+) -> Union[float, "RecoveryScoreResult"]:
     """Calculate Recovery Score based on W' balance state.
-    
+
     Estimates readiness for next high-intensity effort based on
     current W' balance and time since last effort.
-    
+
     Recovery Score 0-100:
     - 90-100: Fully recovered, ready for any intensity
     - 70-90: Well recovered, can do threshold work
     - 50-70: Partially recovered, endurance zone preferred
     - 30-50: Fatigued, recovery ride only
     - <30: Exhausted, rest needed
-    
+
     Args:
         w_bal_end: Current W' balance (J)
         w_prime_capacity: Full W' capacity (J)
@@ -277,21 +291,24 @@ def calculate_recovery_score(
         return_rich: If True, return RecoveryScoreResult; if False, return float
         smo2_baseline_drop_pct: SmO2 drop from baseline [%]. Indicates impaired O2 extraction.
         cardiac_drift_pct: Cardiac drift [%]. Indicates dehydration/fatigue.
-        
+
     Returns:
         RecoveryScoreResult object (or float if return_rich=False)
     """
     from models import RecoveryScoreResult
-    
+
     if w_prime_capacity <= 0:
         if return_rich:
             return RecoveryScoreResult(
-                score=0.0, w_pct=0.0, time_bonus=0.0,
-                tau_seconds=tau_seconds, time_bonus_max=time_bonus_max,
-                recommendation=("❌ Brak danych", "Brak danych W'")
+                score=0.0,
+                w_pct=0.0,
+                time_bonus=0.0,
+                tau_seconds=tau_seconds,
+                time_bonus_max=time_bonus_max,
+                recommendation=("❌ Brak danych", "Brak danych W'"),
             )
         return 0.0
-    
+
     # Base W' component (40% weight)
     w_component = (w_bal_end / w_prime_capacity) * 100
 
@@ -320,7 +337,7 @@ def calculate_recovery_score(
 
     # Keep w_pct for return_rich path
     w_pct = w_component
-    
+
     if return_rich:
         recommendation = get_recovery_recommendation(score)
         return RecoveryScoreResult(
@@ -329,26 +346,35 @@ def calculate_recovery_score(
             time_bonus=time_bonus,
             tau_seconds=tau_seconds,
             time_bonus_max=time_bonus_max,
-            recommendation=recommendation
+            recommendation=recommendation,
         )
     return score
 
 
 def get_recovery_recommendation(score: float) -> tuple:
     """Get training recommendation based on Recovery Score.
-    
+
     Args:
         score: Recovery Score (0-100)
-        
+
     Returns:
         Tuple of (zone_recommendation, description)
     """
     if score >= 90:
-        return ("🟢 Pełna gotowość", "Możesz wykonać dowolny trening, włącznie z VO2max i sprintami.")
+        return (
+            "🟢 Pełna gotowość",
+            "Możesz wykonać dowolny trening, włącznie z VO2max i sprintami.",
+        )
     elif score >= 70:
-        return ("🟢 Dobra gotowość", "Trening progowy lub Sweet Spot OK. Unikaj maksymalnych wysiłków.")
+        return (
+            "🟢 Dobra gotowość",
+            "Trening progowy lub Sweet Spot OK. Unikaj maksymalnych wysiłków.",
+        )
     elif score >= 50:
-        return ("🟡 Częściowe odzyskanie", "Zalecana strefa Z2/Z3. Skup się na objętości, nie intensywności.")
+        return (
+            "🟡 Częściowe odzyskanie",
+            "Zalecana strefa Z2/Z3. Skup się na objętości, nie intensywności.",
+        )
     elif score >= 30:
         return ("🟠 Zmęczenie", "Tylko łatwa jazda regeneracyjna (Z1). Odpoczywaj.")
     else:
@@ -356,27 +382,24 @@ def get_recovery_recommendation(score: float) -> tuple:
 
 
 def estimate_w_prime_reconstitution(
-    depleted_pct: float,
-    recovery_time_sec: int,
-    tau: float = 400
+    depleted_pct: float, recovery_time_sec: int, tau: float = 400
 ) -> float:
     """Estimate W' reconstitution after recovery period.
-    
+
     Uses exponential recovery model: W'(t) = W'_depleted * (1 - e^(-t/tau))
-    
+
     Args:
         depleted_pct: How much W' was depleted (0-100%)
         recovery_time_sec: Recovery time in seconds
         tau: Time constant for W' reconstitution (default 400s)
-        
+
     Returns:
         Estimated W' as percentage of capacity after recovery
     """
     remaining_pct = 100 - depleted_pct
-    
+
     # How much of the depletion is recovered
     recovery_factor = 1 - np.exp(-recovery_time_sec / tau)
     recovered = depleted_pct * recovery_factor
-    
-    return round(remaining_pct + recovered, 1)
 
+    return round(remaining_pct + recovered, 1)

@@ -6,9 +6,21 @@ import logging
 from typing import Optional, Tuple, List
 import numpy as np
 import pandas as pd
-from numba import jit
 
 from .common import ensure_pandas
+
+try:
+    from numba import jit
+except ImportError:
+    # Fallback: no-op decorator when numba is not installed
+    def jit(*args, **kwargs):
+        def decorator(func):
+            return func
+
+        if args and callable(args[0]):
+            return args[0]
+        return decorator
+
 
 logger = logging.getLogger(__name__)
 
@@ -408,15 +420,15 @@ def calculate_dynamic_dfa_v2(
         )
 
         # M11: Log pathological Alpha-1 values instead of silent clipping
-        extreme_alpha = results[(results['alpha1'] <= 0.2) | (results['alpha1'] >= 1.8)]
+        extreme_alpha = results[(results["alpha1"] <= 0.2) | (results["alpha1"] >= 1.8)]
         if len(extreme_alpha) > 0:
             logger.warning(
                 "DFA Alpha-1 extreme values detected (%d windows): "
                 "min=%.2f, max=%.2f. Possible pathology (AF, severe fatigue, illness). "
                 "Ref: Rogers & Gronwald 2025, EJAP commentary.",
                 len(extreme_alpha),
-                results['alpha1'].min(),
-                results['alpha1'].max(),
+                results["alpha1"].min(),
+                results["alpha1"].max(),
             )
 
         # Store in bounded cache (evict oldest if full)

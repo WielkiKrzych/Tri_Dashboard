@@ -17,7 +17,6 @@ Output:
 import os
 import pandas as pd
 import numpy as np
-from scipy import stats as scipy_stats
 from datetime import datetime
 from typing import List, Dict, Any, Optional
 from dataclasses import dataclass, field
@@ -419,6 +418,8 @@ def calculate_statistical_trend(
     name: str = "",
 ) -> StatisticalTrend:
     """Calculate trend with full statistical significance."""
+    from scipy import stats as scipy_stats
+
     n = len(values)
     if n < 2:
         return StatisticalTrend(

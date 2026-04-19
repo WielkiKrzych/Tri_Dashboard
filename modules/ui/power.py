@@ -103,7 +103,7 @@ def _build_zones_chart(df_plot: pd.DataFrame, cp_input: int) -> Optional[go.Figu
         x=pcts.values,
         y=labels,
         orientation="h",
-        text=pcts.apply(lambda x: f"{x}%"),
+        text=[f"{x}%" for x in pcts],
         color=labels,
         color_discrete_sequence=colors,
     )

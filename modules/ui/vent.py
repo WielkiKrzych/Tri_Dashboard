@@ -5,14 +5,348 @@ Ventilation tab — VE time series, VE/VCO2 slope, and signal-quality checks.
 import streamlit as st
 import plotly.graph_objects as go
 import pandas as pd
-from scipy import stats
 from modules.calculations.quality import check_signal_quality
 from .vent_theory import render_vent_theory
 from modules.ui.shared import chart, require_data
 
 
+# ---------------------------------------------------------------------------
+# Fragment-isolated chart functions — only the fragment reruns on selection
+# ---------------------------------------------------------------------------
+
+
+@st.fragment(run_every=None)
+def _render_ve_chart_fragment(
+    target_df: pd.DataFrame,
+    startsec: float,
+    endsec: float,
+    interval_data: pd.DataFrame,
+    slope_ve: float,
+    intercept_ve: float,
+) -> None:
+    """Fragment-isolated VE chart — only this fragment reruns on range selection."""
+    fig_vent = go.Figure()
+
+    # VE (Primary)
+    fig_vent.add_trace(
+        go.Scatter(
+            x=target_df["time"],
+            y=target_df["ve_smooth"],
+            customdata=target_df["time_str"],
+            mode="lines",
+            name="VE (L/min)",
+            line=dict(color="#ffa15a", width=2),
+            hovertemplate="<b>Czas:</b> %{customdata}<br><b>VE:</b> %{y:.1f} L/min<extra></extra>",
+        )
+    )
+
+    # Power (Secondary)
+    if "watts_smooth_5s" in target_df.columns:
+        fig_vent.add_trace(
+            go.Scatter(
+                x=target_df["time"],
+                y=target_df["watts_smooth_5s"],
+                customdata=target_df["time_str"],
+                mode="lines",
+                name="Power",
+                line=dict(color="#1f77b4", width=1),
+                yaxis="y2",
+                opacity=0.3,
+                hovertemplate="<b>Czas:</b> %{customdata}<br><b>Moc:</b> %{y:.0f} W<extra></extra>",
+            )
+        )
+
+    # Zaznaczenie manualne
+    fig_vent.add_vrect(
+        x0=startsec,
+        x1=endsec,
+        fillcolor="orange",
+        opacity=0.1,
+        layer="below",
+        line_width=0,
+        annotation_text="MANUAL",
+        annotation_position="top left",
+    )
+
+    # Linia trendu VE (dla manualnego)
+    if len(interval_data) > 1:
+        trend_line = intercept_ve + slope_ve * interval_data["time"]
+        fig_vent.add_trace(
+            go.Scatter(
+                x=interval_data["time"],
+                y=trend_line,
+                mode="lines",
+                name="Trend VE (Man)",
+                line=dict(color="white", width=2, dash="dash"),
+                hovertemplate="<b>Trend:</b> %{y:.2f} L/min<extra></extra>",
+            )
+        )
+
+    fig_vent.update_layout(
+        title="Dynamika Wentylacji vs Moc",
+        xaxis_title="Czas",
+        yaxis=dict(title=dict(text="Wentylacja (L/min)", font=dict(color="#ffa15a"))),
+        yaxis2=dict(
+            title=dict(text="Moc (W)", font=dict(color="#1f77b4")),
+            overlaying="y",
+            side="right",
+            showgrid=False,
+        ),
+        legend=dict(x=0.01, y=0.99),
+        height=500,
+        margin=dict(l=20, r=20, t=40, b=20),
+        hovermode="x unified",
+    )
+
+    # Wykres z interaktywnym zaznaczaniem
+    selected = st.plotly_chart(
+        fig_vent,
+        width="stretch",
+        key="vent_chart",
+        on_select="rerun",
+        selection_mode="box",
+    )
+
+    # Obsługa zaznaczenia
+    if selected and "selection" in selected and "box" in selected["selection"]:
+        box_data = selected["selection"]["box"]
+        if box_data and len(box_data) > 0:
+            x_range = box_data[0].get("x", [])
+            if len(x_range) == 2:
+                new_start = min(x_range)
+                new_end = max(x_range)
+                if (
+                    new_start != st.session_state.vent_start_sec
+                    or new_end != st.session_state.vent_end_sec
+                ):
+                    st.session_state.vent_start_sec = new_start
+                    st.session_state.vent_end_sec = new_end
+    # Fragment reruns automatically — no st.rerun() needed
+
+
+@st.fragment(run_every=None)
+def _render_br_chart_fragment(
+    target_df: pd.DataFrame,
+    br_startsec: float,
+    br_endsec: float,
+    br_interval_data: pd.DataFrame,
+    slope_br: float,
+    intercept_br: float,
+) -> None:
+    """Fragment-isolated BR chart — only this fragment reruns on range selection."""
+    fig_br = go.Figure()
+
+    # BR (Primary)
+    fig_br.add_trace(
+        go.Scatter(
+            x=target_df["time"],
+            y=target_df["rr_smooth"],
+            customdata=target_df["time_str"],
+            mode="lines",
+            name="BR (/min)",
+            line=dict(color="#00cc96", width=2),
+            hovertemplate="<b>Czas:</b> %{customdata}<br><b>BR:</b> %{y:.1f} /min<extra></extra>",
+        )
+    )
+
+    # Power (Secondary)
+    if "watts_smooth_5s" in target_df.columns:
+        fig_br.add_trace(
+            go.Scatter(
+                x=target_df["time"],
+                y=target_df["watts_smooth_5s"],
+                customdata=target_df["time_str"],
+                mode="lines",
+                name="Power",
+                line=dict(color="#1f77b4", width=1),
+                yaxis="y2",
+                opacity=0.3,
+                hovertemplate="<b>Czas:</b> %{customdata}<br><b>Moc:</b> %{y:.0f} W<extra></extra>",
+            )
+        )
+
+    # Selection area
+    fig_br.add_vrect(
+        x0=br_startsec,
+        x1=br_endsec,
+        fillcolor="green",
+        opacity=0.1,
+        layer="below",
+        line_width=0,
+        annotation_text="BR",
+        annotation_position="top left",
+    )
+
+    # Trend line
+    if len(br_interval_data) > 1:
+        trend_line_br = intercept_br + slope_br * br_interval_data["time"]
+        fig_br.add_trace(
+            go.Scatter(
+                x=br_interval_data["time"],
+                y=trend_line_br,
+                mode="lines",
+                name="Trend BR",
+                line=dict(color="white", width=2, dash="dash"),
+                hovertemplate="<b>Trend:</b> %{y:.2f} /min<extra></extra>",
+            )
+        )
+
+    fig_br.update_layout(
+        title="Dynamika Częstości Oddechów vs Moc",
+        xaxis_title="Czas",
+        yaxis=dict(title=dict(text="BR (/min)", font=dict(color="#00cc96"))),
+        yaxis2=dict(
+            title=dict(text="Moc (W)", font=dict(color="#1f77b4")),
+            overlaying="y",
+            side="right",
+            showgrid=False,
+        ),
+        legend=dict(x=0.01, y=0.99),
+        height=450,
+        margin=dict(l=20, r=20, t=40, b=20),
+        hovermode="x unified",
+    )
+
+    # Interactive chart
+    selected_br = st.plotly_chart(
+        fig_br,
+        width="stretch",
+        key="br_chart",
+        on_select="rerun",
+        selection_mode="box",
+    )
+
+    # Handle selection
+    if selected_br and "selection" in selected_br and "box" in selected_br["selection"]:
+        box_data_br = selected_br["selection"]["box"]
+        if box_data_br and len(box_data_br) > 0:
+            x_range_br = box_data_br[0].get("x", [])
+            if len(x_range_br) == 2:
+                new_br_start = min(x_range_br)
+                new_br_end = max(x_range_br)
+                if (
+                    new_br_start != st.session_state.br_start_sec
+                    or new_br_end != st.session_state.br_end_sec
+                ):
+                    st.session_state.br_start_sec = new_br_start
+                    st.session_state.br_end_sec = new_br_end
+    # Fragment reruns automatically — no st.rerun() needed
+
+
+@st.fragment(run_every=None)
+def _render_tv_chart_fragment(
+    target_df: pd.DataFrame,
+    tv_startsec: float,
+    tv_endsec: float,
+    tv_interval_data: pd.DataFrame,
+    tv_valid: pd.DataFrame,
+    slope_tv: float,
+    intercept_tv: float,
+) -> None:
+    """Fragment-isolated TV chart — only this fragment reruns on range selection."""
+    fig_tv = go.Figure()
+
+    # VT (Primary)
+    fig_tv.add_trace(
+        go.Scatter(
+            x=target_df["time"],
+            y=target_df["tv_smooth"],
+            customdata=target_df["time_str"],
+            mode="lines",
+            name="VT (L)",
+            line=dict(color="#ab63fa", width=2),
+            hovertemplate="<b>Czas:</b> %{customdata}<br><b>VT:</b> %{y:.2f} L<extra></extra>",
+        )
+    )
+
+    # Power (Secondary)
+    if "watts_smooth_5s" in target_df.columns:
+        fig_tv.add_trace(
+            go.Scatter(
+                x=target_df["time"],
+                y=target_df["watts_smooth_5s"],
+                customdata=target_df["time_str"],
+                mode="lines",
+                name="Power",
+                line=dict(color="#1f77b4", width=1),
+                yaxis="y2",
+                opacity=0.3,
+                hovertemplate="<b>Czas:</b> %{customdata}<br><b>Moc:</b> %{y:.0f} W<extra></extra>",
+            )
+        )
+
+    # Selection area
+    fig_tv.add_vrect(
+        x0=tv_startsec,
+        x1=tv_endsec,
+        fillcolor="purple",
+        opacity=0.1,
+        layer="below",
+        line_width=0,
+        annotation_text="VT",
+        annotation_position="top left",
+    )
+
+    # Trend line
+    if len(tv_valid) > 1:
+        trend_line_tv = intercept_tv + slope_tv * tv_valid["time"]
+        fig_tv.add_trace(
+            go.Scatter(
+                x=tv_valid["time"],
+                y=trend_line_tv,
+                mode="lines",
+                name="Trend VT",
+                line=dict(color="white", width=2, dash="dash"),
+                hovertemplate="<b>Trend:</b> %{y:.3f} L<extra></extra>",
+            )
+        )
+
+    fig_tv.update_layout(
+        title="Dynamika Objętości Oddechowej vs Moc",
+        xaxis_title="Czas",
+        yaxis=dict(title=dict(text="VT (L)", font=dict(color="#ab63fa"))),
+        yaxis2=dict(
+            title=dict(text="Moc (W)", font=dict(color="#1f77b4")),
+            overlaying="y",
+            side="right",
+            showgrid=False,
+        ),
+        legend=dict(x=0.01, y=0.99),
+        height=450,
+        margin=dict(l=20, r=20, t=40, b=20),
+        hovermode="x unified",
+    )
+
+    # Interactive chart
+    selected_tv = st.plotly_chart(
+        fig_tv,
+        width="stretch",
+        key="tv_chart",
+        on_select="rerun",
+        selection_mode="box",
+    )
+
+    # Handle selection
+    if selected_tv and "selection" in selected_tv and "box" in selected_tv["selection"]:
+        box_data_tv = selected_tv["selection"]["box"]
+        if box_data_tv and len(box_data_tv) > 0:
+            x_range_tv = box_data_tv[0].get("x", [])
+            if len(x_range_tv) == 2:
+                new_tv_start = min(x_range_tv)
+                new_tv_end = max(x_range_tv)
+                if (
+                    new_tv_start != st.session_state.tv_start_sec
+                    or new_tv_end != st.session_state.tv_end_sec
+                ):
+                    st.session_state.tv_start_sec = new_tv_start
+                    st.session_state.tv_end_sec = new_tv_end
+    # Fragment reruns automatically — no st.rerun() needed
+
+
 def render_vent_tab(target_df, training_notes, uploaded_file_name):
     """Analiza wentylacji dla dowolnego treningu - struktura jak SmO2."""
+    from scipy import stats
+
     st.header("Analiza Wentylacji (VE & Breathing Rate)")
     st.markdown(
         "Analiza dynamiki oddechu dla dowolnego treningu. Szukaj anomalii w wentylacji i częstości oddechów."
@@ -172,104 +506,10 @@ def render_vent_tab(target_df, training_notes, uploaded_file_name):
         trend_color = "inverse" if slope_ve > 0.05 else "normal"
         m4.metric("Trend VE (Slope)", trend_desc, delta=trend_desc, delta_color=trend_color)
 
-        # ===== WYKRES GŁÓWNY (VE + Power) =====
-        fig_vent = go.Figure()
-
-        # VE (Primary)
-        fig_vent.add_trace(
-            go.Scatter(
-                x=target_df["time"],
-                y=target_df["ve_smooth"],
-                customdata=target_df["time_str"],
-                mode="lines",
-                name="VE (L/min)",
-                line=dict(color="#ffa15a", width=2),
-                hovertemplate="<b>Czas:</b> %{customdata}<br><b>VE:</b> %{y:.1f} L/min<extra></extra>",
-            )
+        # ===== WYKRES GŁÓWNY (VE + Power) — fragment-isolated =====
+        _render_ve_chart_fragment(
+            target_df, startsec, endsec, interval_data, slope_ve, intercept_ve
         )
-
-        # Power (Secondary)
-        if "watts_smooth_5s" in target_df.columns:
-            fig_vent.add_trace(
-                go.Scatter(
-                    x=target_df["time"],
-                    y=target_df["watts_smooth_5s"],
-                    customdata=target_df["time_str"],
-                    mode="lines",
-                    name="Power",
-                    line=dict(color="#1f77b4", width=1),
-                    yaxis="y2",
-                    opacity=0.3,
-                    hovertemplate="<b>Czas:</b> %{customdata}<br><b>Moc:</b> %{y:.0f} W<extra></extra>",
-                )
-            )
-
-        # Zaznaczenie manualne
-        fig_vent.add_vrect(
-            x0=startsec,
-            x1=endsec,
-            fillcolor="orange",
-            opacity=0.1,
-            layer="below",
-            line_width=0,
-            annotation_text="MANUAL",
-            annotation_position="top left",
-        )
-
-        # Linia trendu VE (dla manualnego)
-        if len(interval_data) > 1:
-            trend_line = intercept_ve + slope_ve * interval_data["time"]
-            fig_vent.add_trace(
-                go.Scatter(
-                    x=interval_data["time"],
-                    y=trend_line,
-                    mode="lines",
-                    name="Trend VE (Man)",
-                    line=dict(color="white", width=2, dash="dash"),
-                    hovertemplate="<b>Trend:</b> %{y:.2f} L/min<extra></extra>",
-                )
-            )
-
-        fig_vent.update_layout(
-            title="Dynamika Wentylacji vs Moc",
-            xaxis_title="Czas",
-            yaxis=dict(title=dict(text="Wentylacja (L/min)", font=dict(color="#ffa15a"))),
-            yaxis2=dict(
-                title=dict(text="Moc (W)", font=dict(color="#1f77b4")),
-                overlaying="y",
-                side="right",
-                showgrid=False,
-            ),
-            legend=dict(x=0.01, y=0.99),
-            height=500,
-            margin=dict(l=20, r=20, t=40, b=20),
-            hovermode="x unified",
-        )
-
-        # Wykres z interaktywnym zaznaczaniem
-        selected = st.plotly_chart(
-            fig_vent,
-            width="stretch",
-            key="vent_chart",
-            on_select="rerun",
-            selection_mode="box",
-        )
-
-        # Obsługa zaznaczenia
-        if selected and "selection" in selected and "box" in selected["selection"]:
-            box_data = selected["selection"]["box"]
-            if box_data and len(box_data) > 0:
-                x_range = box_data[0].get("x", [])
-                if len(x_range) == 2:
-                    new_start = min(x_range)
-                    new_end = max(x_range)
-                    if (
-                        new_start != st.session_state.vent_start_sec
-                        or new_end != st.session_state.vent_end_sec
-                    ):
-                        st.session_state.vent_start_sec = new_start
-                        st.session_state.vent_end_sec = new_end
-                        st.rerun()
 
         # ===== BREATH RATE (BR) INTERACTIVE CHART =====
         st.markdown("---")
@@ -346,104 +586,10 @@ def render_vent_tab(target_df, training_notes, uploaded_file_name):
                     delta_color=trend_color_br,
                 )
 
-                # BR Chart
-                fig_br = go.Figure()
-
-                # BR (Primary)
-                fig_br.add_trace(
-                    go.Scatter(
-                        x=target_df["time"],
-                        y=target_df["rr_smooth"],
-                        customdata=target_df["time_str"],
-                        mode="lines",
-                        name="BR (/min)",
-                        line=dict(color="#00cc96", width=2),
-                        hovertemplate="<b>Czas:</b> %{customdata}<br><b>BR:</b> %{y:.1f} /min<extra></extra>",
-                    )
+                # BR Chart — fragment-isolated
+                _render_br_chart_fragment(
+                    target_df, br_startsec, br_endsec, br_interval_data, slope_br, intercept_br
                 )
-
-                # Power (Secondary)
-                if "watts_smooth_5s" in target_df.columns:
-                    fig_br.add_trace(
-                        go.Scatter(
-                            x=target_df["time"],
-                            y=target_df["watts_smooth_5s"],
-                            customdata=target_df["time_str"],
-                            mode="lines",
-                            name="Power",
-                            line=dict(color="#1f77b4", width=1),
-                            yaxis="y2",
-                            opacity=0.3,
-                            hovertemplate="<b>Czas:</b> %{customdata}<br><b>Moc:</b> %{y:.0f} W<extra></extra>",
-                        )
-                    )
-
-                # Selection area
-                fig_br.add_vrect(
-                    x0=br_startsec,
-                    x1=br_endsec,
-                    fillcolor="green",
-                    opacity=0.1,
-                    layer="below",
-                    line_width=0,
-                    annotation_text="BR",
-                    annotation_position="top left",
-                )
-
-                # Trend line
-                if len(br_interval_data) > 1:
-                    trend_line_br = intercept_br + slope_br * br_interval_data["time"]
-                    fig_br.add_trace(
-                        go.Scatter(
-                            x=br_interval_data["time"],
-                            y=trend_line_br,
-                            mode="lines",
-                            name="Trend BR",
-                            line=dict(color="white", width=2, dash="dash"),
-                            hovertemplate="<b>Trend:</b> %{y:.2f} /min<extra></extra>",
-                        )
-                    )
-
-                fig_br.update_layout(
-                    title="Dynamika Częstości Oddechów vs Moc",
-                    xaxis_title="Czas",
-                    yaxis=dict(title=dict(text="BR (/min)", font=dict(color="#00cc96"))),
-                    yaxis2=dict(
-                        title=dict(text="Moc (W)", font=dict(color="#1f77b4")),
-                        overlaying="y",
-                        side="right",
-                        showgrid=False,
-                    ),
-                    legend=dict(x=0.01, y=0.99),
-                    height=450,
-                    margin=dict(l=20, r=20, t=40, b=20),
-                    hovermode="x unified",
-                )
-
-                # Interactive chart
-                selected_br = st.plotly_chart(
-                    fig_br,
-                    width="stretch",
-                    key="br_chart",
-                    on_select="rerun",
-                    selection_mode="box",
-                )
-
-                # Handle selection
-                if selected_br and "selection" in selected_br and "box" in selected_br["selection"]:
-                    box_data_br = selected_br["selection"]["box"]
-                    if box_data_br and len(box_data_br) > 0:
-                        x_range_br = box_data_br[0].get("x", [])
-                        if len(x_range_br) == 2:
-                            new_br_start = min(x_range_br)
-                            new_br_end = max(x_range_br)
-                            if (
-                                new_br_start != st.session_state.br_start_sec
-                                or new_br_end != st.session_state.br_end_sec
-                            ):
-                                st.session_state.br_start_sec = new_br_start
-                                st.session_state.br_end_sec = new_br_end
-                                st.rerun()
         else:
             st.warning("Brak danych Breath Rate (tymebreathrate) w pliku.")
 
@@ -532,104 +678,16 @@ def render_vent_tab(target_df, training_notes, uploaded_file_name):
                     delta_color=trend_color_tv,
                 )
 
-                # VT Chart
-                fig_tv = go.Figure()
-
-                # VT (Primary)
-                fig_tv.add_trace(
-                    go.Scatter(
-                        x=target_df["time"],
-                        y=target_df["tv_smooth"],
-                        customdata=target_df["time_str"],
-                        mode="lines",
-                        name="VT (L)",
-                        line=dict(color="#ab63fa", width=2),
-                        hovertemplate="<b>Czas:</b> %{customdata}<br><b>VT:</b> %{y:.2f} L<extra></extra>",
-                    )
+                # VT Chart — fragment-isolated
+                _render_tv_chart_fragment(
+                    target_df,
+                    tv_startsec,
+                    tv_endsec,
+                    tv_interval_data,
+                    tv_valid,
+                    slope_tv,
+                    intercept_tv,
                 )
-
-                # Power (Secondary)
-                if "watts_smooth_5s" in target_df.columns:
-                    fig_tv.add_trace(
-                        go.Scatter(
-                            x=target_df["time"],
-                            y=target_df["watts_smooth_5s"],
-                            customdata=target_df["time_str"],
-                            mode="lines",
-                            name="Power",
-                            line=dict(color="#1f77b4", width=1),
-                            yaxis="y2",
-                            opacity=0.3,
-                            hovertemplate="<b>Czas:</b> %{customdata}<br><b>Moc:</b> %{y:.0f} W<extra></extra>",
-                        )
-                    )
-
-                # Selection area
-                fig_tv.add_vrect(
-                    x0=tv_startsec,
-                    x1=tv_endsec,
-                    fillcolor="purple",
-                    opacity=0.1,
-                    layer="below",
-                    line_width=0,
-                    annotation_text="VT",
-                    annotation_position="top left",
-                )
-
-                # Trend line
-                if len(tv_valid) > 1:
-                    trend_line_tv = intercept_tv + slope_tv * tv_valid["time"]
-                    fig_tv.add_trace(
-                        go.Scatter(
-                            x=tv_valid["time"],
-                            y=trend_line_tv,
-                            mode="lines",
-                            name="Trend VT",
-                            line=dict(color="white", width=2, dash="dash"),
-                            hovertemplate="<b>Trend:</b> %{y:.3f} L<extra></extra>",
-                        )
-                    )
-
-                fig_tv.update_layout(
-                    title="Dynamika Objętości Oddechowej vs Moc",
-                    xaxis_title="Czas",
-                    yaxis=dict(title=dict(text="VT (L)", font=dict(color="#ab63fa"))),
-                    yaxis2=dict(
-                        title=dict(text="Moc (W)", font=dict(color="#1f77b4")),
-                        overlaying="y",
-                        side="right",
-                        showgrid=False,
-                    ),
-                    legend=dict(x=0.01, y=0.99),
-                    height=450,
-                    margin=dict(l=20, r=20, t=40, b=20),
-                    hovermode="x unified",
-                )
-
-                # Interactive chart
-                selected_tv = st.plotly_chart(
-                    fig_tv,
-                    width="stretch",
-                    key="tv_chart",
-                    on_select="rerun",
-                    selection_mode="box",
-                )
-
-                # Handle selection
-                if selected_tv and "selection" in selected_tv and "box" in selected_tv["selection"]:
-                    box_data_tv = selected_tv["selection"]["box"]
-                    if box_data_tv and len(box_data_tv) > 0:
-                        x_range_tv = box_data_tv[0].get("x", [])
-                        if len(x_range_tv) == 2:
-                            new_tv_start = min(x_range_tv)
-                            new_tv_end = max(x_range_tv)
-                            if (
-                                new_tv_start != st.session_state.tv_start_sec
-                                or new_tv_end != st.session_state.tv_end_sec
-                            ):
-                                st.session_state.tv_start_sec = new_tv_start
-                                st.session_state.tv_end_sec = new_tv_end
-                                st.rerun()
         else:
             st.warning(
                 "Brak danych do obliczenia Tidal Volume (wymagane: tymeventilation i tymebreathrate)."

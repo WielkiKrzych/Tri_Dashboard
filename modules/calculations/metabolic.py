@@ -10,7 +10,6 @@ the rate of SmO2 desaturation changes, not just where it drops.
 
 import pandas as pd
 import numpy as np
-from scipy import signal
 from .threshold_types import StepSmO2Result, StepTestRange, TransitionZone
 from .ventilatory import calculate_slope
 
@@ -107,6 +106,8 @@ def detect_smo2_from_steps(
     hrs = np.array([s["avg_hr"] if s["avg_hr"] else np.nan for s in all_steps])
 
     # Smooth SmO2 data with Savitzky-Golay filter to reduce noise
+    from scipy import signal
+
     window_length = min(5, len(smo2s) if len(smo2s) % 2 == 1 else len(smo2s) - 1)
     if window_length >= 3:
         smo2s_smooth = signal.savgol_filter(smo2s, window_length=window_length, polyorder=2)
@@ -132,10 +133,10 @@ def detect_smo2_from_steps(
     neg_curvatures = dd_smo2[dd_smo2 < 0]
     if len(neg_curvatures) > 0:
         curvature_threshold_lt1 = np.percentile(neg_curvatures, 10)  # 10th percentile
-        curvature_threshold_lt2 = np.percentile(neg_curvatures, 5)   # 5th percentile (stronger)
+        curvature_threshold_lt2 = np.percentile(neg_curvatures, 5)  # 5th percentile (stronger)
     else:
         curvature_threshold_lt1 = -0.0005  # Fallback
-        curvature_threshold_lt2 = -0.001   # Fallback
+        curvature_threshold_lt2 = -0.001  # Fallback
 
     curvature_threshold_lt1 = -0.0005  # Tune based on data
     curvature_threshold_lt2 = -0.001  # Stronger curvature for LT2
@@ -171,7 +172,6 @@ def detect_smo2_from_steps(
         base_confidence = 0.1
         # UPDATED: Confidence cap raised from 0.6 to 0.8 with bonuses
         total_confidence = min(0.8, base_confidence + slope_confidence + stability_confidence)
-
 
         lower_hr = all_steps[lower_step_idx]["avg_hr"]
         upper_hr = all_steps[lt1_idx]["avg_hr"]
@@ -229,7 +229,6 @@ def detect_smo2_from_steps(
             stability_confidence = max(0.0, 0.2 - range_width / 100)
             # UPDATED: Confidence cap raised from 0.6 to 0.8 with bonuses
             total_confidence = min(0.8, 0.1 + slope_confidence + stability_confidence)
-
 
             lower_hr = all_steps[lower_step_idx]["avg_hr"]
             upper_hr = all_steps[lt2_idx]["avg_hr"]

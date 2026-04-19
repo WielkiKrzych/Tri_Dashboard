@@ -10,7 +10,6 @@ Implements checks for:
 import pandas as pd
 import numpy as np
 from typing import Any, Dict, Tuple
-from scipy import stats
 
 
 def check_signal_quality(
@@ -93,6 +92,8 @@ def check_step_test_protocol(df: pd.DataFrame, min_step_duration_sec: int = 120)
     Returns:
         Dict with validation status.
     """
+    from scipy import stats
+
     if "time" not in df.columns or "watts" not in df.columns:
         return {"is_valid": False, "issues": ["Missing time or watts columns"]}
 

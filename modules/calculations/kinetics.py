@@ -13,8 +13,6 @@ Includes State-Based Physiological Modeling.
 import numpy as np
 import pandas as pd
 from typing import Optional, Dict, List
-from scipy.optimize import curve_fit
-from scipy import stats, signal
 
 
 def normalize_smo2_series(series: pd.Series) -> pd.Series:
@@ -36,7 +34,7 @@ def normalize_smo2_series(series: pd.Series) -> pd.Series:
     val_max = series.quantile(0.98)  # 98th percentile as physiological max
 
     if val_max <= val_min:
-        return series.apply(lambda x: 0.5)  # Flat line if no range
+        return pd.Series(np.full(len(series), 0.5), index=series.index)
 
     normalized = (series - val_min) / (val_max - val_min)
     return normalized.clip(0.0, 1.0)
@@ -53,6 +51,8 @@ def detect_smo2_trend(time_series: pd.Series, smo2_series: pd.Series) -> Dict[st
     Returns:
         Dictionary with slope, interpretation, and category.
     """
+    from scipy import stats
+
     if len(time_series) < 10:
         return {
             "slope": 0.0,
@@ -100,6 +100,8 @@ def classify_smo2_context(
     Returns:
         Dict with 'cause', 'explanation', 'confidence'
     """
+    from scipy import stats
+
     category = smo2_trend_result.get("category", "")
     slope_smo2 = smo2_trend_result.get("slope", 0)
 
@@ -198,8 +200,7 @@ def classify_smo2_context(
 def calculate_resaturation_metrics(
     time_series: pd.Series, smo2_series: pd.Series
 ) -> Dict[str, float]:
-    """
-    Calculate Resaturation (Recovery) Metrics: T1/2, Tau, Rate.
+    """Calculate Resaturation (Recovery) Metrics: T1/2, Tau, Rate.
 
     Args:
         time_series: Time inputs (seconds)
@@ -208,6 +209,8 @@ def calculate_resaturation_metrics(
     Returns:
         Dict with T_half, Tau, Resat_Rate, Score
     """
+    from scipy import stats
+
     if len(time_series) < 10:
         return {}
 
@@ -265,9 +268,7 @@ def calculate_resaturation_metrics(
 def calculate_signal_lag(
     reference_series: pd.Series, target_series: pd.Series, max_lag: int = 60
 ) -> float:
-    """
-    Calculate the cross-correlation lag between two signals.
-    Determine how much 'target' lags behind 'reference'.
+    """Calculate the cross-correlation lag between two signals.
 
     Args:
         reference_series: The leading signal (usually Power)
@@ -277,6 +278,8 @@ def calculate_signal_lag(
     Returns:
         Lag in seconds. Positive means Target LAGS Reference.
     """
+    from scipy import signal
+
     if len(reference_series) != len(target_series):
         # Must be same length
         min_len = min(len(reference_series), len(target_series))
@@ -322,6 +325,8 @@ def analyze_temporal_sequence(df_window: pd.DataFrame) -> Dict[str, float]:
     Returns:
         Dict with lags for HR, SmO2, etc.
     """
+    from scipy import stats
+
     results = {}
 
     if "watts" not in df_window.columns:
@@ -366,6 +371,8 @@ def detect_physiological_state(df_window: pd.DataFrame, smo2_col: str = "smo2") 
     Returns:
         Dict with 'state', 'confidence', 'details'
     """
+    from scipy import stats
+
     if len(df_window) < 10:
         return {"state": "NIEZNANY", "confidence": 0.0}
 
@@ -512,6 +519,8 @@ def fit_smo2_kinetics(
     df: pd.DataFrame, start_idx: int, end_idx: int, column: str = "smo2"
 ) -> Optional[dict]:
     """Fit mono-exponential model to SmO2 response."""
+    from scipy.optimize import curve_fit
+
     if column not in df.columns or "time" not in df.columns:
         return None
 

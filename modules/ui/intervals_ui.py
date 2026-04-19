@@ -6,10 +6,11 @@ import streamlit as st
 import plotly.graph_objects as go
 import pandas as pd
 import numpy as np
-from scipy import stats
 
 
 def render_intervals_tab(df_plot, df_plot_resampled, cp_input, rider_weight, rider_age, is_male):
+    from scipy import stats
+
     # --- PULSE POWER (EFICIENCY) ---
     st.subheader("🫀 Pulse Power (Moc na Uderzenie Serca)")
 

@@ -49,15 +49,19 @@ def _serialize_df_to_parquet_bytes(df: pd.DataFrame) -> bytes:
         return bio.getvalue()
 
 
-def normalize_columns_pandas(df_pd: pd.DataFrame) -> pd.DataFrame:
+def normalize_columns_pandas(df_pd: pd.DataFrame, copy: bool = True) -> pd.DataFrame:
     """Normalize column names to lowercase and apply standard mappings.
 
     Mappings:
     - 've' / 'ventilation' -> 'tymeventilation'
     - 'total_hemoglobin' -> 'thb'
+
+    Args:
+        df_pd: Input DataFrame.
+        copy: If True (default), create a copy to avoid mutating the input.
     """
-    # Create a copy to avoid mutating the input DataFrame
-    df_pd = df_pd.copy()
+    if copy:
+        df_pd = df_pd.copy()
 
     # Lowercase all columns first
     df_pd.columns = [str(c).lower().strip() for c in df_pd.columns]
@@ -198,7 +202,7 @@ def _process_hrv_column(df: pd.DataFrame) -> pd.DataFrame:
     Only convert to numeric and leave NaN gaps intact.
     """
     if "hrv" in df.columns:
-        df["hrv"] = df["hrv"].astype(str).apply(_clean_hrv_value)
+        df["hrv"] = np.vectorize(_clean_hrv_value)(df["hrv"].astype(str).values)
         df["hrv"] = pd.to_numeric(df["hrv"], errors="coerce")
         # DO NOT interpolate — DFA alpha-1 requires true beat-to-beat variability.
         # Interpolation biases alpha-1 toward 1.0 (ordered), masking real HRV signal.
@@ -292,8 +296,8 @@ def _process_large_dataframe(df: pd.DataFrame, chunk_size: int) -> pd.DataFrame:
         end_idx = min(start_idx + chunk_size, total_rows)
         chunk = df.iloc[start_idx:end_idx].copy()
 
-        # Process chunk
-        chunk = normalize_columns_pandas(chunk)
+        # Process chunk (copy=False: already copied via .iloc[].copy() above)
+        chunk = normalize_columns_pandas(chunk, copy=False)
         chunk = _process_hrv_column(chunk)
 
         if "time" not in chunk.columns:
@@ -304,6 +308,8 @@ def _process_large_dataframe(df: pd.DataFrame, chunk_size: int) -> pd.DataFrame:
 
         # Explicit cleanup
         del chunk
-        gc.collect()
+        if (end_idx // chunk_size) % 10 == 0:
+            gc.collect()
 
+    gc.collect()
     return pd.concat(chunks, ignore_index=True)

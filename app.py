@@ -202,8 +202,10 @@ class TabRegistry:
             st.error(f"Nie udalo sie zaladowac zakladki {tab_name}. Sprawdz logi.")
 
 
+@st.fragment(run_every=None)
 def render_tab_content(tab_name, *args, **kwargs):
-    """Facade for TabRegistry."""
+    """Facade for TabRegistry. Wrapped in @st.fragment to isolate tab rendering —
+    only the active/interacted tab reruns instead of all 28 tabs."""
     return TabRegistry.render(tab_name, *args, **kwargs)
 
 

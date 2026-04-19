@@ -7,7 +7,6 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import pandas as pd
 import numpy as np
-from scipy import stats
 from typing import Optional
 
 from modules.config import Config
@@ -225,6 +224,8 @@ def _build_training_timeline_chart(
 
 def _render_cp_model_chart(df_plot: pd.DataFrame, cp_input: int, w_prime_input: int):
     """Renderowanie wykresu modelu CP."""
+    from scipy import stats
+
     if "watts" not in df_plot.columns or len(df_plot) < 1200:
         st.info("Za mało danych (wymagane min. 20 minut) do wyświetlenia modelu CP.")
         return

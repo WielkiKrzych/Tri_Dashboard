@@ -12,7 +12,6 @@ from datetime import datetime
 from typing import Optional
 
 import numpy as np
-from scipy import stats as scipy_stats
 
 
 @dataclass
@@ -47,6 +46,8 @@ def detect_plateau(
     5. Require at least min_plateau_weeks since that date
     """
     n = len(values)
+    from scipy import stats as scipy_stats
+
     if n < min_data_points:
         return PlateauResult(
             metric_name=metric_name,

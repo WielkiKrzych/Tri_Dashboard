@@ -15,7 +15,6 @@ Key metrics:
 from dataclasses import dataclass, field
 from typing import Dict, Any, Optional, List
 import numpy as np
-from scipy import stats
 import logging
 
 logger = logging.getLogger("Tri_Dashboard.CardiacDrift")
@@ -74,6 +73,8 @@ def analyze_cardiac_drift(
     hsi: Optional[np.ndarray] = None
 ) -> CardiacDriftProfile:
     """
+    from scipy import stats
+
     Analyze cardiac drift from power, HR, and optional thermal/muscle data.
     
     Args:

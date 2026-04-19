@@ -5,7 +5,6 @@ SmO2 tab — muscle-oxygenation time series, kinetics, and state timeline.
 import streamlit as st
 import plotly.graph_objects as go
 import pandas as pd
-from scipy import stats
 from modules.calculations.kinetics import generate_state_timeline
 from modules.calculations.quality import check_signal_quality
 from modules.plots import CHART_CONFIG
@@ -13,7 +12,124 @@ from modules.config import Config
 from modules.ui.shared import chart, metric
 
 
+# ---------------------------------------------------------------------------
+# Fragment-isolated chart functions
+# ---------------------------------------------------------------------------
+
+
+@st.fragment(run_every=None)
+def _render_smo2_chart_fragment(
+    target_df: pd.DataFrame,
+    startsec: float,
+    endsec: float,
+    interval_data: pd.DataFrame,
+    slope_smo2: float,
+    intercept_smo2: float,
+) -> None:
+    """Fragment-isolated SmO2 chart — only this fragment reruns on range selection."""
+    fig_smo2 = go.Figure()
+
+    # SmO2 (Primary - RAW values)
+    fig_smo2.add_trace(
+        go.Scatter(
+            x=target_df["time"],
+            y=target_df["smo2_smooth"],
+            customdata=target_df["time_str"],
+            mode="lines",
+            name="SmO2 (%)",
+            line=dict(color=Config.COLOR_SMO2, width=2),
+            hovertemplate="<b>Czas:</b> %{customdata}<br><b>SmO2:</b> %{y:.1f}%<extra></extra>",
+        )
+    )
+
+    # Power (Secondary)
+    if "watts_smooth_5s" in target_df.columns:
+        fig_smo2.add_trace(
+            go.Scatter(
+                x=target_df["time"],
+                y=target_df["watts_smooth_5s"],
+                customdata=target_df["time_str"],
+                mode="lines",
+                name="Power",
+                line=dict(color="#1f77b4", width=1),
+                yaxis="y2",
+                opacity=0.3,
+                hovertemplate="<b>Czas:</b> %{customdata}<br><b>Moc:</b> %{y:.0f} W<extra></extra>",
+            )
+        )
+
+    # Zaznaczenie manualne
+    fig_smo2.add_vrect(
+        x0=startsec,
+        x1=endsec,
+        fillcolor="orange",
+        opacity=0.1,
+        layer="below",
+        line_width=0,
+        annotation_text="MANUAL",
+        annotation_position="top left",
+    )
+
+    # Linia trendu SmO2 (dla manualnego)
+    if len(interval_data) > 1:
+        trend_line = intercept_smo2 + slope_smo2 * interval_data["time"]
+        fig_smo2.add_trace(
+            go.Scatter(
+                x=interval_data["time"],
+                y=trend_line,
+                mode="lines",
+                name="Trend SmO2 (Man)",
+                line=dict(color="white", width=2, dash="dash"),
+                hovertemplate="<b>Trend:</b> %{y:.2f}%<extra></extra>",
+            )
+        )
+
+    fig_smo2.update_layout(
+        title="Dynamika SmO2 vs Moc (Surowe Wartości)",
+        xaxis_title="Czas",
+        yaxis=dict(title=dict(text="SmO2 (%)", font=dict(color=Config.COLOR_SMO2))),
+        yaxis2=dict(
+            title=dict(text="Moc (W)", font=dict(color="#1f77b4")),
+            overlaying="y",
+            side="right",
+            showgrid=False,
+        ),
+        legend=dict(x=0.01, y=0.99),
+        height=500,
+        margin=dict(l=20, r=20, t=40, b=20),
+        hovermode="x unified",
+    )
+
+    # Wykres z interaktywnym zaznaczaniem
+    selected = st.plotly_chart(
+        fig_smo2,
+        width="stretch",
+        key="smo2_chart",
+        on_select="rerun",
+        selection_mode="box",
+        config=CHART_CONFIG,
+    )
+
+    # Obsługa zaznaczenia
+    if selected and "selection" in selected and "box" in selected["selection"]:
+        box_data = selected["selection"]["box"]
+        if box_data and len(box_data) > 0:
+            x_range = box_data[0].get("x", [])
+            if len(x_range) == 2:
+                new_start = min(x_range)
+                new_end = max(x_range)
+                if (
+                    new_start != st.session_state.smo2_start_sec
+                    or new_end != st.session_state.smo2_end_sec
+                ):
+                    st.session_state.smo2_start_sec = new_start
+                    st.session_state.smo2_end_sec = new_end
+    # Fragment reruns automatically — no st.rerun() needed
+
+
 def render_smo2_tab(target_df, training_notes, uploaded_file_name):
+    from scipy import stats
+
     st.header("Analiza SmO2 (Oksygenacja Mięśniowa)")
     st.markdown("Analiza surowych danych SmO2, trendów i kontekstu obciążenia.")
 
@@ -163,88 +279,9 @@ def render_smo2_tab(target_df, training_notes, uploaded_file_name):
         trend_color = "inverse" if slope_smo2 < -0.01 else "normal"
         m4.metric("Trend SmO2 (Slope)", trend_desc, delta=trend_desc, delta_color=trend_color)
 
-        # ===== WYKRES GŁÓWNY (SUROWE SmO2) =====
-        fig_smo2 = go.Figure()
-
-        # SmO2 (Primary - RAW values)
-        fig_smo2.add_trace(
-            go.Scatter(
-                x=target_df["time"],
-                y=target_df["smo2_smooth"],
-                customdata=target_df["time_str"],
-                mode="lines",
-                name="SmO2 (%)",
-                line=dict(color=Config.COLOR_SMO2, width=2),
-                hovertemplate="<b>Czas:</b> %{customdata}<br><b>SmO2:</b> %{y:.1f}%<extra></extra>",
-            )
-        )
-
-        # Power (Secondary)
-        if "watts_smooth_5s" in target_df.columns:
-            fig_smo2.add_trace(
-                go.Scatter(
-                    x=target_df["time"],
-                    y=target_df["watts_smooth_5s"],
-                    customdata=target_df["time_str"],
-                    mode="lines",
-                    name="Power",
-                    line=dict(color="#1f77b4", width=1),
-                    yaxis="y2",
-                    opacity=0.3,
-                    hovertemplate="<b>Czas:</b> %{customdata}<br><b>Moc:</b> %{y:.0f} W<extra></extra>",
-                )
-            )
-
-        # Zaznaczenie manualne
-        fig_smo2.add_vrect(
-            x0=startsec,
-            x1=endsec,
-            fillcolor="orange",
-            opacity=0.1,
-            layer="below",
-            line_width=0,
-            annotation_text="MANUAL",
-            annotation_position="top left",
-        )
-
-        # Linia trendu SmO2 (dla manualnego)
-        if len(interval_data) > 1:
-            trend_line = intercept_smo2 + slope_smo2 * interval_data["time"]
-            fig_smo2.add_trace(
-                go.Scatter(
-                    x=interval_data["time"],
-                    y=trend_line,
-                    mode="lines",
-                    name="Trend SmO2 (Man)",
-                    line=dict(color="white", width=2, dash="dash"),
-                    hovertemplate="<b>Trend:</b> %{y:.2f}%<extra></extra>",
-                )
-            )
-
-        fig_smo2.update_layout(
-            title="Dynamika SmO2 vs Moc (Surowe Wartości)",
-            xaxis_title="Czas",
-            yaxis=dict(title=dict(text="SmO2 (%)", font=dict(color=Config.COLOR_SMO2))),
-            yaxis2=dict(
-                title=dict(text="Moc (W)", font=dict(color="#1f77b4")),
-                overlaying="y",
-                side="right",
-                showgrid=False,
-            ),
-            legend=dict(x=0.01, y=0.99),
-            height=500,
-            margin=dict(l=20, r=20, t=40, b=20),
-            hovermode="x unified",
-        )
-
-        # Wykres z interaktywnym zaznaczaniem
-        selected = st.plotly_chart(
-            fig_smo2,
-            width="stretch",
-            key="smo2_chart",
-            on_select="rerun",
-            selection_mode="box",
-            config=CHART_CONFIG,
+        # ===== WYKRES GŁÓWNY (SUROWE SmO2) — fragment-isolated =====
+        _render_smo2_chart_fragment(
+            target_df, startsec, endsec, interval_data, slope_smo2, intercept_smo2
         )
 
         # ===== WYKRES THb (taki sam jak SmO2) =====
@@ -346,22 +383,6 @@ def render_smo2_tab(target_df, training_notes, uploaded_file_name):
             )
 
             chart(fig_thb, key="thb_chart")
-
-        # Obsługa zaznaczenia
-        if selected and "selection" in selected and "box" in selected["selection"]:
-            box_data = selected["selection"]["box"]
-            if box_data and len(box_data) > 0:
-                x_range = box_data[0].get("x", [])
-                if len(x_range) == 2:
-                    new_start = min(x_range)
-                    new_end = max(x_range)
-                    if (
-                        new_start != st.session_state.smo2_start_sec
-                        or new_end != st.session_state.smo2_end_sec
-                    ):
-                        st.session_state.smo2_start_sec = new_start
-                        st.session_state.smo2_end_sec = new_end
-                        st.rerun()
 
         # ===== LEGACY TOOLS =====
         with st.expander("🔧 Szczegółowa Analiza (Legacy Tools)", expanded=False):

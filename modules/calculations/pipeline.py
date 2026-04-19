@@ -15,6 +15,7 @@ NO OPTIMIZATION - explicit, readable, debuggable.
 
 import logging
 import pandas as pd
+import streamlit as st
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 
@@ -43,11 +44,20 @@ from modules.calculations.metabolic import detect_smo2_from_steps
 from modules.calculations.power import calculate_power_duration_curve
 
 
+def _hash_df(df: pd.DataFrame) -> str:
+    """Hash a DataFrame for Streamlit cache key generation."""
+    return str(pd.util.hash_pandas_object(df).sum())
+
+
 # ============================================================
 # STEP 1: TEST VALIDATION
 # ============================================================
 
 
+# Cached: validate_test is expensive (signal quality checks, artifact detection)
+# and is called on every Streamlit rerun with the same DataFrame input.
+# Returns picklable TestValidity dataclass; args are simple types + DataFrame.
+@st.cache_data(ttl=3600, show_spinner=False, hash_funcs={pd.DataFrame: _hash_df})
 def validate_test(
     df: pd.DataFrame,
     power_column: str = "watts",
@@ -206,6 +216,9 @@ class PreprocessedData:
     preprocessing_notes: List[str] = field(default_factory=list)
 
 
+# Cached: preprocess_signals normalizes columns and detects step test range
+# on every rerun. Expensive when detect_step_test_range scans the full DataFrame.
+@st.cache_data(ttl=3600, show_spinner=False, hash_funcs={pd.DataFrame: _hash_df})
 def preprocess_signals(
     df: pd.DataFrame,
     power_column: str = "watts",

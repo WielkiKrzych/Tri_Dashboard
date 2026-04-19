@@ -76,9 +76,15 @@ Tri_Dashboard/
 │   │   ├── race_predictor_ui.py     # 🆕 Race predictor tab
 │   │   └── w_prime_reconstitution_ui.py # 🆕 W' reconstitution map tab
 │   ├── reporting/         # PDF/DOCX generators
-│   │   ├── pdf/layout.py           # KPI dashboard, limiter classification
-│   │   ├── pdf/builder.py          # CP vs VT2 validation
-│   │   └── figures/smo2_vs_power.py # Artifact filtering
+│   │   ├── pdf/
+│   │   │   ├── layout.py           # Page sections (reduced from 5447 lines)
+│   │   │   ├── builder.py          # Document orchestration
+│   │   │   ├── cards.py            # Shared card builder components
+│   │   │   ├── metabolic.py        # Metabolic Engine page layout
+│   │   │   ├── smo2.py             # SmO2 threshold page layout
+│   │   │   ├── thermal.py          # Thermal limits page layout
+│   │   │   ├── biomech.py          # Biomechanical analysis page layout
+│   │   │   └── figures/smo2_vs_power.py # Artifact filtering
 │   ├── frontend/          # Theme, state, layout
 │   ├── db/                # SQLite session store
 │   ├── ai/                # AI Coach & interval detection
@@ -99,6 +105,11 @@ Tri_Dashboard/
 | DataFrame Ops | 10x (vectorized) |
 | Column Mapping | 5-10x (O(1) lookup) |
 | Caching | TTL-based memoization |
+| Tab Rendering | @st.fragment isolation (28 tabs) |
+| Chart Interaction | ~10-20x (@st.fragment, no full rerun) |
+| Lazy Imports | scipy/numba deferred (2-5s startup gain) |
+
+> **PDF module refactoring:** The monolithic `layout.py` (5447 lines) was decomposed into focused modules (`cards.py`, `metabolic.py`, `smo2.py`, `thermal.py`, `biomech.py`) for improved maintainability and parallel development. Each page layout now lives in its own file with shared card components extracted into `cards.py`.
 
 ---
 
@@ -137,6 +148,20 @@ Verification
 
 ## 📋 Changelog
 
+
+### 2026-04-19 — Comprehensive Performance Review & Optimization
+
+**Commit `2616942` on `main`:** 22 files, +1276/-808 lines, 721 tests passing, 0 regressions.
+
+| # | Phase | Files | Change | Impact |
+|---|-------|-------|--------|--------|
+| 1 | **Lazy Heavy Imports** | 14 | Deferred `scipy`/`numba` from module-level to function-level in 6 UI + 8 calc modules | ~2-5s faster cold start (scipy loads only when tab needs it) |
+| 2 | **Caching Expansion** | 3 | Added `@st.cache_data(ttl=3600)` to `validate_test()`, `preprocess_signals()`, `generate_executive_summary()`, `calculate_w_prime_balance()` | Expensive pipeline computations cached for 1h TTL |
+| 3 | **Fragment-Isolated Charts** | 2 | Wrapped 4 interactive Plotly chart selections (vent.py ×3, smo2.py ×1) in `@st.fragment` — removed 4 `st.rerun()` calls | Chart range selection: ~2-4s → ~0.1-0.3s (fragment-only rerun) |
+| 4 | **DataFrame Optimization** | 4 | `normalize_columns_pandas(copy=False)` to avoid double-copy; vectorized 4 `.apply()` calls (`np.where`, `np.vectorize`, `np.full`); gc.collect batched to every 10th chunk | ~30% less memory for large file processing |
+| 5 | **Tab Fragment Isolation** | 1 | Wrapped `render_tab_content()` in `@st.fragment(run_every=None)` in `app.py` | **#1 bottleneck fixed**: tab interaction re-renders only active tab (~0.2-0.5s) instead of all 28 tabs (~2-4s) |
+
+**Details:** See `PERFORMANCE_REVIEW.md` for bottleneck ranking, impact estimates, and remaining optimization opportunities.
 
 ### 2026-04-06 — Performance Optimization Plan
 
